@@ -1,0 +1,28 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Dependencies & Build
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment secrets
+.env
+.env.local
+.env.*.local
+
+# Capacitor / Native generated artifacts
+android/app/build
+android/.gradle
+android/local.properties
+*.apk
+*.aab
+
+# Python / OS
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
