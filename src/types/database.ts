@@ -69,6 +69,26 @@ export interface TeamStanding {
   team: Team;
 }
 
+export interface GameOdds {
+  provider?: string;
+  details?: string;
+  home_spread?: number | null;
+  away_spread?: number | null;
+  open_home_spread?: number | null;
+  home_spread_odds?: number | null;
+  away_spread_odds?: number | null;
+  over_under?: number | null;
+  open_over_under?: number | null;
+  over_odds?: number | null;
+  under_odds?: number | null;
+  home_moneyline?: number | null;
+  away_moneyline?: number | null;
+  open_home_moneyline?: number | null;
+  open_away_moneyline?: number | null;
+  home_win_prob?: number | null;
+  away_win_prob?: number | null;
+}
+
 export interface Game {
   id: number;
   league_id: number;
@@ -86,6 +106,7 @@ export interface Game {
   home_linescores: number[] | null;
   away_linescores: number[] | null;
   venue: string | null;
+  odds?: GameOdds | null;
   home_team: Team;
   away_team: Team;
 }

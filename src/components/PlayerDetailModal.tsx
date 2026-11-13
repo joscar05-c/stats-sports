@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react';
-import { X, Download, Award, TrendingUp } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { X, Download, Award, TrendingUp, Minus, Plus, RotateCcw } from 'lucide-react';
 import { fetchPlayerProfileAndLogs } from '../services/basketballApi';
 import { downloadPlayerStatCard } from '../utils/shareCard';
+import {
+  PLAYER_CHART_METRICS,
+  suggestPropLine,
+  type PlayerChartMetric,
+} from '../utils/betting';
 import type { Player, PlayerGameStat, PlayerSeasonAverage } from '../types/database';
 
 interface PlayerDetailModalProps {
@@ -9,11 +14,18 @@ interface PlayerDetailModalProps {
   onClose: () => void;
 }
 
+const METRIC_ORDER: PlayerChartMetric[] = ['pts', 'reb', 'ast', 'pra', 'tpm'];
+
 export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps) {
   const [player, setPlayer] = useState<Player | null>(null);
   const [average, setAverage] = useState<PlayerSeasonAverage | null>(null);
   const [logs, setLogs] = useState<PlayerGameStat[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Interactive chart metric + sportsbook prop line
+  const [chartMetric, setChartMetric] = useState<PlayerChartMetric>('pts');
+  const [propLine, setPropLine] = useState<number>(15.5);
+  const [selectedBarIdx, setSelectedBarIdx] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -33,8 +45,61 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
     };
   }, [playerId]);
 
+  const metricCfg = PLAYER_CHART_METRICS[chartMetric];
+
+  const defaultLineForMetric = useMemo(() => {
+    const avgVal = metricCfg.getSeasonAvg(average, logs);
+    return suggestPropLine(avgVal);
+  }, [metricCfg, average, logs]);
+
+  // Reset suggested prop line when player, data, or selected metric changes
+  useEffect(() => {
+    setPropLine(defaultLineForMetric);
+    setSelectedBarIdx(null);
+  }, [playerId, defaultLineForMetric]);
+
+  const chartLogs = useMemo(() => [...logs].reverse(), [logs]);
+
+  const chartStats = useMemo(() => {
+    if (chartLogs.length === 0) {
+      return {
+        values: [] as number[],
+        maxScale: 20,
+        overCount: 0,
+        last5Over: 0,
+        last5Total: 0,
+        stretchAvg: 0,
+        minVal: 0,
+        maxVal: 0,
+      };
+    }
+    const values = chartLogs.map((g) => metricCfg.getStatValue(g));
+    const maxRaw = Math.max(...values, propLine, 4);
+    const maxScale = Math.max(5, Math.ceil(maxRaw * 1.15));
+    const overCount = values.filter((v) => v > propLine).length;
+    const recent5 = values.slice(-5);
+    const last5Over = recent5.filter((v) => v > propLine).length;
+    const stretchAvg = values.reduce((sum, v) => sum + v, 0) / values.length;
+    return {
+      values,
+      maxScale,
+      overCount,
+      last5Over,
+      last5Total: recent5.length,
+      stretchAvg,
+      minVal: Math.min(...values),
+      maxVal: Math.max(...values),
+    };
+  }, [chartLogs, metricCfg, propLine]);
+
   const accent = player?.team?.primary_color || '#f97316';
-  const maxPts = Math.max(...logs.map((l) => l.pts), 25);
+  const hitRatePct =
+    chartLogs.length > 0 ? Math.round((chartStats.overCount / chartLogs.length) * 100) : 0;
+  const lineBottomPct = Math.min(96, Math.max(4, (propLine / chartStats.maxScale) * 100));
+
+  const adjustPropLine = (delta: number) => {
+    setPropLine((prev) => Math.max(0.5, Number((prev + delta).toFixed(1))));
+  };
 
   return (
     <div
@@ -194,33 +259,196 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                 </div>
               )}
 
-              {/* Points Trend Chart (Lightweight Pure SVG) */}
-              {logs.length > 0 && (
-                <div className="rounded-xl bg-slate-900/60 border border-slate-800/80 p-3.5">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-300 uppercase tracking-wider">
+              {/* Interactive Trend Chart + Sportsbook Prop Line Hit Rate */}
+              {chartLogs.length > 0 && (
+                <div className="rounded-xl bg-slate-900/70 border border-slate-800/90 p-3.5 space-y-3">
+                  {/* Title + Metric Selector */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-200 uppercase tracking-wider">
                       <TrendingUp className="w-3.5 h-3.5 text-orange-400" />
-                      Puntos en últimos {logs.length} partidos
+                      {metricCfg.label} · Últimos {chartLogs.length} PJ
                     </span>
+
+                    <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-lg border border-slate-800">
+                      {METRIC_ORDER.map((mKey) => {
+                        const cfg = PLAYER_CHART_METRICS[mKey];
+                        const active = chartMetric === mKey;
+                        return (
+                          <button
+                            key={mKey}
+                            type="button"
+                            onClick={() => setChartMetric(mKey)}
+                            className={`px-2 py-1 rounded-md text-[11px] font-bold transition-colors ${
+                              active
+                                ? 'bg-orange-500 text-slate-950'
+                                : 'text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {cfg.short}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="flex items-end gap-1.5 h-24 pt-4">
-                    {[...logs].reverse().map((g) => {
-                      const pct = Math.max(8, Math.round((g.pts / maxPts) * 100));
-                      return (
-                        <div
-                          key={g.id}
-                          className="flex-1 flex flex-col items-center justify-end h-full group"
+
+                  {/* Interactive Sportsbook O/U Line & Hit Rate */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-950/70 border border-slate-800/80 px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-semibold text-slate-400">
+                        Línea O/U (Casa):
+                      </span>
+                      <div className="inline-flex items-center rounded-lg border border-slate-700 bg-slate-900 overflow-hidden tabular-nums">
+                        <button
+                          type="button"
+                          onClick={() => adjustPropLine(-0.5)}
+                          className="p-1.5 text-slate-300 hover:bg-slate-800"
+                          aria-label="Bajar línea 0.5"
                         >
-                          <span className="text-[10px] font-bold text-slate-300 mb-1 tabular-nums">
-                            {g.pts}
-                          </span>
-                          <div
-                            className="w-full max-w-[26px] rounded-t-md bg-gradient-to-t from-orange-600 to-amber-400 transition-all"
-                            style={{ height: `${pct}%` }}
-                          />
-                        </div>
-                      );
-                    })}
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="px-2.5 text-xs font-black text-amber-300">
+                          {propLine.toFixed(1)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => adjustPropLine(0.5)}
+                          className="p-1.5 text-slate-300 hover:bg-slate-800"
+                          aria-label="Subir línea 0.5"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                      {Math.abs(propLine - defaultLineForMetric) > 0.01 && (
+                        <button
+                          type="button"
+                          onClick={() => setPropLine(defaultLineForMetric)}
+                          className="text-[10px] inline-flex items-center gap-1 text-slate-400 hover:text-slate-200"
+                          title="Volver a línea sugerida"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          Prom.
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] tabular-nums">
+                      <span
+                        className={`font-extrabold px-2 py-0.5 rounded-full ${
+                          hitRatePct >= 60
+                            ? 'bg-emerald-500/20 text-emerald-300'
+                            : hitRatePct <= 40
+                              ? 'bg-rose-500/20 text-rose-300'
+                              : 'bg-amber-500/20 text-amber-300'
+                        }`}
+                      >
+                        OVER {chartStats.overCount}/{chartLogs.length} ({hitRatePct}%)
+                      </span>
+                      <span className="text-slate-400">
+                        Últ. {chartStats.last5Total}:{' '}
+                        <strong className="text-slate-200">
+                          {chartStats.last5Over}/{chartStats.last5Total}
+                        </strong>
+                      </span>
+                      <span className="text-slate-400">
+                        Prom:{' '}
+                        <strong className="text-slate-200">
+                          {chartStats.stretchAvg.toFixed(1)}
+                        </strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Bar Chart with Dashed O/U Line */}
+                  <div className="relative pt-5 pb-1">
+                    <div className="relative flex items-end gap-1 sm:gap-1.5 h-32">
+                      {/* Dashed Reference Line */}
+                      <div
+                        className="absolute left-0 right-0 border-t-2 border-dashed border-amber-400/75 pointer-events-none z-10 flex justify-end"
+                        style={{ bottom: `${lineBottomPct}%` }}
+                      >
+                        <span className="-translate-y-4 text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 tabular-nums">
+                          {propLine.toFixed(1)}
+                        </span>
+                      </div>
+
+                      {chartLogs.map((g, idx) => {
+                        const val = metricCfg.getStatValue(g);
+                        const isOver = val > propLine;
+                        const pct = Math.max(8, Math.round((val / chartStats.maxScale) * 100));
+                        const isHome = g.game?.home_team_id === g.team_id;
+                        const opp = isHome
+                          ? g.game?.away_team?.abbreviation
+                          : g.game?.home_team?.abbreviation;
+                        const isFocused = selectedBarIdx === idx;
+                        return (
+                          <button
+                            key={g.id}
+                            type="button"
+                            onClick={() => setSelectedBarIdx(isFocused ? null : idx)}
+                            className="flex-1 min-w-0 flex flex-col items-center justify-end h-full group focus:outline-none"
+                            title={`${g.game?.game_date ?? ''} ${isHome ? 'vs' : '@'} ${opp ?? 'NBA'}: ${val} ${metricCfg.short}`}
+                          >
+                            <span
+                              className={`text-[10px] font-bold mb-1 tabular-nums ${
+                                isOver ? 'text-emerald-300' : 'text-rose-300/90'
+                              }`}
+                            >
+                              {val}
+                            </span>
+                            <div
+                              className={`w-full max-w-[26px] rounded-t-md transition-all ${
+                                isFocused ? 'ring-2 ring-white/80' : ''
+                              } ${
+                                isOver
+                                  ? 'bg-gradient-to-t from-emerald-600 to-emerald-400'
+                                  : 'bg-gradient-to-t from-rose-700/80 to-rose-500/85'
+                              }`}
+                              style={{ height: `${pct}%` }}
+                            />
+                            <span className="mt-1 text-[8px] sm:text-[9px] text-slate-500 font-semibold truncate max-w-full">
+                              {opp ?? '-'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-400">
+                      <div className="flex items-center gap-3">
+                        <span className="inline-flex items-center gap-1">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" />
+                          Alta (Over {propLine.toFixed(1)})
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-rose-500 inline-block" />
+                          Baja (Under {propLine.toFixed(1)})
+                        </span>
+                      </div>
+                      <span className="tabular-nums">
+                        Mín: <strong className="text-slate-200">{chartStats.minVal}</strong> · Máx:{' '}
+                        <strong className="text-slate-200">{chartStats.maxVal}</strong>
+                      </span>
+                    </div>
+
+                    {selectedBarIdx !== null && chartLogs[selectedBarIdx] && (
+                      <div className="mt-2 rounded-lg bg-slate-800/70 border border-slate-700 px-3 py-1.5 text-[11px] text-slate-200 flex items-center justify-between tabular-nums">
+                        <span>
+                          {chartLogs[selectedBarIdx].game?.game_date} ·{' '}
+                          {chartLogs[selectedBarIdx].game?.home_team_id ===
+                          chartLogs[selectedBarIdx].team_id
+                            ? 'vs'
+                            : '@'}{' '}
+                          {chartLogs[selectedBarIdx].game?.home_team_id ===
+                          chartLogs[selectedBarIdx].team_id
+                            ? chartLogs[selectedBarIdx].game?.away_team?.abbreviation
+                            : chartLogs[selectedBarIdx].game?.home_team?.abbreviation}
+                        </span>
+                        <span className="font-bold">
+                          {chartLogs[selectedBarIdx].pts} PTS · {chartLogs[selectedBarIdx].reb} REB
+                          · {chartLogs[selectedBarIdx].ast} AST · {chartLogs[selectedBarIdx].tpm} 3P
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -238,11 +466,36 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                           <th className="text-left py-2 px-3">FECHA</th>
                           <th className="text-left py-2 px-2">RIVAL</th>
                           <th className="text-right py-2 px-2">MIN</th>
-                          <th className="text-right py-2 px-2 text-orange-400">PTS</th>
-                          <th className="text-right py-2 px-2">REB</th>
-                          <th className="text-right py-2 px-2">AST</th>
+                          <th
+                            className={`text-right py-2 px-2 ${
+                              chartMetric === 'pts' ? 'text-orange-400' : ''
+                            }`}
+                          >
+                            PTS
+                          </th>
+                          <th
+                            className={`text-right py-2 px-2 ${
+                              chartMetric === 'reb' ? 'text-orange-400' : ''
+                            }`}
+                          >
+                            REB
+                          </th>
+                          <th
+                            className={`text-right py-2 px-2 ${
+                              chartMetric === 'ast' ? 'text-orange-400' : ''
+                            }`}
+                          >
+                            AST
+                          </th>
                           <th className="text-right py-2 px-2">TC</th>
-                          <th className="text-right py-2 px-3">3P</th>
+                          <th
+                            className={`text-right py-2 px-2 ${
+                              chartMetric === 'tpm' ? 'text-orange-400' : ''
+                            }`}
+                          >
+                            3P
+                          </th>
+                          <th className="text-center py-2 px-2">O/U</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60">
@@ -251,6 +504,8 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                           const opp = isHome
                             ? row.game?.away_team?.abbreviation
                             : row.game?.home_team?.abbreviation;
+                          const metricVal = metricCfg.getStatValue(row);
+                          const hitOver = metricVal > propLine;
                           return (
                             <tr key={row.id} className="hover:bg-slate-800/30">
                               <td className="py-2 px-3 text-slate-400">
@@ -260,16 +515,55 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                                 {isHome ? 'vs' : '@'} {opp ?? 'NBA'}
                               </td>
                               <td className="text-right py-2 px-2 text-slate-300">{row.minutes}</td>
-                              <td className="text-right py-2 px-2 font-bold text-white">
+                              <td
+                                className={`text-right py-2 px-2 ${
+                                  chartMetric === 'pts'
+                                    ? 'font-black text-white'
+                                    : 'font-semibold text-slate-200'
+                                }`}
+                              >
                                 {row.pts}
                               </td>
-                              <td className="text-right py-2 px-2 text-slate-300">{row.reb}</td>
-                              <td className="text-right py-2 px-2 text-slate-300">{row.ast}</td>
+                              <td
+                                className={`text-right py-2 px-2 ${
+                                  chartMetric === 'reb'
+                                    ? 'font-black text-white'
+                                    : 'text-slate-300'
+                                }`}
+                              >
+                                {row.reb}
+                              </td>
+                              <td
+                                className={`text-right py-2 px-2 ${
+                                  chartMetric === 'ast'
+                                    ? 'font-black text-white'
+                                    : 'text-slate-300'
+                                }`}
+                              >
+                                {row.ast}
+                              </td>
                               <td className="text-right py-2 px-2 text-slate-400">
                                 {row.fgm}-{row.fga}
                               </td>
-                              <td className="text-right py-2 px-3 text-slate-400">
+                              <td
+                                className={`text-right py-2 px-2 ${
+                                  chartMetric === 'tpm'
+                                    ? 'font-bold text-white'
+                                    : 'text-slate-400'
+                                }`}
+                              >
                                 {row.tpm}-{row.tpa}
+                              </td>
+                              <td className="text-center py-2 px-2">
+                                <span
+                                  className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                    hitOver
+                                      ? 'bg-emerald-500/20 text-emerald-300'
+                                      : 'bg-rose-500/15 text-rose-300'
+                                  }`}
+                                >
+                                  {hitOver ? 'O' : 'U'}
+                                </span>
                               </td>
                             </tr>
                           );

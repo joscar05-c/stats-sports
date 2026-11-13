@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { CalendarDays, ChevronRight, Radio } from 'lucide-react';
 import { fetchAvailableGameDates, fetchGamesByDate } from '../services/basketballApi';
+import {
+  evaluateGameBettingResult,
+  formatDecimalOdds,
+  formatSpreadCompact,
+} from '../utils/betting';
 import type { Game } from '../types/database';
 
 interface GamesViewProps {
@@ -148,15 +153,26 @@ export function GamesView({ leagueId, onSelectGame }: GamesViewProps) {
                   )}
 
                   <span className="inline-flex items-center gap-0.5 text-[11px] text-slate-400 group-hover:text-orange-400 transition-colors">
-                    Box Score <ChevronRight className="w-3.5 h-3.5" />
+                    {g.status === 'scheduled' ? 'Líneas y Previa' : 'Box Score'}
+                    <ChevronRight className="w-3.5 h-3.5" />
                   </span>
                 </div>
 
                 {/* Teams & Scores */}
                 <div className="space-y-2.5 tabular-nums">
                   {[
-                    { team: g.away_team, score: g.away_score, won: awayWon, role: 'Visita' },
-                    { team: g.home_team, score: g.home_score, won: homeWon, role: 'Local' },
+                    {
+                      team: g.away_team,
+                      score: g.away_score,
+                      won: awayWon,
+                      ml: g.odds?.away_moneyline,
+                    },
+                    {
+                      team: g.home_team,
+                      score: g.home_score,
+                      won: homeWon,
+                      ml: g.odds?.home_moneyline,
+                    },
                   ].map((side) => (
                     <div key={side.team.id} className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -180,16 +196,93 @@ export function GamesView({ leagueId, onSelectGame }: GamesViewProps) {
                           </div>
                         </div>
                       </div>
-                      <span
-                        className={`text-xl font-black ${
-                          side.won ? 'text-orange-400' : g.status === 'scheduled' ? 'text-slate-600' : 'text-slate-200'
-                        }`}
-                      >
-                        {g.status === 'scheduled' ? '-' : side.score}
-                      </span>
+                      <div className="flex items-center gap-2.5">
+                        {side.ml != null && (
+                          <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-800/80 text-amber-300">
+                            {formatDecimalOdds(side.ml)}x
+                          </span>
+                        )}
+                        <span
+                          className={`text-xl font-black w-9 text-right ${
+                            side.won
+                              ? 'text-orange-400'
+                              : g.status === 'scheduled'
+                                ? 'text-slate-600'
+                                : 'text-slate-200'
+                          }`}
+                        >
+                          {g.status === 'scheduled' ? '-' : side.score}
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>
+
+                {/* Sportsbook Market Strip */}
+                {g.odds &&
+                  (g.odds.home_spread != null ||
+                    g.odds.over_under != null ||
+                    g.odds.home_win_prob != null) && (
+                    <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-[11px] tabular-nums">
+                      <div className="flex items-center gap-2 text-slate-300">
+                        {g.odds.home_spread != null && (
+                          <span className="px-2 py-0.5 rounded-md bg-slate-800/80 font-semibold">
+                            Hándicap:{' '}
+                            <strong className="text-amber-300">
+                              {g.odds.details ||
+                                `${g.home_team.abbreviation} ${formatSpreadCompact(g.odds.home_spread)}`}
+                            </strong>
+                          </span>
+                        )}
+                        {g.odds.over_under != null && (
+                          <span className="px-2 py-0.5 rounded-md bg-slate-800/80 font-semibold">
+                            O/U <strong className="text-white">{g.odds.over_under}</strong>
+                          </span>
+                        )}
+                        {g.odds.home_spread == null &&
+                          g.odds.over_under == null &&
+                          g.odds.away_win_prob != null &&
+                          g.odds.home_win_prob != null && (
+                            <span className="px-2 py-0.5 rounded-md bg-slate-800/70 text-slate-300 font-semibold">
+                              Predictor:{' '}
+                              <strong className="text-orange-300">
+                                {g.away_team.abbreviation} {Number(g.odds.away_win_prob).toFixed(0)}%
+                              </strong>{' '}
+                              ·{' '}
+                              <strong className="text-sky-300">
+                                {g.home_team.abbreviation} {Number(g.odds.home_win_prob).toFixed(0)}%
+                              </strong>
+                            </span>
+                          )}
+                      </div>
+                      {g.status === 'final' ? (
+                        (() => {
+                          const evalRes = evaluateGameBettingResult(g);
+                          return (
+                            <div className="flex items-center gap-1.5 font-bold">
+                              {evalRes.totalResult && (
+                                <span
+                                  className={
+                                    evalRes.totalResult === 'OVER'
+                                      ? 'text-emerald-400'
+                                      : evalRes.totalResult === 'UNDER'
+                                        ? 'text-sky-400'
+                                        : 'text-slate-400'
+                                  }
+                                >
+                                  {evalRes.totalPoints} ({evalRes.totalResult})
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          {g.odds.provider || 'Predictor'}
+                        </span>
+                      )}
+                    </div>
+                  )}
               </button>
             );
           })}

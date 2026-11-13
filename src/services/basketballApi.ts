@@ -76,7 +76,7 @@ export async function fetchGamesByDate(
       .select(`
         id, league_id, season_id, game_date, tipoff_at, status, status_detail,
         period, clock, home_team_id, away_team_id, home_score, away_score,
-        home_linescores, away_linescores, venue,
+        home_linescores, away_linescores, venue, odds,
         home_team:teams!games_home_team_id_fkey(id, league_id, external_id, name, short_name, abbreviation, city, conference, division, primary_color, alternate_color, logo_url),
         away_team:teams!games_away_team_id_fkey(id, league_id, external_id, name, short_name, abbreviation, city, conference, division, primary_color, alternate_color, logo_url)
       `)
@@ -240,7 +240,7 @@ export async function fetchTeamRosterAndGames(teamId: number): Promise<{
         .select(`
           id, league_id, season_id, game_date, tipoff_at, status, status_detail,
           period, clock, home_team_id, away_team_id, home_score, away_score,
-          home_linescores, away_linescores, venue,
+          home_linescores, away_linescores, venue, odds,
           home_team:teams!games_home_team_id_fkey(id, league_id, external_id, name, short_name, abbreviation, city, conference, division, primary_color, alternate_color, logo_url),
           away_team:teams!games_away_team_id_fkey(id, league_id, external_id, name, short_name, abbreviation, city, conference, division, primary_color, alternate_color, logo_url)
         `)
@@ -253,6 +253,76 @@ export async function fetchTeamRosterAndGames(teamId: number): Promise<{
     return {
       players: (rosterRes.data ?? []) as Player[],
       games: (gamesRes.data ?? []) as unknown as Game[],
+    };
+  });
+  return data;
+}
+
+export interface GameBettingContext {
+  homeStanding: TeamStanding | null;
+  awayStanding: TeamStanding | null;
+  homeRecentGames: Game[];
+  awayRecentGames: Game[];
+  keyPlayers: PlayerSeasonAverage[];
+}
+
+export async function fetchGameBettingContext(game: Game): Promise<GameBettingContext> {
+  const { data } = await withOfflineCache(`bet_ctx_${game.id}`, async () => {
+    const teamSelect =
+      'id, league_id, external_id, name, short_name, abbreviation, city, conference, division, primary_color, alternate_color, logo_url';
+    const [standingsRes, homeGamesRes, awayGamesRes, playersRes] = await Promise.all([
+      supabase
+        .from('team_standings')
+        .select('*, team:teams(*)')
+        .eq('season_id', game.season_id)
+        .in('team_id', [game.home_team_id, game.away_team_id]),
+      supabase
+        .from('games')
+        .select(
+          `id, league_id, season_id, game_date, tipoff_at, status, status_detail, period, clock,
+           home_team_id, away_team_id, home_score, away_score, home_linescores, away_linescores, venue, odds,
+           home_team:teams!games_home_team_id_fkey(${teamSelect}),
+           away_team:teams!games_away_team_id_fkey(${teamSelect})`,
+        )
+        .eq('season_id', game.season_id)
+        .eq('status', 'final')
+        .neq('id', game.id)
+        .lte('game_date', game.game_date)
+        .or(`home_team_id.eq.${game.home_team_id},away_team_id.eq.${game.home_team_id}`)
+        .order('game_date', { ascending: false })
+        .limit(6),
+      supabase
+        .from('games')
+        .select(
+          `id, league_id, season_id, game_date, tipoff_at, status, status_detail, period, clock,
+           home_team_id, away_team_id, home_score, away_score, home_linescores, away_linescores, venue, odds,
+           home_team:teams!games_home_team_id_fkey(${teamSelect}),
+           away_team:teams!games_away_team_id_fkey(${teamSelect})`,
+        )
+        .eq('season_id', game.season_id)
+        .eq('status', 'final')
+        .neq('id', game.id)
+        .lte('game_date', game.game_date)
+        .or(`home_team_id.eq.${game.away_team_id},away_team_id.eq.${game.away_team_id}`)
+        .order('game_date', { ascending: false })
+        .limit(6),
+      supabase
+        .from('player_season_averages')
+        .select('*')
+        .eq('season_id', game.season_id)
+        .in('team_id', [game.home_team_id, game.away_team_id])
+        .gt('gp', 0)
+        .order('ppg', { ascending: false, nullsFirst: false })
+        .limit(8),
+    ]);
+
+    const standings = (standingsRes.data ?? []) as unknown as TeamStanding[];
+    return {
+      homeStanding: standings.find((s) => s.team_id === game.home_team_id) ?? null,
+      awayStanding: standings.find((s) => s.team_id === game.away_team_id) ?? null,
+      homeRecentGames: (homeGamesRes.data ?? []) as unknown as Game[],
+      awayRecentGames: (awayGamesRes.data ?? []) as unknown as Game[],
+      keyPlayers: (playersRes.data ?? []) as PlayerSeasonAverage[],
     };
   });
   return data;

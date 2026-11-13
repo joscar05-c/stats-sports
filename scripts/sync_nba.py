@@ -73,6 +73,118 @@ def safe_float(val: Any) -> float | None:
         return None
 
 
+def parse_line_num(val: Any) -> float | None:
+    if val is None or val == "" or val == "--":
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    if s.upper() in ("PK", "EVEN"):
+        return 0.0
+    if s[0] in ("o", "u", "O", "U"):
+        s = s[1:]
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def parse_american_odds(val: Any) -> int | None:
+    if val is None or val == "" or val == "--":
+        return None
+    s = str(val).strip().upper()
+    if not s:
+        return None
+    if s == "EVEN":
+        return 100
+    try:
+        return int(round(float(s.lstrip("+"))))
+    except ValueError:
+        return None
+
+
+def extract_game_odds(
+    odds_list: list[dict[str, Any]] | None,
+    predictor: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    entry = odds_list[0] if odds_list else None
+    if not entry and not predictor:
+        return None
+
+    payload: dict[str, Any] = {}
+    if isinstance(entry, dict):
+        prov = entry.get("provider") or {}
+        ps = entry.get("pointSpread") or {}
+        home_ps = ps.get("home") or {}
+        away_ps = ps.get("away") or {}
+        tot = entry.get("total") or {}
+        over_tot = tot.get("over") or {}
+        under_tot = tot.get("under") or {}
+        ml = entry.get("moneyline") or {}
+        home_ml = ml.get("home") or {}
+        away_ml = ml.get("away") or {}
+        home_team_odds = entry.get("homeTeamOdds") or {}
+        away_team_odds = entry.get("awayTeamOdds") or {}
+
+        home_spread = parse_line_num((home_ps.get("close") or {}).get("line"))
+        if home_spread is None:
+            raw_spread = safe_float(entry.get("spread"))
+            if raw_spread is not None:
+                if away_team_odds.get("favorite") and raw_spread > 0:
+                    home_spread = raw_spread
+                elif home_team_odds.get("favorite") and raw_spread > 0:
+                    home_spread = -raw_spread
+                else:
+                    home_spread = raw_spread
+
+        away_spread = parse_line_num((away_ps.get("close") or {}).get("line"))
+        if away_spread is None and home_spread is not None:
+            away_spread = -home_spread
+
+        open_home_spread = parse_line_num((home_ps.get("open") or {}).get("line"))
+        over_under = parse_line_num((over_tot.get("close") or {}).get("line")) or safe_float(
+            entry.get("overUnder")
+        )
+        open_over_under = parse_line_num((over_tot.get("open") or {}).get("line"))
+
+        payload.update(
+            {
+                "provider": prov.get("displayName") or prov.get("name") or "Sportsbook",
+                "details": entry.get("details"),
+                "home_spread": home_spread,
+                "away_spread": away_spread,
+                "open_home_spread": open_home_spread,
+                "home_spread_odds": parse_american_odds((home_ps.get("close") or {}).get("odds"))
+                or parse_american_odds(home_team_odds.get("spreadOdds")),
+                "away_spread_odds": parse_american_odds((away_ps.get("close") or {}).get("odds"))
+                or parse_american_odds(away_team_odds.get("spreadOdds")),
+                "over_under": over_under,
+                "open_over_under": open_over_under,
+                "over_odds": parse_american_odds((over_tot.get("close") or {}).get("odds"))
+                or parse_american_odds(entry.get("overOdds")),
+                "under_odds": parse_american_odds((under_tot.get("close") or {}).get("odds"))
+                or parse_american_odds(entry.get("underOdds")),
+                "home_moneyline": parse_american_odds((home_ml.get("close") or {}).get("odds"))
+                or parse_american_odds(home_team_odds.get("moneyLine")),
+                "away_moneyline": parse_american_odds((away_ml.get("close") or {}).get("odds"))
+                or parse_american_odds(away_team_odds.get("moneyLine")),
+                "open_home_moneyline": parse_american_odds((home_ml.get("open") or {}).get("odds")),
+                "open_away_moneyline": parse_american_odds((away_ml.get("open") or {}).get("odds")),
+            }
+        )
+
+    if isinstance(predictor, dict):
+        hp = safe_float((predictor.get("homeTeam") or {}).get("gameProjection"))
+        ap = safe_float((predictor.get("awayTeam") or {}).get("gameProjection"))
+        if hp is not None:
+            payload["home_win_prob"] = hp
+        if ap is not None:
+            payload["away_win_prob"] = ap
+
+    cleaned = {k: v for k, v in payload.items() if v is not None}
+    return cleaned or None
+
+
 def parse_split_pair(val: Any) -> tuple[int, int]:
     if not val or "-" not in str(val):
         return 0, 0
@@ -293,6 +405,7 @@ def fetch_games_and_boxscores(
             home_lines = [safe_int(ls.get("value"), 0) for ls in (home.get("linescores") or [])]
             away_lines = [safe_int(ls.get("value"), 0) for ls in (away.get("linescores") or [])]
             venue = ((comp.get("venue") or {}).get("fullName")) or None
+            sb_odds = extract_game_odds(comp.get("odds"))
 
             g_row = {
                 "external_source": EXTERNAL_SOURCE,
@@ -310,9 +423,11 @@ def fetch_games_and_boxscores(
                 "home_linescores": home_lines or None,
                 "away_linescores": away_lines or None,
                 "venue": venue,
+                "odds": sb_odds,
             }
             games.append(g_row)
-            if status in ("final", "live"):
+            today_pet = dt.datetime.now(dt.timezone(dt.timedelta(hours=-5))).date().isoformat()
+            if status in ("final", "live") or sb_odds is not None or g_row["game_date"] >= today_pet:
                 game_meta_for_boxscore.append(g_row)
 
     stats_rows: list[dict[str, Any]] = []
@@ -320,6 +435,17 @@ def fetch_games_and_boxscores(
     def _fetch_box(g: dict[str, Any]) -> list[dict[str, Any]]:
         eid = g["external_id"]
         summ = fetch_json(f"{ESPN_BASE}/site/v2/sports/basketball/nba/summary?event={eid}")
+        pick_odds = extract_game_odds(summ.get("pickcenter"), summ.get("predictor"))
+        if pick_odds:
+            merged = dict(g.get("odds") or {})
+            for k, v in pick_odds.items():
+                if v is not None:
+                    merged[k] = v
+            g["odds"] = merged or None
+
+        if g["status"] not in ("final", "live"):
+            return []
+
         bx = summ.get("boxscore") or {}
         out_rows: list[dict[str, Any]] = []
         for team_blk in bx.get("players", []):
@@ -556,19 +682,19 @@ def write_sql_seed_files(
             "-- 03 Games",
             "with lg as (select id as league_id from public.leagues where slug = 'nba'),",
             f"sn as (select id as season_id from public.seasons s join lg on lg.league_id = s.league_id where s.season_year = {season_year}),",
-            "g_data (external_source, external_id, game_date, tipoff_at, status, status_detail, period, clock, home_ext_id, away_ext_id, home_score, away_score, home_linescores, away_linescores, venue) as (",
+            "g_data (external_source, external_id, game_date, tipoff_at, status, status_detail, period, clock, home_ext_id, away_ext_id, home_score, away_score, home_linescores, away_linescores, venue, odds) as (",
             "  values",
         ]
         g_vals = [
-            f"    ({sql_lit(g['external_source'])}, {sql_lit(g['external_id'])}, {sql_lit(g['game_date'])}::date, {sql_lit(g['tipoff_at'])}::timestamptz, {sql_lit(g['status'])}, {sql_lit(g['status_detail'])}, {g['period']}::smallint, {sql_lit(g['clock'])}, {sql_lit(g['home_team_ext_id'])}, {sql_lit(g['away_team_ext_id'])}, {g['home_score']}::smallint, {g['away_score']}::smallint, {sql_lit(g['home_linescores'])}, {sql_lit(g['away_linescores'])}, {sql_lit(g['venue'])})"
+            f"    ({sql_lit(g['external_source'])}, {sql_lit(g['external_id'])}, {sql_lit(g['game_date'])}::date, {sql_lit(g['tipoff_at'])}::timestamptz, {sql_lit(g['status'])}, {sql_lit(g['status_detail'])}, {g['period']}::smallint, {sql_lit(g['clock'])}, {sql_lit(g['home_team_ext_id'])}, {sql_lit(g['away_team_ext_id'])}, {g['home_score']}::smallint, {g['away_score']}::smallint, {sql_lit(g['home_linescores'])}, {sql_lit(g['away_linescores'])}, {sql_lit(g['venue'])}, {sql_lit(g.get('odds'))})"
             for g in games
         ]
         g_lines.append(",\n".join(g_vals))
         g_lines.extend(
             [
                 ")",
-                "insert into public.games (league_id, season_id, external_source, external_id, game_date, tipoff_at, status, status_detail, period, clock, home_team_id, away_team_id, home_score, away_score, home_linescores, away_linescores, venue, updated_at)",
-                "select lg.league_id, sn.season_id, gd.external_source, gd.external_id, gd.game_date, gd.tipoff_at, gd.status, gd.status_detail, gd.period, gd.clock, ht.id, at.id, gd.home_score, gd.away_score, gd.home_linescores, gd.away_linescores, gd.venue, now()",
+                "insert into public.games (league_id, season_id, external_source, external_id, game_date, tipoff_at, status, status_detail, period, clock, home_team_id, away_team_id, home_score, away_score, home_linescores, away_linescores, venue, odds, updated_at)",
+                "select lg.league_id, sn.season_id, gd.external_source, gd.external_id, gd.game_date, gd.tipoff_at, gd.status, gd.status_detail, gd.period, gd.clock, ht.id, at.id, gd.home_score, gd.away_score, gd.home_linescores, gd.away_linescores, gd.venue, gd.odds, now()",
                 "from g_data gd cross join lg cross join sn",
                 "join public.teams ht on ht.league_id = lg.league_id and ht.external_source = 'espn' and ht.external_id = gd.home_ext_id",
                 "join public.teams at on at.league_id = lg.league_id and at.external_source = 'espn' and at.external_id = gd.away_ext_id",
@@ -577,7 +703,7 @@ def write_sql_seed_files(
                 "  status_detail = excluded.status_detail, period = excluded.period, clock = excluded.clock,",
                 "  home_score = excluded.home_score, away_score = excluded.away_score,",
                 "  home_linescores = excluded.home_linescores, away_linescores = excluded.away_linescores,",
-                "  venue = coalesce(excluded.venue, public.games.venue), updated_at = now();",
+                "  venue = coalesce(excluded.venue, public.games.venue), odds = coalesce(excluded.odds, public.games.odds), updated_at = now();",
             ]
         )
         gf = out_dir / "03_games.sql"
@@ -858,6 +984,8 @@ def sync_via_supabase_rest(
             "venue": g["venue"],
             "updated_at": now_iso,
         }
+        if g.get("odds") is not None:
+            payload["odds"] = g["odds"]
         eid = g["external_id"]
         if eid in game_id_map:
             sb.request("PATCH", f"games?id=eq.{game_id_map[eid]}", body=payload, extra_headers={"Prefer": "return=minimal"})
