@@ -1054,6 +1054,44 @@ def sync_via_supabase_rest(
     )
 
 
+DEFAULT_SUPABASE_URL = "https://dowxayyvtghtjkctasfn.supabase.co"
+
+
+def sync_via_edge_function(
+    url: str,
+    days_back: int,
+    days_ahead: int,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> None:
+    fn_url = f"{url.rstrip('/')}/functions/v1/sync-nba"
+    payload: dict[str, Any] = {"days_back": days_back, "days_ahead": days_ahead}
+    if start_date:
+        payload["start_date"] = start_date
+    if end_date:
+        payload["end_date"] = end_date
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        fn_url,
+        data=data,
+        headers={**HEADERS, "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            raw = resp.read().decode("utf-8")
+            res = json.loads(raw) if raw else {}
+            if not res.get("ok"):
+                raise RuntimeError(f"Edge Function sync-nba returned error: {raw}")
+            print(
+                f"[sync_nba] Edge Function sync-nba OK: {res.get('games_synced')} games, "
+                f"{res.get('stats_synced')} stats ({res.get('dates')})"
+            )
+    except urllib.error.HTTPError as err:
+        detail = err.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Edge Function sync-nba HTTP {err.code}: {detail}") from err
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Sync NBA data from ESPN into Supabase")
     parser.add_argument("--mode", choices=["supabase", "sql"], default="supabase")
@@ -1063,6 +1101,22 @@ def main() -> int:
     parser.add_argument("--start-date", help="Override start date YYYY-MM-DD")
     parser.add_argument("--end-date", help="Override end date YYYY-MM-DD")
     args = parser.parse_args()
+
+    if args.mode == "supabase":
+        url = (
+            os.environ.get("SUPABASE_URL", "").strip()
+            or os.environ.get("VITE_SUPABASE_URL", "").strip()
+            or DEFAULT_SUPABASE_URL
+        )
+        key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        if not key:
+            print(
+                "[sync_nba] SUPABASE_SERVICE_ROLE_KEY not set in env; "
+                "delegating sync to Supabase Edge Function (sync-nba)..."
+            )
+            sync_via_edge_function(url, args.days_back, args.days_ahead, args.start_date, args.end_date)
+            return 0
+        os.environ["SUPABASE_URL"] = url
 
     today = dt.datetime.now(dt.timezone(dt.timedelta(hours=-5))).date()
     start_d = dt.date.fromisoformat(args.start_date) if args.start_date else today - dt.timedelta(days=args.days_back)

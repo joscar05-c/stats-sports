@@ -25,7 +25,7 @@ jobs:
 
       - name: Run NBA sync to Supabase
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.VITE_SUPABASE_URL || 'https://dowxayyvtghtjkctasfn.supabase.co' }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           DAYS_BACK="${{ github.event.inputs.days_back || '4' }}"

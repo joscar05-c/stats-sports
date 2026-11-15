@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import {
-  Activity,
   ArrowLeftRight,
   Calendar,
   Download,
   Flame,
+  RefreshCw,
   Search,
   Trophy,
   WifiOff,
@@ -13,6 +13,7 @@ import {
   fetchCurrentSeason,
   fetchLastSync,
   fetchLeagues,
+  triggerCloudSync,
 } from './services/basketballApi';
 import { GamesView } from './components/GamesView';
 import { LeadersView } from './components/LeadersView';
@@ -37,6 +38,8 @@ export function App() {
   const [activeLeague, setActiveLeague] = useState<League | null>(null);
   const [season, setSeason] = useState<Season | null>(null);
   const [lastSync, setLastSync] = useState<SyncRun | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncVersion, setSyncVersion] = useState(0);
   const [fromCache, setFromCache] = useState(false);
   const [loadingInit, setLoadingInit] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -61,6 +64,21 @@ export function App() {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
+  const handleManualSync = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await triggerCloudSync(2, 3);
+      const updatedSync = await fetchLastSync();
+      if (updatedSync) setLastSync(updatedSync);
+      setSyncVersion((v) => v + 1);
+    } catch {
+      // Ignore background/manual sync network errors cleanly
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   useEffect(() => {
     let active = true;
     setLoadingInit(true);
@@ -75,6 +93,22 @@ export function App() {
         if (first) {
           const sn = await fetchCurrentSeason(first.id);
           if (active) setSeason(sn);
+        }
+        // Auto-sync in background if last sync was > 3 hours ago
+        const lastMs = syncRes?.ran_at ? new Date(syncRes.ran_at).getTime() : 0;
+        if (!lgRes.fromCache && Date.now() - lastMs > 3 * 3600 * 1000) {
+          setSyncing(true);
+          triggerCloudSync(2, 3)
+            .then(() => fetchLastSync())
+            .then((freshSync) => {
+              if (!active) return;
+              if (freshSync) setLastSync(freshSync);
+              setSyncVersion((v) => v + 1);
+            })
+            .catch(() => {})
+            .finally(() => {
+              if (active) setSyncing(false);
+            });
         }
       })
       .catch((err) => {
@@ -178,12 +212,27 @@ export function App() {
               </button>
             )}
 
-            {lastSync && !installPrompt && (
-              <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-slate-400">
-                <Activity className="w-3 h-3 text-emerald-400" />
-                Sync {new Date(lastSync.ran_at).toLocaleDateString('es-PE')}
+            <button
+              onClick={handleManualSync}
+              disabled={syncing}
+              title={
+                lastSync
+                  ? `Última sincronización: ${new Date(lastSync.ran_at).toLocaleString('es-PE')}. Clic para actualizar marcadores.`
+                  : 'Sincronizar marcadores ahora'
+              }
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-slate-900/90 text-slate-300 border border-slate-800 hover:border-slate-700 hover:text-white disabled:opacity-60 transition-colors"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 text-emerald-400 ${syncing ? 'animate-spin' : ''}`}
+              />
+              <span className="hidden sm:inline">
+                {syncing
+                  ? 'Sincronizando...'
+                  : lastSync
+                    ? `Sync ${new Date(lastSync.ran_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`
+                    : 'Sincronizar'}
               </span>
-            )}
+            </button>
           </div>
         </div>
       </header>
@@ -216,28 +265,36 @@ export function App() {
           <>
             {tab === 'games' && (
               <GamesView
+                key={`games_${activeLeague.id}_${syncVersion}`}
                 leagueId={activeLeague.id}
                 onSelectGame={(game) => setSelectedGame(game)}
               />
             )}
             {tab === 'leaders' && (
               <LeadersView
+                key={`leaders_${activeLeague.id}_${syncVersion}`}
                 leagueId={activeLeague.id}
                 seasonId={season.id}
                 onSelectPlayer={(pid) => setSelectedPlayerId(pid)}
               />
             )}
             {tab === 'compare' && (
-              <CompareView leagueId={activeLeague.id} seasonId={season.id} />
+              <CompareView
+                key={`compare_${activeLeague.id}_${syncVersion}`}
+                leagueId={activeLeague.id}
+                seasonId={season.id}
+              />
             )}
             {tab === 'standings' && (
               <StandingsView
+                key={`standings_${season.id}_${syncVersion}`}
                 seasonId={season.id}
                 onSelectTeam={(team, standing) => setSelectedTeam({ team, standing })}
               />
             )}
             {tab === 'explore' && (
               <ExploreView
+                key={`explore_${activeLeague.id}_${syncVersion}`}
                 league={activeLeague}
                 onSelectPlayer={(pid) => setSelectedPlayerId(pid)}
                 onSelectTeam={(team) => setSelectedTeam({ team })}

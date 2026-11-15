@@ -9,12 +9,27 @@ if (!supabaseUrl || !supabaseKey) {
   );
 }
 
-export const supabase = createClient(
-  supabaseUrl ?? 'https://placeholder.supabase.co',
-  supabaseKey ?? 'placeholder',
-);
+export const supabaseUrlResolved =
+  supabaseUrl ?? 'https://dowxayyvtghtjkctasfn.supabase.co';
+export const supabaseKeyResolved =
+  supabaseKey ?? 'sb_publishable_ofEQ4jJ_O8ziwbOemySWiA_stfFYEhE';
+
+export const supabase = createClient(supabaseUrlResolved, supabaseKeyResolved);
 
 const CACHE_PREFIX = 'cv_cache_v1_';
+
+export function clearOfflineCache(): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(CACHE_PREFIX)) keys.push(k);
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 /**
  * Network-first fetch with localStorage fallback so the PWA keeps working

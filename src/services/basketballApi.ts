@@ -1,4 +1,4 @@
-import { supabase, withOfflineCache } from '../lib/supabase';
+import { clearOfflineCache, supabase, supabaseUrlResolved, withOfflineCache } from '../lib/supabase';
 import type {
   Game,
   League,
@@ -50,6 +50,29 @@ export async function fetchLastSync(): Promise<SyncRun | null> {
   } catch {
     return null;
   }
+}
+
+export async function triggerCloudSync(
+  daysBack = 2,
+  daysAhead = 3,
+): Promise<{ ok: boolean; games_synced?: number; stats_synced?: number }> {
+  const resp = await fetch(`${supabaseUrlResolved.replace(/\/$/, '')}/functions/v1/sync-nba`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ days_back: daysBack, days_ahead: daysAhead }),
+  });
+  if (!resp.ok) {
+    throw new Error(`Sync HTTP ${resp.status}`);
+  }
+  const json = (await resp.json()) as {
+    ok: boolean;
+    games_synced?: number;
+    stats_synced?: number;
+  };
+  if (json.ok) {
+    clearOfflineCache();
+  }
+  return json;
 }
 
 export async function fetchAvailableGameDates(leagueId: number): Promise<string[]> {
