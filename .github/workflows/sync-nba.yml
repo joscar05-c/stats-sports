@@ -1,6 +1,11 @@
 name: Sync NBA Stats
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-nba.yml'
+      - 'scripts/sync_nba.py'
   schedule:
     # Runs every 6 hours to keep scores fresh and prevent Supabase free-tier 7-day pause
     - cron: '15 */6 * * *'
@@ -14,6 +19,7 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    environment: VARIABLES DE ENTORNO
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
