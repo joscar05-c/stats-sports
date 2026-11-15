@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CalendarDays, ChevronRight, Radio } from 'lucide-react';
-import { fetchAvailableGameDates, fetchGamesByDate } from '../services/basketballApi';
+import { fetchAvailableGameDates, fetchGamesByDate, triggerCloudSync } from '../services/basketballApi';
+import { supabase } from '../lib/supabase';
 import {
   evaluateGameBettingResult,
   formatDecimalOdds,
@@ -77,10 +78,65 @@ export function GamesView({ leagueId, onSelectGame }: GamesViewProps) {
       .finally(() => {
         if (active) setLoading(false);
       });
+
+    // Subscribe to Realtime changes on games for instant UI updates when pg_cron updates scores
+    const channel = supabase
+      .channel(`games_date_${leagueId}_${selectedDate}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'games',
+          filter: `game_date=eq.${selectedDate}`,
+        },
+        () => {
+          fetchGamesByDate(leagueId, selectedDate)
+            .then((res) => {
+              if (active) setGames(res.data);
+            })
+            .catch(() => {});
+        },
+      )
+      .subscribe();
+
     return () => {
       active = false;
+      supabase.removeChannel(channel);
     };
   }, [leagueId, selectedDate]);
+
+  // Silent auto-refresh every 30s when viewing live or starting games
+  const hasLiveOrStarting = games.some(
+    (g) =>
+      g.status === 'live' ||
+      (g.status === 'scheduled' && new Date(g.tipoff_at).getTime() <= Date.now() + 5 * 60 * 1000),
+  );
+
+  useEffect(() => {
+    if (!selectedDate || !hasLiveOrStarting) return;
+    let active = true;
+    let tick = 0;
+
+    const timer = window.setInterval(async () => {
+      tick += 1;
+      try {
+        // Every 60s (every 2nd tick) also nudge the Edge Function for fresh ESPN scores
+        if (tick % 2 === 0) {
+          await triggerCloudSync(0, 0).catch(() => {});
+        }
+        const res = await fetchGamesByDate(leagueId, selectedDate);
+        if (active) setGames(res.data);
+      } catch {
+        // Ignore transient network errors during live polling
+      }
+    }, 30000);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [leagueId, selectedDate, hasLiveOrStarting]);
 
   return (
     <div className="space-y-4">

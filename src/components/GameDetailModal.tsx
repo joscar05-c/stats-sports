@@ -67,7 +67,24 @@ export function GameDetailModal({ game, onClose, onSelectPlayer }: GameDetailMod
     return () => {
       active = false;
     };
-  }, [game]);
+  }, [game.id, game.status]);
+
+  // Auto-refresh boxscore every 30 seconds while game is live
+  useEffect(() => {
+    if (game.status !== 'live') return;
+    let active = true;
+    const interval = setInterval(() => {
+      fetchGameBoxScore(game.id)
+        .then((rows) => {
+          if (active) setStats(rows);
+        })
+        .catch(() => {});
+    }, 30_000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [game.id, game.status]);
 
   const teamStats = stats.filter((s) => s.team_id === activeTeamId);
   const periods = Math.max(
