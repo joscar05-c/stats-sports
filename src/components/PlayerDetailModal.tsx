@@ -1,8 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, Download, Award, TrendingUp, Minus, Plus, RotateCcw } from 'lucide-react';
+import {
+  X,
+  Download,
+  Award,
+  TrendingUp,
+  Minus,
+  Plus,
+  RotateCcw,
+  Target,
+  ArrowUpDown,
+} from 'lucide-react';
 import { fetchPlayerProfileAndLogs } from '../services/basketballApi';
 import { downloadPlayerStatCard } from '../utils/shareCard';
 import {
+  buildSinglePlayerPropsRecommendations,
   PLAYER_CHART_METRICS,
   suggestPropLine,
   type PlayerChartMetric,
@@ -26,6 +37,12 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
   const [chartMetric, setChartMetric] = useState<PlayerChartMetric>('pts');
   const [propLine, setPropLine] = useState<number>(15.5);
   const [selectedBarIdx, setSelectedBarIdx] = useState<number | null>(null);
+  const [propsOrder, setPropsOrder] = useState<'asc' | 'desc'>('asc');
+
+  const playerProps = useMemo(() => {
+    const recs = buildSinglePlayerPropsRecommendations(average, logs);
+    return propsOrder === 'asc' ? recs : [...recs].reverse();
+  }, [average, logs, propsOrder]);
 
   useEffect(() => {
     let active = true;
@@ -256,6 +273,78 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
               ) : (
                 <div className="rounded-xl bg-slate-900/60 border border-slate-800 p-4 text-center text-xs text-slate-400">
                   Este jugador aún no registra partidos finalizados en la temporada actual.
+                </div>
+              )}
+
+              {/* Suggested Props for this Player (Lowest to Highest Confidence by default) */}
+              {playerProps.length > 0 && (
+                <div className="rounded-xl bg-slate-900/75 border border-slate-800 p-3.5 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-orange-400">
+                        <Target className="w-3.5 h-3.5" />
+                        Props Sugeridos del Jugador
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Toca un mercado para graficarlo abajo · Ordenado por confianza.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPropsOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
+                      className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 hover:border-orange-500 transition-colors"
+                    >
+                      <ArrowUpDown className="w-3 h-3 text-orange-400" />
+                      {propsOrder === 'asc' ? 'Menor → Mayor' : 'Mayor → Menor'}
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {playerProps.map((prop) => {
+                      const isSelected = chartMetric === prop.metricKey;
+                      const badgeCls =
+                        prop.pick === 'OVER'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-sky-500/20 text-sky-300 border-sky-500/40';
+                      return (
+                        <button
+                          key={prop.id}
+                          type="button"
+                          onClick={() => {
+                            if (prop.metricKey) {
+                              setChartMetric(prop.metricKey);
+                              setPropLine(prop.lineValue);
+                            }
+                          }}
+                          className={`w-full text-left rounded-xl p-2.5 border transition-colors ${
+                            isSelected
+                              ? 'bg-slate-800/70 border-orange-500/60'
+                              : 'bg-slate-950/75 border-slate-800/80 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs font-bold text-white">{prop.marketLabel}</span>
+                            <div className="flex items-center gap-2 tabular-nums">
+                              <span
+                                className={`text-[11px] font-black px-2 py-0.5 rounded-md border ${badgeCls}`}
+                              >
+                                {prop.pickLabel}
+                              </span>
+                              <span className="text-xs font-black text-orange-400">
+                                {prop.confidence}%
+                              </span>
+                            </div>
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 tabular-nums">
+                            <span>{prop.statSummary}</span>
+                            <span className="text-amber-300 font-semibold">
+                              {prop.marketLineText} · {prop.confidenceTier}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 

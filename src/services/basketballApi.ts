@@ -338,10 +338,11 @@ export interface GameBettingContext {
   homeRecentGames: Game[];
   awayRecentGames: Game[];
   keyPlayers: PlayerSeasonAverage[];
+  playerRecentLogs: PlayerGameStat[];
 }
 
 export async function fetchGameBettingContext(game: Game): Promise<GameBettingContext> {
-  const { data } = await withOfflineCache(`bet_ctx_v2_${game.id}`, async () => {
+  const { data } = await withOfflineCache(`bet_ctx_v3_${game.id}`, async () => {
     const teamSelect =
       'id, league_id, external_id, name, short_name, abbreviation, city, conference, division, primary_color, alternate_color, logo_url';
     const [standingsRes, teamAvgsRes, homeGamesRes, awayGamesRes, playersRes] = await Promise.all([
@@ -391,8 +392,34 @@ export async function fetchGameBettingContext(game: Game): Promise<GameBettingCo
         .in('team_id', [game.home_team_id, game.away_team_id])
         .gt('gp', 0)
         .order('ppg', { ascending: false, nullsFirst: false })
-        .limit(8),
+        .limit(10),
     ]);
+
+    const keyPlayers = (playersRes.data ?? []) as PlayerSeasonAverage[];
+    const playerIds = keyPlayers.map((p) => p.player_id);
+
+    let playerRecentLogs: PlayerGameStat[] = [];
+    if (playerIds.length > 0) {
+      const logsRes = await supabase
+        .from('player_game_stats')
+        .select(`
+          *,
+          game:games(id, game_date, status, home_team_id, away_team_id, home_score, away_score)
+        `)
+        .in('player_id', playerIds)
+        .eq('did_not_play', false)
+        .neq('game_id', game.id)
+        .order('id', { ascending: false })
+        .limit(100);
+
+      playerRecentLogs = ((logsRes.data ?? []) as unknown as Array<
+        PlayerGameStat & { game?: { status?: string; game_date?: string } }
+      >).filter(
+        (r) =>
+          (!r.game?.status || r.game.status === 'final') &&
+          (!r.game?.game_date || r.game.game_date <= game.game_date),
+      );
+    }
 
     const standings = (standingsRes.data ?? []) as unknown as TeamStanding[];
     const teamAvgs = (teamAvgsRes.data ?? []) as TeamSeasonAverage[];
@@ -403,7 +430,8 @@ export async function fetchGameBettingContext(game: Game): Promise<GameBettingCo
       awayTeamAvg: teamAvgs.find((t) => t.team_id === game.away_team_id) ?? null,
       homeRecentGames: (homeGamesRes.data ?? []) as unknown as Game[],
       awayRecentGames: (awayGamesRes.data ?? []) as unknown as Game[],
-      keyPlayers: (playersRes.data ?? []) as PlayerSeasonAverage[],
+      keyPlayers,
+      playerRecentLogs,
     };
   });
   return data;

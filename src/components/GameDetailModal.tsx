@@ -1,5 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, MapPin, Calendar, TrendingUp, Scale, Flame, ChevronRight, BarChart3 } from 'lucide-react';
+import {
+  X,
+  MapPin,
+  Calendar,
+  TrendingUp,
+  Scale,
+  Flame,
+  ChevronRight,
+  BarChart3,
+  Target,
+  ArrowUpDown,
+  Shield,
+  User,
+} from 'lucide-react';
 import {
   fetchGameBettingContext,
   fetchGameBoxScore,
@@ -9,12 +22,15 @@ import {
 import { supabase } from '../lib/supabase';
 import {
   americanToImpliedProb,
+  buildGamePropsRecommendations,
   buildMatchupBettingInsight,
   evaluateGameBettingResult,
   formatAmericanOdds,
   formatDecimalOdds,
   formatSpreadCompact,
+  PLAYER_CHART_METRICS,
   summarizeTeamRecent,
+  type PropRecommendation,
 } from '../utils/betting';
 import type { Game, PlayerGameStat } from '../types/database';
 
@@ -122,6 +138,8 @@ export function GameDetailModal({ game: initialGame, onClose, onSelectPlayer }: 
   const [betCtx, setBetCtx] = useState<GameBettingContext | null>(null);
   const [loadingBet, setLoadingBet] = useState(true);
   const [activeTeamId, setActiveTeamId] = useState<number>(initialGame.away_team_id);
+  const [propsScope, setPropsScope] = useState<'all' | 'team' | 'player'>('all');
+  const [propsOrder, setPropsOrder] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     setGame(initialGame);
@@ -246,8 +264,67 @@ export function GameDetailModal({ game: initialGame, onClose, onSelectPlayer }: 
       homeRecent,
       awayRecent,
     );
-    return { homeRecent, awayRecent, insight };
+    const propsRecs = buildGamePropsRecommendations({
+      game,
+      homeStanding: betCtx.homeStanding,
+      awayStanding: betCtx.awayStanding,
+      homeTeamAvg: betCtx.homeTeamAvg,
+      awayTeamAvg: betCtx.awayTeamAvg,
+      homeRecent,
+      awayRecent,
+      keyPlayers: betCtx.keyPlayers,
+      playerRecentLogs: betCtx.playerRecentLogs ?? [],
+    });
+    return { homeRecent, awayRecent, insight, propsRecs };
   }, [game, betCtx]);
+
+  const filteredProps = useMemo(() => {
+    if (!bettingAnalysis) return [];
+    const list = bettingAnalysis.propsRecs.filter(
+      (p) => propsScope === 'all' || p.scope === propsScope,
+    );
+    return [...list].sort((a, b) =>
+      propsOrder === 'asc' ? a.confidence - b.confidence : b.confidence - a.confidence,
+    );
+  }, [bettingAnalysis, propsScope, propsOrder]);
+
+  const liveStatByPlayerId = useMemo(() => {
+    const map = new Map<number, PlayerGameStat>();
+    stats.forEach((s) => map.set(s.player_id, s));
+    return map;
+  }, [stats]);
+
+  const getLivePropProgress = (prop: PropRecommendation): string | null => {
+    if (game.status === 'scheduled') return null;
+    if (prop.scope === 'player' && prop.playerId && prop.metricKey) {
+      const row = liveStatByPlayerId.get(prop.playerId);
+      if (!row || row.did_not_play) return row?.did_not_play ? 'DNP' : null;
+      const val = PLAYER_CHART_METRICS[prop.metricKey].getStatValue(row);
+      return `Actual: ${val}`;
+    }
+    if (prop.id.startsWith('team_total_')) {
+      return `Actual: ${game.away_score + game.home_score} pts`;
+    }
+    if (prop.id === `team_pts_${game.away_team_id}`) {
+      return `Actual: ${game.away_score} pts`;
+    }
+    if (prop.id === `team_pts_${game.home_team_id}`) {
+      return `Actual: ${game.home_score} pts`;
+    }
+    if (prop.id === `team_3pm_${game.away_team_id}` && stats.length > 0) {
+      return `Actual: ${awayTotals.tpm} 3PM`;
+    }
+    if (prop.id === `team_3pm_${game.home_team_id}` && stats.length > 0) {
+      return `Actual: ${homeTotals.tpm} 3PM`;
+    }
+    if (prop.id === `team_reb_${game.away_team_id}` && stats.length > 0) {
+      return `Actual: ${awayTotals.reb} REB`;
+    }
+    if (prop.id === `team_reb_${game.home_team_id}` && stats.length > 0) {
+      return `Actual: ${homeTotals.reb} REB`;
+    }
+    return null;
+  };
 
   const odds = game.odds;
   const hasBookLines = Boolean(
@@ -767,6 +844,169 @@ export function GameDetailModal({ game: initialGame, onClose, onSelectPlayer }: 
                   </p>
                 </div>
               )
+            )}
+
+            {/* Data-Driven Props Recommendations (Team & Player Markets) */}
+            {bettingAnalysis && bettingAnalysis.propsRecs.length > 0 && (
+              <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-orange-400">
+                      <Target className="w-3.5 h-3.5" />
+                      Opciones de Props Sugeridos ({filteredProps.length})
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Cruce automático: Estadísticas reales → Línea de mercado → Propuesta ordenada por confianza.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setPropsOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-slate-950/90 border border-slate-700 text-slate-200 hover:border-orange-500 transition-colors"
+                  >
+                    <ArrowUpDown className="w-3 h-3 text-orange-400" />
+                    {propsOrder === 'asc' ? 'Menor → Mayor confianza' : 'Mayor → Menor confianza'}
+                  </button>
+                </div>
+
+                {/* Scope Filter */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {(
+                    [
+                      { key: 'all', label: 'Todos los Props', icon: null },
+                      { key: 'team', label: 'Equipos', icon: Shield },
+                      { key: 'player', label: 'Jugadores', icon: User },
+                    ] as const
+                  ).map((f) => {
+                    const Icon = f.icon;
+                    const active = propsScope === f.key;
+                    return (
+                      <button
+                        key={f.key}
+                        type="button"
+                        onClick={() => setPropsScope(f.key)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                          active
+                            ? 'bg-orange-500 text-slate-950 border-orange-400'
+                            : 'bg-slate-950/70 text-slate-300 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        {Icon && <Icon className="w-3 h-3" />}
+                        {f.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Props List */}
+                <div className="space-y-2.5">
+                  {filteredProps.map((prop) => {
+                    const liveProgress = getLivePropProgress(prop);
+                    const pickBadgeClass =
+                      prop.pick === 'OVER'
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : prop.pick === 'UNDER'
+                          ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                          : 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+                    const confColorClass =
+                      prop.confidence >= 80
+                        ? 'text-emerald-400'
+                        : prop.confidence >= 68
+                          ? 'text-orange-400'
+                          : prop.confidence >= 58
+                            ? 'text-amber-300'
+                            : 'text-slate-300';
+                    const barColorClass =
+                      prop.confidence >= 80
+                        ? 'bg-emerald-500'
+                        : prop.confidence >= 68
+                          ? 'bg-orange-500'
+                          : prop.confidence >= 58
+                            ? 'bg-amber-400'
+                            : 'bg-slate-400';
+
+                    return (
+                      <div
+                        key={prop.id}
+                        onClick={
+                          prop.playerId ? () => onSelectPlayer(prop.playerId!) : undefined
+                        }
+                        className={`rounded-xl bg-slate-950/75 border border-slate-800/90 p-3 space-y-2 transition-colors ${
+                          prop.playerId ? 'cursor-pointer hover:border-orange-500/50' : ''
+                        }`}
+                      >
+                        {/* Header row */}
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className={`text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
+                                prop.scope === 'team'
+                                  ? 'bg-indigo-500/20 text-indigo-300'
+                                  : 'bg-purple-500/20 text-purple-300'
+                              }`}
+                            >
+                              {prop.scope === 'team' ? 'Equipo' : 'Jugador'}
+                            </span>
+                            <span className="text-xs font-extrabold text-white truncate">
+                              {prop.subjectName}
+                            </span>
+                            <span className="text-[11px] text-slate-400 truncate">
+                              · {prop.marketLabel}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0 tabular-nums">
+                            {liveProgress && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 border border-slate-700">
+                                {liveProgress}
+                              </span>
+                            )}
+                            <span
+                              className={`text-xs font-black px-2.5 py-0.5 rounded-lg border ${pickBadgeClass}`}
+                            >
+                              {prop.pickLabel}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* 1. Estadísticas vs 2. Mercado */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] bg-slate-900/70 rounded-lg px-2.5 py-2 border border-slate-800/60 tabular-nums">
+                          <div className="text-slate-300">
+                            <span className="text-slate-500 font-semibold">Estadística: </span>
+                            {prop.statSummary}
+                          </div>
+                          <div className="text-slate-200 sm:text-right">
+                            <span className="text-slate-500 font-semibold">Mercado: </span>
+                            <strong className="text-amber-300">{prop.marketLineText}</strong>
+                          </div>
+                        </div>
+
+                        {/* 3. Rationale + Confidence Meter */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-0.5">
+                          <p className="text-[11px] text-slate-400 flex-1 min-w-[200px]">
+                            {prop.rationale}
+                          </p>
+                          <div className="flex items-center gap-2 shrink-0 tabular-nums">
+                            <div className="w-20 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${barColorClass}`}
+                                style={{ width: `${prop.confidence}%` }}
+                              />
+                            </div>
+                            <span className={`text-xs font-black ${confColorClass}`}>
+                              {prop.confidence}%
+                            </span>
+                            <span className="text-[10px] font-semibold text-slate-400">
+                              ({prop.confidenceTier})
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
 
             {/* Key Players for Props Drill-Down */}
