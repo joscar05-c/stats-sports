@@ -35,12 +35,12 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="inline-flex items-center gap-2 text-xs font-bold text-slate-300 uppercase tracking-wider">
-          <Trophy className="w-4 h-4 text-orange-400" />
+        <div className="inline-flex items-center gap-2 text-xs font-bold text-slate-200 uppercase tracking-wider">
+          <Trophy className="w-4 h-4 text-emerald-400" />
           Tabla de Posiciones
         </div>
 
-        <div className="inline-flex rounded-xl bg-slate-900 border border-slate-800 p-1">
+        <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1">
           {(
             [
               { key: 'East', label: 'Este' },
@@ -50,9 +50,9 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
             <button
               key={c.key}
               onClick={() => setConference(c.key)}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 conference === c.key
-                  ? 'bg-orange-500 text-slate-950'
+                  ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 shadow-[0_4px_14px_rgba(16,185,129,0.28)]'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -63,18 +63,18 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
       </div>
 
       {loading ? (
-        <div className="h-80 rounded-2xl bg-slate-900/60 border border-slate-800 animate-pulse" />
+        <div className="h-80 rounded-2xl sb-card animate-pulse" />
       ) : rows.length === 0 ? (
-        <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-8 text-center text-sm text-slate-400">
+        <div className="sb-card rounded-2xl p-8 text-center text-sm text-slate-400">
           Sin tabla de posiciones disponible para esta liga/temporada.
         </div>
       ) : (
-        <div className="rounded-2xl bg-slate-900/75 border border-slate-800 overflow-hidden">
+        <div className="sb-card rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs tabular-nums whitespace-nowrap">
-              <thead className="bg-slate-900 text-slate-400 border-b border-slate-800">
+              <thead className="bg-black/40 text-slate-400 border-b border-white/[0.08]">
                 <tr>
-                  <th className="text-left py-2.5 px-3 sticky left-0 bg-slate-900"># EQUIPO</th>
+                  <th className="text-left py-2.5 px-3 sticky left-0 bg-[#080d1a]"># EQUIPO</th>
                   <th className="text-right py-2.5 px-2.5">G</th>
                   <th className="text-right py-2.5 px-2.5">P</th>
                   <th className="text-right py-2.5 px-2.5">PCT</th>

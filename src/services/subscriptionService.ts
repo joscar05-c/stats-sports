@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 
-export type PaymentProvider = 'lemonsqueezy' | 'stripe' | 'mercadopago' | 'yape_plin' | 'demo';
+export type PaymentProvider = 'lemonsqueezy' | 'stripe' | 'mercadopago' | 'yape_plin';
 
 export interface ProSubscriptionState {
   email: string;
@@ -9,14 +9,24 @@ export interface ProSubscriptionState {
   amountUsd: number;
   activatedAt: string;
   expiresAt: string;
-  testMode?: boolean;
   syncedToCloud: boolean;
 }
 
 const STORAGE_KEY = 'cv_pro_subscription_v1';
 const PENDING_EMAIL_KEY = 'cv_pro_pending_email_v1';
+const YAPE_REQUESTS_KEY = 'cv_yape_requests_v1';
 
 export const PRO_MONTHLY_PRICE_USD = 5.0;
+export const PRO_MONTHLY_PRICE_PEN = 19.0;
+
+export const YAPE_PLIN_CONFIG = {
+  number:
+    (import.meta.env.VITE_YAPE_PLIN_NUMBER as string | undefined)?.trim() || '927885314',
+  holder:
+    (import.meta.env.VITE_YAPE_PLIN_HOLDER as string | undefined)?.trim() || 'CourtVision Perú',
+  whatsapp:
+    (import.meta.env.VITE_YAPE_PLIN_WHATSAPP as string | undefined)?.trim() || '51927885314',
+};
 
 const DEFAULT_LEMONSQUEEZY_URL =
   'https://appsubscription.lemonsqueezy.com/checkout/buy/c8c5ec5d-1da0-483a-a37b-1ba5028fa4df';
@@ -113,7 +123,6 @@ function rowToState(row: CheckProRow): ProSubscriptionState {
     amountUsd: Number(row.amount_usd ?? PRO_MONTHLY_PRICE_USD),
     activatedAt: row.starts_at,
     expiresAt: row.expires_at,
-    testMode: Boolean(row.test_mode),
     syncedToCloud: true,
   };
 }
@@ -130,8 +139,10 @@ export async function verifyProSubscriptionByEmailOrCode(
     });
     if (error) return null;
 
-    const row = Array.isArray(data) ? (data[0] as CheckProRow | undefined) : (data as CheckProRow | null);
-    if (!row || !row.access_code) return null;
+    const row = Array.isArray(data)
+      ? (data[0] as CheckProRow | undefined)
+      : (data as CheckProRow | null);
+    if (!row || !row.access_code || row.test_mode) return null;
 
     const synced = rowToState(row);
     saveStoredSubscription(synced);
@@ -152,13 +163,13 @@ export async function syncCurrentSubscriptionFromCloud(): Promise<ProSubscriptio
       const row = Array.isArray(data)
         ? (data[0] as CheckProRow | undefined)
         : (data as CheckProRow | null);
-      if (!row || !row.access_code) {
-        clearProSubscription();
-        return null;
+      if (row && row.access_code && !row.test_mode) {
+        const fresh = rowToState(row);
+        saveStoredSubscription(fresh);
+        return fresh;
       }
-      const fresh = rowToState(row);
-      saveStoredSubscription(fresh);
-      return fresh;
+      clearProSubscription();
+      return null;
     } catch {
       return local;
     }
@@ -169,4 +180,114 @@ export async function syncCurrentSubscriptionFromCloud(): Promise<ProSubscriptio
     return verifyProSubscriptionByEmailOrCode(pendingEmail);
   }
   return null;
+}
+
+export interface YapePlinRequestResult {
+  status: 'pending' | 'approved' | 'rejected';
+  accessCode: string | null;
+  message: string;
+  whatsappUrl: string;
+  subscription?: ProSubscriptionState | null;
+}
+
+export function buildYapePlinWhatsappUrl(
+  email: string,
+  operationCode: string,
+  senderName?: string,
+): string {
+  const digits = YAPE_PLIN_CONFIG.whatsapp.replace(/\D/g, '') || '51927885314';
+  const text = [
+    'Hola! Acabo de realizar el pago de S/ 19.00 por Yape/Plin para CourtVision PRO (30 días).',
+    `Correo: ${email.trim().toLowerCase()}`,
+    `N° Operación: ${operationCode.trim().toUpperCase()}`,
+    senderName?.trim() ? `Titular: ${senderName.trim()}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+}
+
+export async function submitYapePlinActivationRequest(
+  email: string,
+  operationCode: string,
+  senderName = '',
+): Promise<YapePlinRequestResult> {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanOp = operationCode.trim().toUpperCase();
+  const cleanSender = senderName.trim();
+  const whatsappUrl = buildYapePlinWhatsappUrl(cleanEmail, cleanOp, cleanSender);
+
+  if (cleanOp.startsWith('CVPRO-')) {
+    const found = await verifyProSubscriptionByEmailOrCode(cleanOp);
+    if (found) {
+      return {
+        status: 'approved',
+        accessCode: found.accessCode,
+        message: 'Código CVPRO validado correctamente. Modo PRO desbloqueado por 30 días.',
+        whatsappUrl,
+        subscription: found,
+      };
+    }
+  }
+
+  try {
+    const { data, error } = await supabase.rpc('submit_yape_plin_request', {
+      p_email: cleanEmail,
+      p_operation_code: cleanOp,
+      p_sender_name: cleanSender,
+    });
+
+    if (!error && data) {
+      const row = (Array.isArray(data) ? data[0] : data) as {
+        status?: 'pending' | 'approved' | 'rejected';
+        access_code?: string | null;
+        message?: string;
+      };
+      const status = row?.status ?? 'pending';
+      const accessCode = row?.access_code ?? null;
+      let subscription: ProSubscriptionState | null = null;
+      if (status === 'approved' && accessCode) {
+        subscription = await verifyProSubscriptionByEmailOrCode(accessCode);
+      } else if (cleanEmail) {
+        setPendingCheckoutEmail(cleanEmail);
+      }
+      return {
+        status,
+        accessCode,
+        message:
+          row?.message ||
+          'Solicitud registrada (S/ 19.00). Envía tu captura por WhatsApp para recibir tu código CVPRO.',
+        whatsappUrl,
+        subscription,
+      };
+    }
+  } catch {
+    // Fall through to resilient local record below
+  }
+
+  try {
+    const raw = localStorage.getItem(YAPE_REQUESTS_KEY);
+    const list = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    list.unshift({
+      email: cleanEmail,
+      operationCode: cleanOp,
+      senderName: cleanSender,
+      amountPen: PRO_MONTHLY_PRICE_PEN,
+      createdAt: new Date().toISOString(),
+    });
+    localStorage.setItem(YAPE_REQUESTS_KEY, JSON.stringify(list.slice(0, 15)));
+  } catch {
+    // Ignore storage errors
+  }
+
+  if (cleanEmail) setPendingCheckoutEmail(cleanEmail);
+
+  return {
+    status: 'pending',
+    accessCode: null,
+    message:
+      'Operación guardada (S/ 19.00). Envía el comprobante por WhatsApp o ingresa tu código CVPRO cuando lo recibas.',
+    whatsappUrl,
+    subscription: null,
+  };
 }

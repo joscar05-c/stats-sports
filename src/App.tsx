@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
+  Activity,
   ArrowLeftRight,
   Calendar,
   Download,
   Flame,
   Lock,
+  PanelLeft,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -54,6 +56,7 @@ export function App() {
   const [fromCache, setFromCache] = useState(false);
   const [loadingInit, setLoadingInit] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [sidebarToggleTick, setSidebarToggleTick] = useState(0);
 
   // Drill-down Modals & Active Main Prop View
   const [activePropView, setActivePropView] = useState<SelectedPropPayload | null>(null);
@@ -64,7 +67,7 @@ export function App() {
     standing?: TeamStanding;
   } | null>(null);
 
-  // Subscription PRO ($5/month)
+  // Subscription PRO ($5 USD / S/ 19 PEN)
   const [proSub, setProSub] = useState<ProSubscriptionState | null>(() => getStoredSubscription());
   const [showProModal, setShowProModal] = useState(false);
 
@@ -222,24 +225,33 @@ export function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#090d16] text-slate-100 pb-24 md:pb-10">
-      {/* Top Header */}
-      <header className="sticky top-0 z-30 backdrop-blur-md bg-[#090d16]/85 border-b border-slate-800/80">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <img src="/icon.svg" alt="CourtVision" className="w-8 h-8 rounded-lg" />
-            <div>
-              <div className="font-black text-base tracking-tight leading-none">
-                Court<span className="text-orange-400">Vision</span>
+    <div className="min-h-screen text-slate-100 pb-24 md:pb-10">
+      {/* Sportsbook Command Header */}
+      <header className="sticky top-0 z-30 sb-glass-header">
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 h-14 flex items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="relative shrink-0">
+              <img src="/icon.svg" alt="CourtVision" className="w-8 h-8 rounded-lg ring-1 ring-emerald-400/30" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#060a14]" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="font-black text-base tracking-tight leading-none text-white">
+                  Court<span className="text-emerald-400">Vision</span>
+                </span>
+                <span className="hidden lg:inline-flex items-center gap-1 text-[9px] font-black tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  <Activity className="w-2.5 h-2.5" />
+                  LIVE ODDS &amp; PROPS
+                </span>
               </div>
-              <div className="text-[10px] text-slate-400 font-medium mt-0.5">
-                {season ? `${activeLeague?.short_name ?? 'NBA'} ${season.name}` : 'Stats Híbrido'}
+              <div className="text-[10px] text-slate-400 font-medium mt-0.5 truncate">
+                {season ? `${activeLeague?.short_name ?? 'NBA'} ${season.name}` : 'Analytics Pro'}
               </div>
             </div>
           </div>
 
-          {/* Desktop Nav */}
-          <nav className="hidden md:flex items-center gap-1">
+          {/* Desktop Glass Pill Nav */}
+          <nav className="hidden md:flex items-center gap-1 rounded-2xl bg-white/[0.04] border border-white/[0.08] p-1">
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = !activePropView && tab === item.key;
@@ -250,10 +262,10 @@ export function App() {
                     setActivePropView(null);
                     setTab(item.key);
                   }}
-                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                     active
-                      ? 'bg-orange-500 text-slate-950'
-                      : 'text-slate-300 hover:bg-slate-800/70'
+                      ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 shadow-[0_4px_14px_rgba(16,185,129,0.3)]'
+                      : 'text-slate-300 hover:text-white hover:bg-white/[0.06]'
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
@@ -263,8 +275,20 @@ export function App() {
             })}
           </nav>
 
-          {/* Right controls */}
-          <div className="flex items-center gap-2">
+          {/* Right Controls */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {activeLeague && (
+              <button
+                type="button"
+                onClick={() => setSidebarToggleTick((t) => t + 1)}
+                className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-emerald-500/12 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors"
+                title="Abrir / fijar barra lateral de Props"
+              >
+                <PanelLeft className="w-3.5 h-3.5" />
+                <span>Props</span>
+              </button>
+            )}
+
             {leagues.length > 1 && (
               <select
                 value={activeLeague?.id ?? ''}
@@ -272,7 +296,7 @@ export function App() {
                   const found = leagues.find((l) => l.id === Number(e.target.value));
                   if (found) handleSelectLeague(found);
                 }}
-                className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs font-bold text-slate-200"
+                className="bg-slate-900/90 border border-white/[0.1] rounded-xl px-2 py-1 text-xs font-bold text-slate-200"
               >
                 {leagues.map((l) => (
                   <option key={l.id} value={l.id}>
@@ -285,22 +309,26 @@ export function App() {
             {installPrompt && (
               <button
                 onClick={handleInstallPwa}
-                className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-orange-500/15 text-orange-300 border border-orange-500/30 hover:bg-orange-500/25"
+                className="hidden sm:inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/25"
               >
                 <Download className="w-3.5 h-3.5" />
-                Instalar App
+                Instalar
               </button>
             )}
 
             <button
               type="button"
               onClick={() => setShowProModal(true)}
-              className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition-colors ${
+              className={`inline-flex items-center gap-1.5 text-[11px] font-black px-2.5 py-1.5 rounded-xl border transition-all ${
                 proSub
-                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25'
-                  : 'bg-slate-900 text-slate-200 border-slate-700 hover:border-slate-500'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50 shadow-[0_0_14px_rgba(16,185,129,0.2)]'
+                  : 'sb-pro-pill hover:brightness-110'
               }`}
-              title={proSub ? `PRO activo (${proSub.accessCode})` : 'Desbloquear Props 68%+ por $5 USD/mes'}
+              title={
+                proSub
+                  ? `PRO activo (${proSub.accessCode})`
+                  : 'Desbloquear Props 68%+ por $5 USD o S/ 19 PEN'
+              }
             >
               {proSub ? (
                 <>
@@ -309,8 +337,10 @@ export function App() {
                 </>
               ) : (
                 <>
-                  <Lock className="w-3.5 h-3.5 text-slate-400" />
-                  <span>PRO $5/mes</span>
+                  <Lock className="w-3.5 h-3.5 text-amber-300" />
+                  <span>
+                    PRO <span className="hidden sm:inline">$5 · S/ 19</span>
+                  </span>
                 </>
               )}
             </button>
@@ -320,20 +350,20 @@ export function App() {
               disabled={syncing}
               title={
                 lastSync
-                  ? `Última sincronización: ${new Date(lastSync.ran_at).toLocaleString('es-PE')}. Clic para actualizar marcadores.`
+                  ? `Última sincronización: ${new Date(lastSync.ran_at).toLocaleString('es-PE')}. Clic para actualizar.`
                   : 'Sincronizar marcadores ahora'
               }
-              className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-slate-900/90 text-slate-300 border border-slate-800 hover:border-slate-700 hover:text-white disabled:opacity-60 transition-colors"
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-xl bg-white/[0.04] text-slate-300 border border-white/[0.08] hover:border-white/20 hover:text-white disabled:opacity-60 transition-colors"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 text-emerald-400 ${syncing ? 'animate-spin' : ''}`}
               />
-              <span className="hidden sm:inline">
+              <span className="hidden lg:inline tabular-nums">
                 {syncing
                   ? 'Sincronizando...'
                   : lastSync
-                    ? `Sync ${new Date(lastSync.ran_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`
-                    : 'Sincronizar'}
+                    ? `${new Date(lastSync.ran_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`
+                    : 'Sync'}
               </span>
             </button>
           </div>
@@ -345,6 +375,7 @@ export function App() {
         <PropsSidebar
           leagueId={activeLeague.id}
           syncVersion={syncVersion}
+          toggleSignal={sidebarToggleTick}
           isPro={Boolean(proSub)}
           activePropId={activePropView?.prop.id ?? null}
           onSelectProp={(selection) => setActivePropView(selection)}
@@ -353,97 +384,97 @@ export function App() {
       )}
 
       {/* Main Content */}
-      <div className={activeLeague ? 'md:pl-[66px]' : ''}>
-      <main className="max-w-5xl mx-auto px-4 pt-4">
-        {fromCache && (
-          <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300">
-            <WifiOff className="w-3.5 h-3.5 shrink-0" />
-            Mostrando datos guardados en caché local (modo sin conexión).
-          </div>
-        )}
+      <div className={activeLeague ? 'md:pl-[68px]' : ''}>
+        <main className="max-w-5xl mx-auto px-3 sm:px-4 pt-4">
+          {fromCache && (
+            <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300">
+              <WifiOff className="w-3.5 h-3.5 shrink-0" />
+              Mostrando datos guardados en caché local (modo sin conexión).
+            </div>
+          )}
 
-        {loadingInit ? (
-          <div className="space-y-3 pt-4">
-            <div className="h-12 rounded-xl bg-slate-900/60 animate-pulse" />
-            <div className="h-44 rounded-2xl bg-slate-900/60 animate-pulse" />
-            <div className="h-44 rounded-2xl bg-slate-900/60 animate-pulse" />
-          </div>
-        ) : errorMsg ? (
-          <div className="rounded-2xl bg-rose-500/10 border border-rose-500/30 p-5 text-sm text-rose-200">
-            <div className="font-bold mb-1">No se pudo cargar Supabase</div>
-            <div className="text-xs text-rose-300/90">{errorMsg}</div>
-          </div>
-        ) : !activeLeague || !season ? (
-          <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-8 text-center text-sm text-slate-400">
-            Aún no hay ligas cargadas en Supabase. Ejecuta el sincronizador para poblar la NBA.
-          </div>
-        ) : activePropView ? (
-          <PropAnalysisView
-            game={activePropView.game}
-            prop={activePropView.prop}
-            context={activePropView.context}
-            isPro={Boolean(proSub)}
-            onBack={() => setActivePropView(null)}
-            onSelectProp={(nextProp) =>
-              setActivePropView((prev) => (prev ? { ...prev, prop: nextProp } : null))
-            }
-            onOpenGameModal={(game) => setSelectedGame(game)}
-            onOpenPlayerModal={(pid) => setSelectedPlayerId(pid)}
-            onOpenProModal={() => setShowProModal(true)}
-          />
-        ) : (
-          <>
-            {tab === 'games' && (
-              <GamesView
-                key={`games_${activeLeague.id}_${syncVersion}`}
-                leagueId={activeLeague.id}
-                onSelectGame={(game) => setSelectedGame(game)}
-                onGamesUpdated={(updatedGames) => {
-                  setSelectedGame((prev) => {
-                    if (!prev) return null;
-                    return updatedGames.find((g) => g.id === prev.id) ?? prev;
-                  });
-                }}
-              />
-            )}
-            {tab === 'leaders' && (
-              <LeadersView
-                key={`leaders_${activeLeague.id}_${syncVersion}`}
-                leagueId={activeLeague.id}
-                seasonId={season.id}
-                onSelectPlayer={(pid) => setSelectedPlayerId(pid)}
-                onSelectTeam={(team) => setSelectedTeam({ team })}
-              />
-            )}
-            {tab === 'compare' && (
-              <CompareView
-                key={`compare_${activeLeague.id}_${syncVersion}`}
-                leagueId={activeLeague.id}
-                seasonId={season.id}
-              />
-            )}
-            {tab === 'standings' && (
-              <StandingsView
-                key={`standings_${season.id}_${syncVersion}`}
-                seasonId={season.id}
-                onSelectTeam={(team, standing) => setSelectedTeam({ team, standing })}
-              />
-            )}
-            {tab === 'explore' && (
-              <ExploreView
-                key={`explore_${activeLeague.id}_${syncVersion}`}
-                league={activeLeague}
-                onSelectPlayer={(pid) => setSelectedPlayerId(pid)}
-                onSelectTeam={(team) => setSelectedTeam({ team })}
-              />
-            )}
-          </>
-        )}
-      </main>
+          {loadingInit ? (
+            <div className="space-y-3 pt-4">
+              <div className="h-12 rounded-xl bg-white/[0.04] animate-pulse" />
+              <div className="h-44 rounded-2xl bg-white/[0.04] animate-pulse" />
+              <div className="h-44 rounded-2xl bg-white/[0.04] animate-pulse" />
+            </div>
+          ) : errorMsg ? (
+            <div className="rounded-2xl bg-rose-500/10 border border-rose-500/30 p-5 text-sm text-rose-200">
+              <div className="font-bold mb-1">No se pudo cargar Supabase</div>
+              <div className="text-xs text-rose-300/90">{errorMsg}</div>
+            </div>
+          ) : !activeLeague || !season ? (
+            <div className="sb-card rounded-2xl p-8 text-center text-sm text-slate-400">
+              Aún no hay ligas cargadas en Supabase. Ejecuta el sincronizador para poblar la NBA.
+            </div>
+          ) : activePropView ? (
+            <PropAnalysisView
+              game={activePropView.game}
+              prop={activePropView.prop}
+              context={activePropView.context}
+              isPro={Boolean(proSub)}
+              onBack={() => setActivePropView(null)}
+              onSelectProp={(nextProp) =>
+                setActivePropView((prev) => (prev ? { ...prev, prop: nextProp } : null))
+              }
+              onOpenGameModal={(game) => setSelectedGame(game)}
+              onOpenPlayerModal={(pid) => setSelectedPlayerId(pid)}
+              onOpenProModal={() => setShowProModal(true)}
+            />
+          ) : (
+            <>
+              {tab === 'games' && (
+                <GamesView
+                  key={`games_${activeLeague.id}_${syncVersion}`}
+                  leagueId={activeLeague.id}
+                  onSelectGame={(game) => setSelectedGame(game)}
+                  onGamesUpdated={(updatedGames) => {
+                    setSelectedGame((prev) => {
+                      if (!prev) return null;
+                      return updatedGames.find((g) => g.id === prev.id) ?? prev;
+                    });
+                  }}
+                />
+              )}
+              {tab === 'leaders' && (
+                <LeadersView
+                  key={`leaders_${activeLeague.id}_${syncVersion}`}
+                  leagueId={activeLeague.id}
+                  seasonId={season.id}
+                  onSelectPlayer={(pid) => setSelectedPlayerId(pid)}
+                  onSelectTeam={(team) => setSelectedTeam({ team })}
+                />
+              )}
+              {tab === 'compare' && (
+                <CompareView
+                  key={`compare_${activeLeague.id}_${syncVersion}`}
+                  leagueId={activeLeague.id}
+                  seasonId={season.id}
+                />
+              )}
+              {tab === 'standings' && (
+                <StandingsView
+                  key={`standings_${season.id}_${syncVersion}`}
+                  seasonId={season.id}
+                  onSelectTeam={(team, standing) => setSelectedTeam({ team, standing })}
+                />
+              )}
+              {tab === 'explore' && (
+                <ExploreView
+                  key={`explore_${activeLeague.id}_${syncVersion}`}
+                  league={activeLeague}
+                  onSelectPlayer={(pid) => setSelectedPlayerId(pid)}
+                  onSelectTeam={(team) => setSelectedTeam({ team })}
+                />
+              )}
+            </>
+          )}
+        </main>
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-[#0c1220]/95 backdrop-blur-md border-t border-slate-800/90 pb-safe">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 sb-glass-header border-t border-b-0 pb-safe">
         <div className="grid grid-cols-5">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -456,7 +487,7 @@ export function App() {
                   setTab(item.key);
                 }}
                 className={`flex flex-col items-center justify-center py-2.5 gap-1 text-[10px] font-bold transition-colors ${
-                  active ? 'text-orange-400' : 'text-slate-400 hover:text-slate-200'
+                  active ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <Icon className="w-5 h-5" />

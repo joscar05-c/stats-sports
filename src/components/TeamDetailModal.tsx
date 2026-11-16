@@ -83,18 +83,18 @@ export function TeamDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#03050a]/85 backdrop-blur-md"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl max-h-[92vh] flex flex-col bg-[#0f1623] border border-slate-800 rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-2xl"
+        className="w-full max-w-2xl max-h-[92vh] flex flex-col bg-[#080d1a] border border-white/[0.1] rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.85)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div
-          className="p-5 border-b border-slate-800"
+          className="p-5 border-b border-white/[0.08]"
           style={{
-            background: `linear-gradient(135deg, ${accent}38 0%, #0f1623 70%)`,
+            background: `linear-gradient(135deg, ${accent}38 0%, #080d1a 72%)`,
           }}
         >
           <div className="flex items-start justify-between">

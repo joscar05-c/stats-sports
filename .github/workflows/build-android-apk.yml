@@ -35,6 +35,9 @@ jobs:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://dowxayyvtghtjkctasfn.supabase.co' }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_ofEQ4jJ_O8ziwbOemySWiA_stfFYEhE' }}
           VITE_LEMONSQUEEZY_CHECKOUT_URL: ${{ vars.VITE_LEMONSQUEEZY_CHECKOUT_URL || secrets.VITE_LEMONSQUEEZY_CHECKOUT_URL || '' }}
+          VITE_YAPE_PLIN_NUMBER: ${{ vars.VITE_YAPE_PLIN_NUMBER || '927885314' }}
+          VITE_YAPE_PLIN_HOLDER: ${{ vars.VITE_YAPE_PLIN_HOLDER || 'CourtVision Perú' }}
+          VITE_YAPE_PLIN_WHATSAPP: ${{ vars.VITE_YAPE_PLIN_WHATSAPP || '51927885314' }}
         run: |
           npm ci
           npm run build
