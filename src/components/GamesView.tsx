@@ -12,6 +12,7 @@ import type { Game } from '../types/database';
 interface GamesViewProps {
   leagueId: number;
   onSelectGame: (game: Game) => void;
+  onGamesUpdated?: (games: Game[]) => void;
 }
 
 function formatDateLabel(isoDate: string): { top: string; bottom: string } {
@@ -42,7 +43,7 @@ function formatTipoffLocal(iso: string): string {
   }
 }
 
-export function GamesView({ leagueId, onSelectGame }: GamesViewProps) {
+export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewProps) {
   const [dates, setDates] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [games, setGames] = useState<Game[]>([]);
@@ -71,9 +72,25 @@ export function GamesView({ leagueId, onSelectGame }: GamesViewProps) {
     if (!selectedDate) return;
     let active = true;
     setLoading(true);
+
+    const refreshGamesSilently = async () => {
+      try {
+        const res = await fetchGamesByDate(leagueId, selectedDate);
+        if (active) {
+          setGames(res.data);
+          onGamesUpdated?.(res.data);
+        }
+      } catch {
+        // Ignore transient network errors
+      }
+    };
+
     fetchGamesByDate(leagueId, selectedDate)
       .then((res) => {
-        if (active) setGames(res.data);
+        if (active) {
+          setGames(res.data);
+          onGamesUpdated?.(res.data);
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -81,56 +98,63 @@ export function GamesView({ leagueId, onSelectGame }: GamesViewProps) {
 
     // Subscribe to Realtime changes on games for instant UI updates when pg_cron updates scores
     const channel = supabase
-      .channel(`games_date_${leagueId}_${selectedDate}`)
+      .channel(`games_live_${leagueId}_${selectedDate}`)
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'games',
-          filter: `game_date=eq.${selectedDate}`,
         },
         () => {
-          fetchGamesByDate(leagueId, selectedDate)
-            .then((res) => {
-              if (active) setGames(res.data);
-            })
-            .catch(() => {});
+          void refreshGamesSilently();
         },
       )
       .subscribe();
 
+    const onVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshGamesSilently();
+      }
+    };
+    window.addEventListener('focus', onVisibilityOrFocus);
+    document.addEventListener('visibilitychange', onVisibilityOrFocus);
+
     return () => {
       active = false;
+      window.removeEventListener('focus', onVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', onVisibilityOrFocus);
       supabase.removeChannel(channel);
     };
   }, [leagueId, selectedDate]);
 
-  // Silent auto-refresh every 30s when viewing live or starting games
+  // Continuous silent auto-refresh every 15s (plus ESPN Edge Function nudge every 45s when games are live/starting)
   const hasLiveOrStarting = games.some(
     (g) =>
       g.status === 'live' ||
-      (g.status === 'scheduled' && new Date(g.tipoff_at).getTime() <= Date.now() + 5 * 60 * 1000),
+      (g.status === 'scheduled' && new Date(g.tipoff_at).getTime() <= Date.now() + 15 * 60 * 1000),
   );
 
   useEffect(() => {
-    if (!selectedDate || !hasLiveOrStarting) return;
+    if (!selectedDate) return;
     let active = true;
     let tick = 0;
 
     const timer = window.setInterval(async () => {
       tick += 1;
       try {
-        // Every 60s (every 2nd tick) also nudge the Edge Function for fresh ESPN scores
-        if (tick % 2 === 0) {
+        if (hasLiveOrStarting && tick % 3 === 0) {
           await triggerCloudSync(0, 0).catch(() => {});
         }
         const res = await fetchGamesByDate(leagueId, selectedDate);
-        if (active) setGames(res.data);
+        if (active) {
+          setGames(res.data);
+          onGamesUpdated?.(res.data);
+        }
       } catch {
         // Ignore transient network errors during live polling
       }
-    }, 30000);
+    }, 15000);
 
     return () => {
       active = false;

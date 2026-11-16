@@ -15,6 +15,7 @@ import {
   fetchLeagues,
   triggerCloudSync,
 } from './services/basketballApi';
+import { supabase } from './lib/supabase';
 import { GamesView } from './components/GamesView';
 import { LeadersView } from './components/LeadersView';
 import { CompareView } from './components/CompareView';
@@ -120,6 +121,34 @@ export function App() {
 
     return () => {
       active = false;
+    };
+  }, []);
+
+  // Keep lastSync badge updated in real time without page reload
+  useEffect(() => {
+    let active = true;
+    const refreshSyncBadge = () => {
+      fetchLastSync()
+        .then((fresh) => {
+          if (active && fresh) setLastSync(fresh);
+        })
+        .catch(() => {});
+    };
+
+    const interval = window.setInterval(refreshSyncBadge, 30000);
+    const channel = supabase
+      .channel('sync_runs_badge')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sync_runs' },
+        refreshSyncBadge,
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      supabase.removeChannel(channel);
     };
   }, []);
 
@@ -268,6 +297,12 @@ export function App() {
                 key={`games_${activeLeague.id}_${syncVersion}`}
                 leagueId={activeLeague.id}
                 onSelectGame={(game) => setSelectedGame(game)}
+                onGamesUpdated={(updatedGames) => {
+                  setSelectedGame((prev) => {
+                    if (!prev) return null;
+                    return updatedGames.find((g) => g.id === prev.id) ?? prev;
+                  });
+                }}
               />
             )}
             {tab === 'leaders' && (

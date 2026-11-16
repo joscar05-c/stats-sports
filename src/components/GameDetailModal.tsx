@@ -3,8 +3,10 @@ import { X, MapPin, Calendar, TrendingUp, Scale, Flame, ChevronRight } from 'luc
 import {
   fetchGameBettingContext,
   fetchGameBoxScore,
+  fetchGameById,
   type GameBettingContext,
 } from '../services/basketballApi';
+import { supabase } from '../lib/supabase';
 import {
   americanToImpliedProb,
   buildMatchupBettingInsight,
@@ -24,20 +26,25 @@ interface GameDetailModalProps {
 
 type ModalSection = 'betting' | 'boxscore';
 
-export function GameDetailModal({ game, onClose, onSelectPlayer }: GameDetailModalProps) {
+export function GameDetailModal({ game: initialGame, onClose, onSelectPlayer }: GameDetailModalProps) {
+  const [game, setGame] = useState<Game>(initialGame);
   const [section, setSection] = useState<ModalSection>(
-    game.status === 'scheduled' ? 'betting' : 'boxscore',
+    initialGame.status === 'scheduled' ? 'betting' : 'boxscore',
   );
   const [stats, setStats] = useState<PlayerGameStat[]>([]);
-  const [loadingBox, setLoadingBox] = useState(game.status !== 'scheduled');
+  const [loadingBox, setLoadingBox] = useState(initialGame.status !== 'scheduled');
   const [betCtx, setBetCtx] = useState<GameBettingContext | null>(null);
   const [loadingBet, setLoadingBet] = useState(true);
-  const [activeTeamId, setActiveTeamId] = useState<number>(game.away_team_id);
+  const [activeTeamId, setActiveTeamId] = useState<number>(initialGame.away_team_id);
+
+  useEffect(() => {
+    setGame(initialGame);
+  }, [initialGame]);
 
   useEffect(() => {
     setSection(game.status === 'scheduled' ? 'betting' : 'boxscore');
     setActiveTeamId(game.away_team_id);
-  }, [game.id, game.status, game.away_team_id]);
+  }, [game.id, game.away_team_id]);
 
   useEffect(() => {
     let active = true;
@@ -67,24 +74,54 @@ export function GameDetailModal({ game, onClose, onSelectPlayer }: GameDetailMod
     return () => {
       active = false;
     };
-  }, [game.id, game.status]);
+  }, [game.id]);
 
-  // Auto-refresh boxscore every 30 seconds while game is live
+  // Auto-refresh scoreboard & boxscore every 15s + Realtime while modal is open
   useEffect(() => {
-    if (game.status !== 'live') return;
     let active = true;
+
+    const refreshModalLive = async () => {
+      try {
+        const [freshGame, freshBox] = await Promise.all([
+          fetchGameById(game.id),
+          fetchGameBoxScore(game.id),
+        ]);
+        if (!active) return;
+        if (freshGame) setGame(freshGame);
+        setStats(freshBox);
+      } catch {
+        // Ignore transient network errors
+      }
+    };
+
     const interval = setInterval(() => {
-      fetchGameBoxScore(game.id)
-        .then((rows) => {
-          if (active) setStats(rows);
-        })
-        .catch(() => {});
-    }, 30_000);
+      void refreshModalLive();
+    }, 15_000);
+
+    const channel = supabase
+      .channel(`modal_game_${game.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'games' },
+        () => {
+          void refreshModalLive();
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'player_game_stats' },
+        () => {
+          void refreshModalLive();
+        },
+      )
+      .subscribe();
+
     return () => {
       active = false;
       clearInterval(interval);
+      supabase.removeChannel(channel);
     };
-  }, [game.id, game.status]);
+  }, [game.id]);
 
   const teamStats = stats.filter((s) => s.team_id === activeTeamId);
   const periods = Math.max(

@@ -111,6 +111,22 @@ export async function fetchGamesByDate(
   });
 }
 
+export async function fetchGameById(gameId: number): Promise<Game | null> {
+  const { data, error } = await supabase
+    .from('games')
+    .select(`
+      id, league_id, season_id, game_date, tipoff_at, status, status_detail,
+      period, clock, home_team_id, away_team_id, home_score, away_score,
+      home_linescores, away_linescores, venue, odds,
+      home_team:teams!games_home_team_id_fkey(id, league_id, external_id, name, short_name, abbreviation, city, conference, division, primary_color, alternate_color, logo_url),
+      away_team:teams!games_away_team_id_fkey(id, league_id, external_id, name, short_name, abbreviation, city, conference, division, primary_color, alternate_color, logo_url)
+    `)
+    .eq('id', gameId)
+    .maybeSingle();
+  if (error) return null;
+  return (data ?? null) as unknown as Game | null;
+}
+
 export async function fetchGameBoxScore(gameId: number): Promise<PlayerGameStat[]> {
   const { data } = await withOfflineCache(`boxscore_${gameId}`, async () => {
     const { data: rows, error } = await supabase
