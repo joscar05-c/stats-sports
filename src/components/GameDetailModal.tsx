@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, MapPin, Calendar, TrendingUp, Scale, Flame, ChevronRight } from 'lucide-react';
+import { X, MapPin, Calendar, TrendingUp, Scale, Flame, ChevronRight, BarChart3 } from 'lucide-react';
 import {
   fetchGameBettingContext,
   fetchGameBoxScore,
@@ -24,7 +24,93 @@ interface GameDetailModalProps {
   onSelectPlayer: (playerId: number) => void;
 }
 
-type ModalSection = 'betting' | 'boxscore';
+type ModalSection = 'betting' | 'teamstats' | 'boxscore';
+
+interface TeamGameTotals {
+  pts: number;
+  starterPts: number;
+  benchPts: number;
+  reb: number;
+  oreb: number;
+  dreb: number;
+  ast: number;
+  stl: number;
+  blk: number;
+  tov: number;
+  pf: number;
+  fgm: number;
+  fga: number;
+  fgPct: number;
+  tpm: number;
+  tpa: number;
+  tpPct: number;
+  ftm: number;
+  fta: number;
+  ftPct: number;
+  efgPct: number;
+  tsPct: number;
+}
+
+function computeTeamGameTotals(rows: PlayerGameStat[], fallbackScore = 0): TeamGameTotals {
+  const active = rows.filter((r) => !r.did_not_play);
+  const sum = (fn: (r: PlayerGameStat) => number) =>
+    active.reduce((acc, r) => acc + Number(fn(r) || 0), 0);
+
+  const ptsSum = sum((r) => r.pts);
+  const pts = ptsSum > 0 ? ptsSum : fallbackScore;
+  const starterPts = active
+    .filter((r) => r.starter)
+    .reduce((acc, r) => acc + Number(r.pts || 0), 0);
+  const benchPts = active
+    .filter((r) => !r.starter)
+    .reduce((acc, r) => acc + Number(r.pts || 0), 0);
+  const reb = sum((r) => r.reb);
+  const oreb = sum((r) => r.oreb);
+  const dreb = sum((r) => r.dreb);
+  const ast = sum((r) => r.ast);
+  const stl = sum((r) => r.stl);
+  const blk = sum((r) => r.blk);
+  const tov = sum((r) => r.tov);
+  const pf = sum((r) => r.pf);
+  const fgm = sum((r) => r.fgm);
+  const fga = sum((r) => r.fga);
+  const tpm = sum((r) => r.tpm);
+  const tpa = sum((r) => r.tpa);
+  const ftm = sum((r) => r.ftm);
+  const fta = sum((r) => r.fta);
+
+  const fgPct = fga > 0 ? (fgm * 100) / fga : 0;
+  const tpPct = tpa > 0 ? (tpm * 100) / tpa : 0;
+  const ftPct = fta > 0 ? (ftm * 100) / fta : 0;
+  const efgPct = fga > 0 ? ((fgm + 0.5 * tpm) * 100) / fga : 0;
+  const tsDenom = 2 * (fga + 0.44 * fta);
+  const tsPct = tsDenom > 0 ? (pts * 100) / tsDenom : 0;
+
+  return {
+    pts,
+    starterPts,
+    benchPts,
+    reb,
+    oreb,
+    dreb,
+    ast,
+    stl,
+    blk,
+    tov,
+    pf,
+    fgm,
+    fga,
+    fgPct,
+    tpm,
+    tpa,
+    tpPct,
+    ftm,
+    fta,
+    ftPct,
+    efgPct,
+    tsPct,
+  };
+}
 
 export function GameDetailModal({ game: initialGame, onClose, onSelectPlayer }: GameDetailModalProps) {
   const [game, setGame] = useState<Game>(initialGame);
@@ -124,6 +210,23 @@ export function GameDetailModal({ game: initialGame, onClose, onSelectPlayer }: 
   }, [game.id]);
 
   const teamStats = stats.filter((s) => s.team_id === activeTeamId);
+  const awayTotals = useMemo(
+    () =>
+      computeTeamGameTotals(
+        stats.filter((s) => s.team_id === game.away_team_id),
+        game.away_score,
+      ),
+    [stats, game.away_team_id, game.away_score],
+  );
+  const homeTotals = useMemo(
+    () =>
+      computeTeamGameTotals(
+        stats.filter((s) => s.team_id === game.home_team_id),
+        game.home_score,
+      ),
+    [stats, game.home_team_id, game.home_score],
+  );
+  const activeTotals = activeTeamId === game.away_team_id ? awayTotals : homeTotals;
   const periods = Math.max(
     game.home_linescores?.length ?? 0,
     game.away_linescores?.length ?? 0,
@@ -297,30 +400,42 @@ export function GameDetailModal({ game: initialGame, onClose, onSelectPlayer }: 
           )}
         </div>
 
-        {/* Primary Section Switcher: Box Score vs Casas de Apuestas & Guía */}
-        <div className="flex border-b border-slate-800 bg-slate-950/60 px-3 pt-2 gap-2">
+        {/* Primary Section Switcher: Apuestas vs Estadísticas de Equipo vs Box Score */}
+        <div className="flex border-b border-slate-800 bg-slate-950/60 px-3 pt-2 gap-1.5 overflow-x-auto no-scrollbar">
           <button
             type="button"
             onClick={() => setSection('betting')}
-            className={`px-3.5 py-2 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
+            className={`shrink-0 px-3 py-2 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
               section === 'betting'
                 ? 'border-orange-500 text-orange-400 bg-slate-900/90'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             <Scale className="w-3.5 h-3.5" />
-            Casas y Guía de Apuesta
+            Casas y Guía
+          </button>
+          <button
+            type="button"
+            onClick={() => setSection('teamstats')}
+            className={`shrink-0 px-3 py-2 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
+              section === 'teamstats'
+                ? 'border-orange-500 text-white bg-slate-900/90'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5 text-orange-400" />
+            Estadísticas de Equipo
           </button>
           <button
             type="button"
             onClick={() => setSection('boxscore')}
-            className={`px-3.5 py-2 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
+            className={`shrink-0 px-3 py-2 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
               section === 'boxscore'
                 ? 'border-orange-500 text-white bg-slate-900/90'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            Box Score
+            Box Score Jugadores
             {game.status === 'scheduled' && (
               <span className="text-[10px] text-slate-500 font-normal">(Previa)</span>
             )}
@@ -688,6 +803,316 @@ export function GameDetailModal({ game: initialGame, onClose, onSelectPlayer }: 
               </div>
             )}
           </div>
+        ) : section === 'teamstats' ? (
+          <div className="flex-1 overflow-auto p-4 sm:p-5 space-y-4">
+            {/* Live or Final Game Collective Comparison */}
+            {game.status !== 'scheduled' && stats.length > 0 && (
+              <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-4 space-y-3.5 tabular-nums">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    {game.away_team.logo_url && (
+                      <img
+                        src={game.away_team.logo_url}
+                        alt={game.away_team.abbreviation}
+                        className="w-6 h-6 object-contain"
+                      />
+                    )}
+                    <span className="text-xs font-black text-orange-400">
+                      {game.away_team.short_name}
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-300">
+                    Estadísticas Colectivas del Partido
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-sky-400">
+                      {game.home_team.short_name}
+                    </span>
+                    {game.home_team.logo_url && (
+                      <img
+                        src={game.home_team.logo_url}
+                        alt={game.home_team.abbreviation}
+                        className="w-6 h-6 object-contain"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {[
+                    {
+                      label: 'Tiros de Campo (TC%)',
+                      awayVal: awayTotals.fgPct,
+                      homeVal: homeTotals.fgPct,
+                      awayText: `${awayTotals.fgm}/${awayTotals.fga} (${awayTotals.fgPct.toFixed(1)}%)`,
+                      homeText: `${homeTotals.fgm}/${homeTotals.fga} (${homeTotals.fgPct.toFixed(1)}%)`,
+                    },
+                    {
+                      label: 'Triples (3P%)',
+                      awayVal: awayTotals.tpPct,
+                      homeVal: homeTotals.tpPct,
+                      awayText: `${awayTotals.tpm}/${awayTotals.tpa} (${awayTotals.tpPct.toFixed(1)}%)`,
+                      homeText: `${homeTotals.tpm}/${homeTotals.tpa} (${homeTotals.tpPct.toFixed(1)}%)`,
+                    },
+                    {
+                      label: 'Tiros Libres (TL%)',
+                      awayVal: awayTotals.ftPct,
+                      homeVal: homeTotals.ftPct,
+                      awayText: `${awayTotals.ftm}/${awayTotals.fta} (${awayTotals.ftPct.toFixed(1)}%)`,
+                      homeText: `${homeTotals.ftm}/${homeTotals.fta} (${homeTotals.ftPct.toFixed(1)}%)`,
+                    },
+                    {
+                      label: 'Effective FG% (eFG%)',
+                      awayVal: awayTotals.efgPct,
+                      homeVal: homeTotals.efgPct,
+                      awayText: `${awayTotals.efgPct.toFixed(1)}%`,
+                      homeText: `${homeTotals.efgPct.toFixed(1)}%`,
+                    },
+                    {
+                      label: 'True Shooting (TS%)',
+                      awayVal: awayTotals.tsPct,
+                      homeVal: homeTotals.tsPct,
+                      awayText: `${awayTotals.tsPct.toFixed(1)}%`,
+                      homeText: `${homeTotals.tsPct.toFixed(1)}%`,
+                    },
+                    {
+                      label: 'Rebotes Totales',
+                      awayVal: awayTotals.reb,
+                      homeVal: homeTotals.reb,
+                      awayText: String(awayTotals.reb),
+                      homeText: String(homeTotals.reb),
+                    },
+                    {
+                      label: 'Rebotes Ofensivos',
+                      awayVal: awayTotals.oreb,
+                      homeVal: homeTotals.oreb,
+                      awayText: String(awayTotals.oreb),
+                      homeText: String(homeTotals.oreb),
+                    },
+                    {
+                      label: 'Rebotes Defensivos',
+                      awayVal: awayTotals.dreb,
+                      homeVal: homeTotals.dreb,
+                      awayText: String(awayTotals.dreb),
+                      homeText: String(homeTotals.dreb),
+                    },
+                    {
+                      label: 'Asistencias',
+                      awayVal: awayTotals.ast,
+                      homeVal: homeTotals.ast,
+                      awayText: String(awayTotals.ast),
+                      homeText: String(homeTotals.ast),
+                    },
+                    {
+                      label: 'Robos de Balón',
+                      awayVal: awayTotals.stl,
+                      homeVal: homeTotals.stl,
+                      awayText: String(awayTotals.stl),
+                      homeText: String(homeTotals.stl),
+                    },
+                    {
+                      label: 'Tapones',
+                      awayVal: awayTotals.blk,
+                      homeVal: homeTotals.blk,
+                      awayText: String(awayTotals.blk),
+                      homeText: String(homeTotals.blk),
+                    },
+                    {
+                      label: 'Pérdidas de Balón (TOV)',
+                      awayVal: awayTotals.tov,
+                      homeVal: homeTotals.tov,
+                      awayText: String(awayTotals.tov),
+                      homeText: String(homeTotals.tov),
+                      lowerIsBetter: true,
+                    },
+                    {
+                      label: 'Faltas Personales',
+                      awayVal: awayTotals.pf,
+                      homeVal: homeTotals.pf,
+                      awayText: String(awayTotals.pf),
+                      homeText: String(homeTotals.pf),
+                      lowerIsBetter: true,
+                    },
+                    {
+                      label: 'Puntos de Titulares',
+                      awayVal: awayTotals.starterPts,
+                      homeVal: homeTotals.starterPts,
+                      awayText: String(awayTotals.starterPts),
+                      homeText: String(homeTotals.starterPts),
+                    },
+                    {
+                      label: 'Puntos de la Banca',
+                      awayVal: awayTotals.benchPts,
+                      homeVal: homeTotals.benchPts,
+                      awayText: String(awayTotals.benchPts),
+                      homeText: String(homeTotals.benchPts),
+                    },
+                  ].map((row) => {
+                    const posA = Math.max(0.1, row.awayVal);
+                    const posH = Math.max(0.1, row.homeVal);
+                    const pctAway = Math.round((posA / (posA + posH)) * 100);
+                    const awayBetter = row.lowerIsBetter
+                      ? row.awayVal <= row.homeVal
+                      : row.awayVal >= row.homeVal;
+                    const homeBetter = row.lowerIsBetter
+                      ? row.homeVal <= row.awayVal
+                      : row.homeVal >= row.awayVal;
+
+                    return (
+                      <div key={row.label}>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span
+                            className={
+                              awayBetter ? 'font-black text-orange-400' : 'text-slate-400'
+                            }
+                          >
+                            {row.awayText}
+                          </span>
+                          <span className="font-semibold text-slate-300">{row.label}</span>
+                          <span
+                            className={
+                              homeBetter ? 'font-black text-sky-400' : 'text-slate-400'
+                            }
+                          >
+                            {row.homeText}
+                          </span>
+                        </div>
+                        <div className="h-2 rounded-full bg-slate-800 overflow-hidden flex">
+                          <div
+                            className="bg-orange-500 transition-all"
+                            style={{ width: `${pctAway}%` }}
+                          />
+                          <div
+                            className="bg-sky-400 transition-all"
+                            style={{ width: `${100 - pctAway}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Season Team Averages Comparison */}
+            {betCtx?.awayTeamAvg && betCtx?.homeTeamAvg ? (
+              <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-4 space-y-3.5 tabular-nums">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                  <span className="text-xs font-black text-orange-400">
+                    {game.away_team.abbreviation} ({betCtx.awayTeamAvg.wins}-{betCtx.awayTeamAvg.losses})
+                  </span>
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-300">
+                    Promedios de Temporada por Equipo
+                  </span>
+                  <span className="text-xs font-black text-sky-400">
+                    {game.home_team.abbreviation} ({betCtx.homeTeamAvg.wins}-{betCtx.homeTeamAvg.losses})
+                  </span>
+                </div>
+
+                <div className="space-y-2.5">
+                  {[
+                    {
+                      label: 'Puntos a Favor (PPG)',
+                      a: Number(betCtx.awayTeamAvg.ppg ?? 0),
+                      h: Number(betCtx.homeTeamAvg.ppg ?? 0),
+                    },
+                    {
+                      label: 'Puntos Recibidos (OPPG)',
+                      a: Number(betCtx.awayTeamAvg.oppg ?? 0),
+                      h: Number(betCtx.homeTeamAvg.oppg ?? 0),
+                      lowerIsBetter: true,
+                    },
+                    {
+                      label: 'Rebotes por Partido (RPG)',
+                      a: Number(betCtx.awayTeamAvg.rpg ?? 0),
+                      h: Number(betCtx.homeTeamAvg.rpg ?? 0),
+                    },
+                    {
+                      label: 'Asistencias por Partido (APG)',
+                      a: Number(betCtx.awayTeamAvg.apg ?? 0),
+                      h: Number(betCtx.homeTeamAvg.apg ?? 0),
+                    },
+                    {
+                      label: 'Triples Anotados / PJ',
+                      a: Number(betCtx.awayTeamAvg.tpm_pg ?? 0),
+                      h: Number(betCtx.homeTeamAvg.tpm_pg ?? 0),
+                    },
+                    {
+                      label: 'Tiros de Campo (TC%)',
+                      a: Number(betCtx.awayTeamAvg.fg_pct ?? 0),
+                      h: Number(betCtx.homeTeamAvg.fg_pct ?? 0),
+                      suffix: '%',
+                    },
+                    {
+                      label: 'Efectividad Triples (3P%)',
+                      a: Number(betCtx.awayTeamAvg.tp_pct ?? 0),
+                      h: Number(betCtx.homeTeamAvg.tp_pct ?? 0),
+                      suffix: '%',
+                    },
+                    {
+                      label: 'True Shooting (TS%)',
+                      a: Number(betCtx.awayTeamAvg.ts_pct ?? 0),
+                      h: Number(betCtx.homeTeamAvg.ts_pct ?? 0),
+                      suffix: '%',
+                    },
+                    {
+                      label: 'Robos (SPG)',
+                      a: Number(betCtx.awayTeamAvg.spg ?? 0),
+                      h: Number(betCtx.homeTeamAvg.spg ?? 0),
+                    },
+                    {
+                      label: 'Tapones (BPG)',
+                      a: Number(betCtx.awayTeamAvg.bpg ?? 0),
+                      h: Number(betCtx.homeTeamAvg.bpg ?? 0),
+                    },
+                    {
+                      label: 'Puntos de la Banca',
+                      a: Number(betCtx.awayTeamAvg.bench_ppg ?? 0),
+                      h: Number(betCtx.homeTeamAvg.bench_ppg ?? 0),
+                    },
+                  ].map((r) => {
+                    const posA = Math.max(0.1, r.a);
+                    const posH = Math.max(0.1, r.h);
+                    const pctA = Math.round((posA / (posA + posH)) * 100);
+                    const s = r.suffix ?? '';
+                    const aBetter = r.lowerIsBetter ? r.a <= r.h : r.a >= r.h;
+                    const hBetter = r.lowerIsBetter ? r.h <= r.a : r.h >= r.a;
+                    return (
+                      <div key={r.label}>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className={aBetter ? 'font-black text-orange-400' : 'text-slate-400'}>
+                            {r.a.toFixed(1)}
+                            {s}
+                          </span>
+                          <span className="font-semibold text-slate-300">{r.label}</span>
+                          <span className={hBetter ? 'font-black text-sky-400' : 'text-slate-400'}>
+                            {r.h.toFixed(1)}
+                            {s}
+                          </span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden flex">
+                          <div
+                            className="bg-orange-500 transition-all"
+                            style={{ width: `${pctA}%` }}
+                          />
+                          <div
+                            className="bg-sky-400 transition-all"
+                            style={{ width: `${100 - pctA}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              loadingBet && (
+                <div className="py-10 text-center text-xs text-slate-400">
+                  Cargando estadísticas comparativas de los equipos...
+                </div>
+              )
+            )}
+          </div>
         ) : (
           <>
             {/* Team Switcher for Box Score */}
@@ -805,6 +1230,31 @@ export function GameDetailModal({ game: initialGame, onClose, onSelectPlayer }: 
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-700 bg-slate-900/90 font-black text-white">
+                      <td className="py-2.5 px-2 sticky left-0 bg-slate-900">
+                        TOTAL EQUIPO
+                      </td>
+                      <td className="text-right py-2.5 px-2 text-slate-400">-</td>
+                      <td className="text-right py-2.5 px-2 text-orange-400">{activeTotals.pts}</td>
+                      <td className="text-right py-2.5 px-2">{activeTotals.reb}</td>
+                      <td className="text-right py-2.5 px-2">{activeTotals.ast}</td>
+                      <td className="text-right py-2.5 px-2 text-slate-200">
+                        {activeTotals.fgm}-{activeTotals.fga} ({activeTotals.fgPct.toFixed(0)}%)
+                      </td>
+                      <td className="text-right py-2.5 px-2 text-slate-200">
+                        {activeTotals.tpm}-{activeTotals.tpa} ({activeTotals.tpPct.toFixed(0)}%)
+                      </td>
+                      <td className="text-right py-2.5 px-2 text-slate-200">
+                        {activeTotals.ftm}-{activeTotals.fta} ({activeTotals.ftPct.toFixed(0)}%)
+                      </td>
+                      <td className="text-right py-2.5 px-2">{activeTotals.stl}</td>
+                      <td className="text-right py-2.5 px-2">{activeTotals.blk}</td>
+                      <td className="text-right py-2.5 px-2 text-slate-400">
+                        {activeTotals.tov} PER
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               )}
             </div>

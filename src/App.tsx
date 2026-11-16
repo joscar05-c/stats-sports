@@ -311,6 +311,7 @@ export function App() {
                 leagueId={activeLeague.id}
                 seasonId={season.id}
                 onSelectPlayer={(pid) => setSelectedPlayerId(pid)}
+                onSelectTeam={(team) => setSelectedTeam({ team })}
               />
             )}
             {tab === 'compare' && (

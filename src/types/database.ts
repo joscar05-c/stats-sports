@@ -178,6 +178,53 @@ export interface PlayerSeasonAverage {
   total_ast: number;
 }
 
+export interface TeamSeasonAverage {
+  team_id: number;
+  league_id: number;
+  season_id: number;
+  team_name: string;
+  team_short_name: string;
+  team_abbreviation: string;
+  conference: string | null;
+  division: string | null;
+  primary_color: string | null;
+  alternate_color: string | null;
+  logo_url: string | null;
+  playoff_seed: number | null;
+  wins: number;
+  losses: number;
+  win_pct: number;
+  home_record: string | null;
+  away_record: string | null;
+  last_ten: string | null;
+  streak: string | null;
+  gp: number;
+  ppg: number;
+  oppg: number;
+  diff: number;
+  bench_ppg: number;
+  rpg: number;
+  oreb_pg: number;
+  dreb_pg: number;
+  apg: number;
+  spg: number;
+  bpg: number;
+  topg: number;
+  pf_pg: number;
+  fgm_pg: number;
+  fga_pg: number;
+  fg_pct: number | null;
+  tpm_pg: number;
+  tpa_pg: number;
+  tp_pct: number | null;
+  ftm_pg: number;
+  fta_pg: number;
+  ft_pct: number | null;
+  efg_pct: number | null;
+  ts_pct: number | null;
+  ast_to_tov: number | null;
+}
+
 export interface SyncRun {
   id: number;
   source: string;

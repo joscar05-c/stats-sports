@@ -79,9 +79,13 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
                   <th className="text-right py-2.5 px-2.5">P</th>
                   <th className="text-right py-2.5 px-2.5">PCT</th>
                   <th className="text-right py-2.5 px-2.5">JD</th>
+                  <th className="text-right py-2.5 px-2.5">LOCAL</th>
+                  <th className="text-right py-2.5 px-2.5">VISITA</th>
+                  <th className="text-right py-2.5 px-2.5">PPG</th>
+                  <th className="text-right py-2.5 px-2.5">OPPG</th>
+                  <th className="text-right py-2.5 px-2.5">DIFF</th>
                   <th className="text-right py-2.5 px-2.5">ÚLT 10</th>
-                  <th className="text-right py-2.5 px-2.5">RACHA</th>
-                  <th className="text-right py-2.5 px-3">DIFF</th>
+                  <th className="text-right py-2.5 px-3">RACHA</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -126,9 +130,32 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
                         {s.games_behind ?? '-'}
                       </td>
                       <td className="text-right py-2.5 px-2.5 text-slate-300">
+                        {s.home_record ?? '-'}
+                      </td>
+                      <td className="text-right py-2.5 px-2.5 text-slate-300">
+                        {s.away_record ?? '-'}
+                      </td>
+                      <td className="text-right py-2.5 px-2.5 font-semibold text-orange-300">
+                        {s.ppg != null ? Number(s.ppg).toFixed(1) : '-'}
+                      </td>
+                      <td className="text-right py-2.5 px-2.5 text-slate-300">
+                        {s.oppg != null ? Number(s.oppg).toFixed(1) : '-'}
+                      </td>
+                      <td
+                        className={`text-right py-2.5 px-2.5 font-semibold ${
+                          (s.diff ?? 0) > 0
+                            ? 'text-emerald-400'
+                            : (s.diff ?? 0) < 0
+                              ? 'text-rose-400'
+                              : 'text-slate-400'
+                        }`}
+                      >
+                        {s.diff != null ? (s.diff > 0 ? `+${s.diff}` : s.diff) : '-'}
+                      </td>
+                      <td className="text-right py-2.5 px-2.5 text-slate-300">
                         {s.last_ten ?? '-'}
                       </td>
-                      <td className="text-right py-2.5 px-2.5">
+                      <td className="text-right py-2.5 px-3">
                         <span
                           className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${
                             s.streak?.startsWith('W')
@@ -138,17 +165,6 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
                         >
                           {s.streak ?? '-'}
                         </span>
-                      </td>
-                      <td
-                        className={`text-right py-2.5 px-3 font-semibold ${
-                          (s.diff ?? 0) > 0
-                            ? 'text-emerald-400'
-                            : (s.diff ?? 0) < 0
-                              ? 'text-rose-400'
-                              : 'text-slate-400'
-                        }`}
-                      >
-                        {s.diff != null ? (s.diff > 0 ? `+${s.diff}` : s.diff) : '-'}
                       </td>
                     </tr>
                   );
