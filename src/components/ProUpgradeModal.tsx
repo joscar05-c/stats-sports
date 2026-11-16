@@ -5,40 +5,40 @@ import {
   Copy,
   CreditCard,
   ExternalLink,
-  EyeOff,
   KeyRound,
   Loader2,
   Lock,
+  LogIn,
   MessageCircle,
   ShieldCheck,
   Smartphone,
   Sparkles,
+  UserCheck,
   X,
 } from 'lucide-react';
 import {
   buildYapePlinWhatsappUrl,
   CHECKOUT_URLS,
-  clearPendingCheckoutEmail,
-  clearProSubscription,
-  getPendingCheckoutEmail,
+  claimProAccessCode,
   getRemainingProDays,
   PRO_MONTHLY_PRICE_PEN,
   PRO_MONTHLY_PRICE_USD,
-  setPendingCheckoutEmail,
   submitYapePlinActivationRequest,
-  verifyProSubscriptionByEmailOrCode,
+  syncSubscriptionForUser,
   YAPE_PLIN_CONFIG,
   type PaymentProvider,
   type ProSubscriptionState,
 } from '../services/subscriptionService';
+import type { UserProfile } from '../services/authService';
 import { supabase } from '../lib/supabase';
 import { PRO_CONFIDENCE_THRESHOLD } from '../utils/betting';
 
 interface ProUpgradeModalProps {
+  user: UserProfile | null;
   subscription: ProSubscriptionState | null;
   onClose: () => void;
+  onRequireAuth: () => void;
   onActivated: (sub: ProSubscriptionState) => void;
-  onDeactivated: () => void;
 }
 
 const PROVIDERS: Array<{
@@ -51,13 +51,13 @@ const PROVIDERS: Array<{
     key: 'lemonsqueezy',
     label: `Lemon Squeezy ($${PRO_MONTHLY_PRICE_USD.toFixed(0)} USD / mes)`,
     badge: 'Automático',
-    subtitle: 'Tarjeta, Apple Pay o Google Pay · Activación instantánea por webhook',
+    subtitle: 'Tarjeta, Apple Pay o Google Pay · Vincula el pago directo a tu cuenta',
   },
   {
     key: 'yape_plin',
     label: `Yape / Plin Perú (S/ ${PRO_MONTHLY_PRICE_PEN.toFixed(0)} / 30 días)`,
     badge: 'Perú · Sin tarjeta',
-    subtitle: 'Transferencia rápida en soles · Registro de operación y código CVPRO',
+    subtitle: 'Transferencia rápida en soles · Activa tu cuenta con tu N° de operación',
   },
   {
     key: 'stripe',
@@ -74,23 +74,21 @@ const PROVIDERS: Array<{
 ];
 
 export function ProUpgradeModal({
+  user,
   subscription,
   onClose,
+  onRequireAuth,
   onActivated,
-  onDeactivated,
 }: ProUpgradeModalProps) {
   const [provider, setProvider] = useState<PaymentProvider>('lemonsqueezy');
-  const [email, setEmail] = useState(() => subscription?.email ?? getPendingCheckoutEmail() ?? '');
   const [yapeOpCode, setYapeOpCode] = useState('');
-  const [yapeSenderName, setYapeSenderName] = useState('');
+  const [yapeSenderName, setYapeSenderName] = useState(user?.fullName ?? '');
   const [yapeWhatsappUrl, setYapeWhatsappUrl] = useState<string | null>(null);
   const [copiedPhone, setCopiedPhone] = useState(false);
 
-  const [recoverInput, setRecoverInput] = useState('');
-  const [mode, setMode] = useState<'buy' | 'recover'>('buy');
-  const [awaitingWebhook, setAwaitingWebhook] = useState(() =>
-    Boolean(!subscription && getPendingCheckoutEmail()),
-  );
+  const [codeInput, setCodeInput] = useState('');
+  const [mode, setMode] = useState<'buy' | 'code'>('buy');
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; tone: 'info' | 'ok' | 'err' } | null>(
     null,
@@ -103,17 +101,21 @@ export function ProUpgradeModal({
     (pv) => pv.key === 'lemonsqueezy' || pv.key === 'yape_plin' || Boolean(CHECKOUT_URLS[pv.key]),
   );
 
-  // Live auto-unlock listener while waiting for Lemon Squeezy webhook confirmation
   useEffect(() => {
-    if (subscription || !awaitingWebhook) return;
-    const lookup = (email || getPendingCheckoutEmail() || '').trim().toLowerCase();
-    if (!lookup) return;
+    if (user?.fullName && !yapeSenderName) {
+      setYapeSenderName(user.fullName);
+    }
+  }, [user?.fullName, yapeSenderName]);
+
+  // Live auto-unlock listener while waiting for webhook or Yape admin approval
+  useEffect(() => {
+    if (!user || subscription || !awaitingConfirm) return;
 
     let active = true;
     const pollVerify = async () => {
-      const found = await verifyProSubscriptionByEmailOrCode(lookup);
+      const found = await syncSubscriptionForUser({ id: user.id, email: user.email });
       if (active && found) {
-        setAwaitingWebhook(false);
+        setAwaitingConfirm(false);
         onActivated(found);
       }
     };
@@ -135,7 +137,7 @@ export function ProUpgradeModal({
       window.removeEventListener('focus', pollVerify);
       supabase.removeChannel(channel);
     };
-  }, [subscription, awaitingWebhook, email, onActivated]);
+  }, [user, subscription, awaitingConfirm, onActivated]);
 
   const handleCopyNumber = async () => {
     try {
@@ -148,15 +150,11 @@ export function ProUpgradeModal({
   };
 
   const handleOpenCheckout = () => {
-    setFeedback(null);
-    const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      setFeedback({
-        text: 'Ingresa el correo con el que pagarás para vincular tu pase mensual.',
-        tone: 'err',
-      });
+    if (!user) {
+      onRequireAuth();
       return;
     }
+    setFeedback(null);
 
     if (!checkoutUrl) {
       setFeedback({
@@ -166,35 +164,30 @@ export function ProUpgradeModal({
       return;
     }
 
-    setPendingCheckoutEmail(cleanEmail);
-    setAwaitingWebhook(true);
-
+    setAwaitingConfirm(true);
     const sep = checkoutUrl.includes('?') ? '&' : '?';
     const url = `${checkoutUrl}${sep}checkout[email]=${encodeURIComponent(
-      cleanEmail,
-    )}&checkout[custom][email]=${encodeURIComponent(cleanEmail)}`;
+      user.email,
+    )}&checkout[custom][email]=${encodeURIComponent(
+      user.email,
+    )}&checkout[custom][user_id]=${encodeURIComponent(user.id)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
     setFeedback({
-      text: 'Se abrió la pasarela en una nueva pestaña. Apenas completes el pago, el sistema desbloqueará PRO automáticamente aquí.',
+      text: `Pasarela abierta para ${user.email}. Apenas completes el pago, tu cuenta se actualizará a PRO automáticamente.`,
       tone: 'ok',
     });
   };
 
   const handleSubmitYapePlin = async () => {
-    setFeedback(null);
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanOp = yapeOpCode.trim();
-
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      setFeedback({
-        text: 'Ingresa un correo electrónico válido para asignarte tu acceso PRO.',
-        tone: 'err',
-      });
+    if (!user) {
+      onRequireAuth();
       return;
     }
+    setFeedback(null);
+    const cleanOp = yapeOpCode.trim();
     if (cleanOp.length < 4) {
       setFeedback({
-        text: 'Ingresa el N° de operación de Yape/Plin (mínimo 4 caracteres) o tu código CVPRO.',
+        text: 'Ingresa el N° de operación de Yape/Plin (mínimo 4 caracteres) o un código CVPRO.',
         tone: 'err',
       });
       return;
@@ -202,15 +195,25 @@ export function ProUpgradeModal({
 
     setBusy(true);
     try {
-      const res = await submitYapePlinActivationRequest(cleanEmail, cleanOp, yapeSenderName);
+      const res = await submitYapePlinActivationRequest(
+        { id: user.id, email: user.email },
+        cleanOp,
+        yapeSenderName,
+      );
       setYapeWhatsappUrl(res.whatsappUrl);
       if (res.subscription) {
         onActivated(res.subscription);
         return;
       }
+      setAwaitingConfirm(true);
       setFeedback({
         text: res.message,
         tone: res.status === 'approved' ? 'ok' : 'info',
+      });
+    } catch (err) {
+      setFeedback({
+        text: err instanceof Error ? err.message : 'No se pudo registrar el pago.',
+        tone: 'err',
       });
     } finally {
       setBusy(false);
@@ -218,18 +221,17 @@ export function ProUpgradeModal({
   };
 
   const handleManualCheckAfterPay = async () => {
-    const cleanEmail = (email || getPendingCheckoutEmail() || '').trim();
-    if (!cleanEmail) return;
+    if (!user) return;
     setBusy(true);
     setFeedback(null);
     try {
-      const found = await verifyProSubscriptionByEmailOrCode(cleanEmail);
+      const found = await syncSubscriptionForUser({ id: user.id, email: user.email });
       if (found) {
-        setAwaitingWebhook(false);
+        setAwaitingConfirm(false);
         onActivated(found);
       } else {
         setFeedback({
-          text: 'Aún no llega la confirmación del pago para ese correo. Revisa si usaste otro correo al pagar o espera unos segundos.',
+          text: 'Aún no se confirma el pago en tu cuenta. Si pagaste por Yape/Plin, espera la aprobación; si usaste Lemon Squeezy, aguarda unos segundos.',
           tone: 'info',
         });
       }
@@ -238,23 +240,27 @@ export function ProUpgradeModal({
     }
   };
 
-  const handleRecover = async () => {
+  const handleClaimCode = async () => {
+    if (!user) {
+      onRequireAuth();
+      return;
+    }
     setFeedback(null);
-    if (!recoverInput.trim()) {
+    if (!codeInput.trim()) {
       setFeedback({
-        text: 'Ingresa tu código CVPRO-XXXX-XXXX o el correo con el que pagaste.',
+        text: 'Ingresa tu código CVPRO-XXXX-XXXX para vincularlo a tu cuenta.',
         tone: 'err',
       });
       return;
     }
     setBusy(true);
     try {
-      const found = await verifyProSubscriptionByEmailOrCode(recoverInput);
+      const found = await claimProAccessCode(codeInput, { id: user.id, email: user.email });
       if (found) {
         onActivated(found);
       } else {
         setFeedback({
-          text: 'No encontramos una suscripción activa con ese código o correo. Si pagaste por Yape/Plin, espera la emisión de tu código CVPRO.',
+          text: 'Código no válido, expirado o ya vinculado a otra cuenta.',
           tone: 'err',
         });
       }
@@ -263,15 +269,10 @@ export function ProUpgradeModal({
     }
   };
 
-  const handleSwitchToFree = () => {
-    clearProSubscription();
-    onDeactivated();
-  };
-
   const liveWhatsappUrl =
     yapeWhatsappUrl ??
     buildYapePlinWhatsappUrl(
-      email || 'usuario@ejemplo.com',
+      user?.email || 'cuenta@ejemplo.com',
       yapeOpCode || 'YAPE-PENDIENTE',
       yapeSenderName,
     );
@@ -298,7 +299,7 @@ export function ProUpgradeModal({
                 : `Desbloquea Picks ${PRO_CONFIDENCE_THRESHOLD}%+ (${PRO_MONTHLY_PRICE_USD.toFixed(0)} USD / S/ ${PRO_MONTHLY_PRICE_PEN.toFixed(0)})`}
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Acceso por 30 días a los props con mayor ventaja (MPG, splits y fatiga B2B).
+              Acceso por 30 días vinculado a tu cuenta en Web y App Móvil.
             </p>
           </div>
           <button
@@ -326,11 +327,11 @@ export function ProUpgradeModal({
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-white/[0.08]">
                   <div>
-                    <div className="text-slate-400 text-[11px]">Correo</div>
+                    <div className="text-slate-400 text-[11px]">Cuenta</div>
                     <div className="text-slate-100 font-semibold truncate">{subscription.email}</div>
                   </div>
                   <div>
-                    <div className="text-slate-400 text-[11px]">Código CVPRO</div>
+                    <div className="text-[11px] text-slate-400">Código CVPRO</div>
                     <div className="text-emerald-300 font-mono font-bold">
                       {subscription.accessCode}
                     </div>
@@ -348,21 +349,12 @@ export function ProUpgradeModal({
               <div className="rounded-xl bg-white/[0.03] border border-white/[0.08] p-3.5 text-xs text-slate-300 space-y-1.5">
                 <div className="font-bold text-white inline-flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  Beneficios activos:
+                  Beneficios activos en tu cuenta:
                 </div>
                 <div>• Todos los Props de Equipo y Jugador con confianza {PRO_CONFIDENCE_THRESHOLD}%–94%.</div>
                 <div>• Motor avanzado con ajuste por Minutos (MPG), Local/Visita y fatiga B2B.</div>
                 <div>• Simulador de cuotas, líneas O/U y calculadora de ganancia en S/ y USD.</div>
               </div>
-
-              <button
-                type="button"
-                onClick={handleSwitchToFree}
-                className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.1] text-xs font-semibold text-slate-200 transition-colors"
-              >
-                <EyeOff className="w-4 h-4 text-slate-400" />
-                Cerrar sesión PRO en este navegador (Vista Gratis)
-              </button>
             </div>
           ) : (
             <>
@@ -371,7 +363,7 @@ export function ProUpgradeModal({
                 <div className="space-y-1">
                   <div className="text-xs font-extrabold text-white">Pase Mensual · 30 Días</div>
                   <div className="text-[11px] text-slate-300">
-                    Tarjeta internacional automática o Yape / Plin en soles sin tarjeta.
+                    Sube tu cuenta gratuita a PRO con tarjeta o Yape / Plin.
                   </div>
                 </div>
                 <div className="text-right shrink-0 tabular-nums">
@@ -390,7 +382,7 @@ export function ProUpgradeModal({
               {/* Comparison */}
               <div className="grid grid-cols-2 gap-2.5 text-xs">
                 <div className="rounded-xl bg-white/[0.03] border border-white/[0.08] p-3 space-y-1">
-                  <div className="font-bold text-slate-300">Plan Gratis</div>
+                  <div className="font-bold text-slate-300">Cuenta Gratis</div>
                   <div className="text-[11px] text-slate-400">
                     ✓ Marcadores, cuotas y box scores
                   </div>
@@ -407,217 +399,231 @@ export function ProUpgradeModal({
                     ✓ Picks élite {PRO_CONFIDENCE_THRESHOLD}%–94% de acierto
                   </div>
                   <div className="text-[11px] text-slate-100">
-                    ✓ Simulador de pagos en S/ y USD
+                    ✓ Activo en Web y App Android
                   </div>
                 </div>
               </div>
 
-              {/* Mode Switch */}
-              <div className="flex rounded-xl bg-black/40 border border-white/[0.08] p-1 text-xs">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode('buy');
-                    setFeedback(null);
-                  }}
-                  className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
-                    mode === 'buy'
-                      ? 'bg-emerald-500 text-slate-950 shadow-sm'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Suscribirme ($5 / S/ 19)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode('recover');
-                    setFeedback(null);
-                  }}
-                  className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
-                    mode === 'recover'
-                      ? 'bg-emerald-500 text-slate-950 shadow-sm'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Ya pagué / Código CVPRO
-                </button>
-              </div>
-
-              {mode === 'buy' ? (
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-                      Método de pago
-                    </label>
-                    <div className="space-y-1.5">
-                      {availableProviders.map((pv) => {
-                        const selected = provider === pv.key;
-                        return (
-                          <button
-                            key={pv.key}
-                            type="button"
-                            onClick={() => {
-                              setProvider(pv.key);
-                              setFeedback(null);
-                            }}
-                            className={`w-full text-left rounded-xl border p-2.5 transition-all ${
-                              selected
-                                ? 'bg-emerald-500/10 border-emerald-500/50 text-white'
-                                : 'bg-white/[0.02] border-white/[0.08] text-slate-300 hover:border-white/20'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold">{pv.label}</span>
-                                <span
-                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
-                                    pv.key === 'yape_plin'
-                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                                      : 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
-                                  }`}
-                                >
-                                  {pv.badge}
-                                </span>
-                              </div>
-                              <span
-                                className={`w-3.5 h-3.5 rounded-full border ${
-                                  selected
-                                    ? 'bg-emerald-400 border-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.6)]'
-                                    : 'border-slate-600'
-                                }`}
-                              />
-                            </div>
-                            <div className="text-[11px] text-slate-400 mt-0.5">{pv.subtitle}</div>
-                          </button>
-                        );
-                      })}
+              {/* Account Required Gate */}
+              {!user ? (
+                <div className="rounded-2xl bg-slate-950/90 border border-cyan-500/35 p-5 text-center space-y-3">
+                  <div className="w-11 h-11 rounded-2xl bg-cyan-500/15 border border-cyan-500/35 mx-auto flex items-center justify-center">
+                    <LogIn className="w-5 h-5 text-cyan-300" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-sm font-black text-white">
+                      Paso 1: Inicia sesión o crea tu cuenta gratis
                     </div>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      Tu suscripción PRO queda guardada de forma segura en tu cuenta (Google o correo) para usarla en cualquier dispositivo.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onRequireAuth}
+                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-black text-sm inline-flex items-center justify-center gap-2 transition-all shadow-[0_6px_20px_rgba(16,185,129,0.28)]"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    Continuar con Google o Correo (Gratis)
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Signed-in user pill */}
+                  <div className="rounded-xl bg-emerald-500/[0.07] border border-emerald-500/30 px-3 py-2 flex items-center justify-between gap-2 text-xs">
+                    <span className="inline-flex items-center gap-2 text-emerald-200 min-w-0">
+                      <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="truncate">
+                        Cuenta: <strong className="text-white">{user.email}</strong>
+                      </span>
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-300 uppercase shrink-0">
+                      Listo para PRO
+                    </span>
                   </div>
 
-                  {provider === 'yape_plin' ? (
-                    <div className="space-y-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/30 p-3.5">
-                      <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] pb-2.5">
-                        <div>
-                          <div className="inline-flex items-center gap-1.5 text-xs font-extrabold text-amber-300">
-                            <Smartphone className="w-4 h-4" />
-                            Pago con Yape o Plin · S/ {PRO_MONTHLY_PRICE_PEN.toFixed(2)}
-                          </div>
-                          <div className="text-[11px] text-slate-300 mt-0.5">
-                            Titular: <strong className="text-white">{YAPE_PLIN_CONFIG.holder}</strong>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleCopyNumber}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-950/90 border border-amber-500/40 text-xs font-mono font-bold text-amber-200 hover:bg-slate-900"
-                        >
-                          <span>{YAPE_PLIN_CONFIG.number}</span>
-                          {copiedPhone ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5 text-amber-300" />
-                          )}
-                        </button>
-                      </div>
+                  {/* Mode Switch */}
+                  <div className="flex rounded-xl bg-black/40 border border-white/[0.08] p-1 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('buy');
+                        setFeedback(null);
+                      }}
+                      className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
+                        mode === 'buy'
+                          ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Pagar ($5 / S/ 19)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('code');
+                        setFeedback(null);
+                      }}
+                      className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
+                        mode === 'code'
+                          ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Canjear Código CVPRO
+                    </button>
+                  </div>
 
-                      <div className="text-[11px] text-slate-300 space-y-1">
-                        <div>1. Yapea o Plinea <strong>S/ {PRO_MONTHLY_PRICE_PEN.toFixed(2)}</strong> al número arriba.</div>
-                        <div>2. Registra tu correo y <strong>N° de operación</strong> (o pega tu código <code>CVPRO</code> si ya lo recibiste).</div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <input
-                          type="email"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          placeholder="Tu correo (obligatorio)"
-                          className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
-                        />
-                        <input
-                          type="text"
-                          value={yapeOpCode}
-                          onChange={(e) => setYapeOpCode(e.target.value)}
-                          placeholder="N° Operación o CVPRO-..."
-                          className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white font-mono placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
-                        />
-                      </div>
-
-                      <input
-                        type="text"
-                        value={yapeSenderName}
-                        onChange={(e) => setYapeSenderName(e.target.value)}
-                        placeholder="Nombre del titular que yapeó (opcional)"
-                        className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
-                      />
-
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={handleSubmitYapePlin}
-                          className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs inline-flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors"
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                          {busy ? 'Registrando...' : 'Registrar Pago / Activar CVPRO'}
-                        </button>
-                        <a
-                          href={liveWhatsappUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="py-2.5 px-3 rounded-xl bg-slate-950/90 hover:bg-slate-900 border border-emerald-500/40 text-emerald-300 font-bold text-xs inline-flex items-center justify-center gap-1.5 transition-colors"
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                          WhatsApp
-                        </a>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
+                  {mode === 'buy' ? (
+                    <div className="space-y-3">
                       <div className="space-y-1.5">
                         <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-                          Tu correo (debe coincidir con el del checkout)
+                          Método de pago
                         </label>
-                        <input
-                          type="email"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          placeholder="correo@ejemplo.com"
-                          className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
-                        />
+                        <div className="space-y-1.5">
+                          {availableProviders.map((pv) => {
+                            const selected = provider === pv.key;
+                            return (
+                              <button
+                                key={pv.key}
+                                type="button"
+                                onClick={() => {
+                                  setProvider(pv.key);
+                                  setFeedback(null);
+                                }}
+                                className={`w-full text-left rounded-xl border p-2.5 transition-all ${
+                                  selected
+                                    ? 'bg-emerald-500/10 border-emerald-500/50 text-white'
+                                    : 'bg-white/[0.02] border-white/[0.08] text-slate-300 hover:border-white/20'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold">{pv.label}</span>
+                                    <span
+                                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                                        pv.key === 'yape_plin'
+                                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                          : 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
+                                      }`}
+                                    >
+                                      {pv.badge}
+                                    </span>
+                                  </div>
+                                  <span
+                                    className={`w-3.5 h-3.5 rounded-full border ${
+                                      selected
+                                        ? 'bg-emerald-400 border-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.6)]'
+                                        : 'border-slate-600'
+                                    }`}
+                                  />
+                                </div>
+                                <div className="text-[11px] text-slate-400 mt-0.5">{pv.subtitle}</div>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
 
-                      <button
-                        type="button"
-                        disabled={busy || !checkoutUrl}
-                        onClick={handleOpenCheckout}
-                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-black text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50 transition-all shadow-[0_6px_20px_rgba(16,185,129,0.28)]"
-                      >
-                        <CreditCard className="w-4 h-4" />
-                        {checkoutUrl
-                          ? `Pagar $${PRO_MONTHLY_PRICE_USD.toFixed(2)} USD (${
-                              PROVIDERS.find((p) => p.key === provider)?.label.split(' (')[0]
-                            })`
-                          : 'Configura enlace de esta pasarela'}
-                        {checkoutUrl && <ExternalLink className="w-3.5 h-3.5" />}
-                      </button>
+                      {provider === 'yape_plin' ? (
+                        <div className="space-y-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/30 p-3.5">
+                          <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] pb-2.5">
+                            <div>
+                              <div className="inline-flex items-center gap-1.5 text-xs font-extrabold text-amber-300">
+                                <Smartphone className="w-4 h-4" />
+                                Pago con Yape o Plin · S/ {PRO_MONTHLY_PRICE_PEN.toFixed(2)}
+                              </div>
+                              <div className="text-[11px] text-slate-300 mt-0.5">
+                                Titular: <strong className="text-white">{YAPE_PLIN_CONFIG.holder}</strong>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleCopyNumber}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-950/90 border border-amber-500/40 text-xs font-mono font-bold text-amber-200 hover:bg-slate-900"
+                            >
+                              <span>{YAPE_PLIN_CONFIG.number}</span>
+                              {copiedPhone ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5 text-amber-300" />
+                              )}
+                            </button>
+                          </div>
 
-                      {awaitingWebhook && (
+                          <div className="text-[11px] text-slate-300 space-y-1">
+                            <div>1. Yapea o Plinea <strong>S/ {PRO_MONTHLY_PRICE_PEN.toFixed(2)}</strong> al <strong>{YAPE_PLIN_CONFIG.number}</strong>.</div>
+                            <div>2. Ingresa tu <strong>N° de operación</strong>; al aprobarlo, tu cuenta <strong>{user.email}</strong> subirá a PRO.</div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <input
+                              type="text"
+                              value={yapeOpCode}
+                              onChange={(e) => setYapeOpCode(e.target.value)}
+                              placeholder="N° Operación (ej. 048291)"
+                              className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white font-mono placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
+                            />
+                            <input
+                              type="text"
+                              value={yapeSenderName}
+                              onChange={(e) => setYapeSenderName(e.target.value)}
+                              placeholder="Nombre del titular (opcional)"
+                              className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
+                            />
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={handleSubmitYapePlin}
+                              className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs inline-flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              {busy ? 'Registrando...' : 'Registrar Pago en mi Cuenta'}
+                            </button>
+                            <a
+                              href={liveWhatsappUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="py-2.5 px-3 rounded-xl bg-slate-950/90 hover:bg-slate-900 border border-emerald-500/40 text-emerald-300 font-bold text-xs inline-flex items-center justify-center gap-1.5 transition-colors"
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                              WhatsApp
+                            </a>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={busy || !checkoutUrl}
+                          onClick={handleOpenCheckout}
+                          className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-black text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50 transition-all shadow-[0_6px_20px_rgba(16,185,129,0.28)]"
+                        >
+                          <CreditCard className="w-4 h-4" />
+                          {checkoutUrl
+                            ? `Pagar $${PRO_MONTHLY_PRICE_USD.toFixed(2)} USD (${
+                                PROVIDERS.find((p) => p.key === provider)?.label.split(' (')[0]
+                              })`
+                            : 'Configura enlace de esta pasarela'}
+                          {checkoutUrl && <ExternalLink className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+
+                      {awaitingConfirm && (
                         <div className="rounded-xl bg-white/[0.04] border border-emerald-500/30 p-3 space-y-2">
                           <div className="flex items-center justify-between gap-2 text-xs text-slate-200">
                             <span className="inline-flex items-center gap-2 font-semibold">
                               <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                              Esperando confirmación del webhook...
+                              Esperando confirmación automática...
                             </span>
                             <button
                               type="button"
-                              onClick={() => {
-                                clearPendingCheckoutEmail();
-                                setAwaitingWebhook(false);
-                              }}
+                              onClick={() => setAwaitingConfirm(false)}
                               className="text-[10px] text-slate-400 hover:text-slate-200 underline"
                             >
-                              Cancelar
+                              Ocultar
                             </button>
                           </div>
                           <button
@@ -626,37 +632,37 @@ export function ProUpgradeModal({
                             onClick={handleManualCheckAfterPay}
                             className="w-full py-1.5 px-3 rounded-lg bg-slate-950 border border-white/[0.12] hover:border-emerald-400/50 text-[11px] font-semibold text-slate-200 transition-colors"
                           >
-                            {busy ? 'Consultando...' : 'Ya completé el pago · Verificar ahora'}
+                            {busy ? 'Consultando...' : 'Verificar estado en mi cuenta ahora'}
                           </button>
                         </div>
                       )}
-                    </>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                          Código CVPRO-XXXX-XXXX
+                        </label>
+                        <input
+                          type="text"
+                          value={codeInput}
+                          onChange={(e) => setCodeInput(e.target.value)}
+                          placeholder="CVPRO-XXXX-XXXX"
+                          className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-sm text-white font-mono placeholder:font-sans placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={handleClaimCode}
+                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-black text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60 transition-all shadow-[0_6px_20px_rgba(16,185,129,0.28)]"
+                      >
+                        <KeyRound className="w-4 h-4" />
+                        {busy ? 'Validando código...' : 'Vincular Código a mi Cuenta'}
+                      </button>
+                    </div>
                   )}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-                      Código CVPRO-XXXX-XXXX o Correo verificado
-                    </label>
-                    <input
-                      type="text"
-                      value={recoverInput}
-                      onChange={(e) => setRecoverInput(e.target.value)}
-                      placeholder="CVPRO-XXXX-XXXX o correo@ejemplo.com"
-                      className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-sm text-white font-mono placeholder:font-sans placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={handleRecover}
-                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-black text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60 transition-all shadow-[0_6px_20px_rgba(16,185,129,0.28)]"
-                  >
-                    <KeyRound className="w-4 h-4" />
-                    {busy ? 'Verificando acceso...' : 'Validar Acceso PRO'}
-                  </button>
-                </div>
+                </>
               )}
 
               {feedback && (

@@ -6,6 +6,7 @@ import {
   Download,
   Flame,
   Lock,
+  LogIn,
   PanelLeft,
   RefreshCw,
   Search,
@@ -19,9 +20,11 @@ import {
   fetchLeagues,
   triggerCloudSync,
 } from './services/basketballApi';
+import { fetchUserProfile, type UserProfile } from './services/authService';
 import {
+  clearProSubscription,
   getStoredSubscription,
-  syncCurrentSubscriptionFromCloud,
+  syncSubscriptionForUser,
   type ProSubscriptionState,
 } from './services/subscriptionService';
 import { supabase } from './lib/supabase';
@@ -33,6 +36,8 @@ import { ExploreView } from './components/ExploreView';
 import { PropsSidebar, type SelectedPropPayload } from './components/PropsSidebar';
 import { PropAnalysisView } from './components/PropAnalysisView';
 import { ProUpgradeModal } from './components/ProUpgradeModal';
+import { AuthModal } from './components/AuthModal';
+import { AccountModal } from './components/AccountModal';
 import { GameDetailModal } from './components/GameDetailModal';
 import { PlayerDetailModal } from './components/PlayerDetailModal';
 import { TeamDetailModal } from './components/TeamDetailModal';
@@ -67,15 +72,82 @@ export function App() {
     standing?: TeamStanding;
   } | null>(null);
 
-  // Subscription PRO ($5 USD / S/ 19 PEN)
-  const [proSub, setProSub] = useState<ProSubscriptionState | null>(() => getStoredSubscription());
+  // User Auth & Subscription PRO ($5 USD / S/ 19 PEN)
+  const [authUser, setAuthUser] = useState<UserProfile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authPromptReason, setAuthPromptReason] = useState<string | null>(null);
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [returnToProAfterAuth, setReturnToProAfterAuth] = useState(false);
+  const [proSub, setProSub] = useState<ProSubscriptionState | null>(null);
   const [showProModal, setShowProModal] = useState(false);
 
-  // Sync subscription state in real time via RPC + Realtime broadcast without page reload
+  // Listen for Supabase Auth session changes (Google OAuth redirect + Email login/signup)
   useEffect(() => {
     let active = true;
+
+    const applySessionUser = (sessionUser: Parameters<typeof fetchUserProfile>[0]) => {
+      if (!sessionUser) {
+        if (active) {
+          setAuthUser(null);
+          setProSub(null);
+          clearProSubscription();
+          setAuthLoading(false);
+        }
+        return;
+      }
+
+      void fetchUserProfile(sessionUser)
+        .then((profile) => {
+          if (!active) return;
+          setAuthUser(profile);
+          setAuthLoading(false);
+          if (profile) {
+            const cached = getStoredSubscription(profile.id);
+            if (cached) setProSub(cached);
+          }
+        })
+        .catch(() => {
+          if (active) setAuthLoading(false);
+        });
+    };
+
+    void supabase.auth.getSession().then(({ data }) => {
+      applySessionUser(data.session?.user ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      applySessionUser(session?.user ?? null);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Reopen PRO checkout automatically if the user signed in from the PRO gate
+  useEffect(() => {
+    if (authUser && returnToProAfterAuth) {
+      setShowAuthModal(false);
+      setAuthPromptReason(null);
+      setReturnToProAfterAuth(false);
+      setShowProModal(true);
+    }
+  }, [authUser, returnToProAfterAuth]);
+
+  // Sync account-bound PRO subscription via authenticated RPC + Realtime broadcast
+  useEffect(() => {
+    if (!authUser) {
+      setProSub(null);
+      return;
+    }
+
+    let active = true;
     const syncPro = () => {
-      syncCurrentSubscriptionFromCloud()
+      syncSubscriptionForUser(authUser)
         .then((sub) => {
           if (active) setProSub(sub);
         })
@@ -85,7 +157,7 @@ export function App() {
       if (document.visibilityState === 'visible') syncPro();
     };
 
-    void syncPro();
+    syncPro();
     window.addEventListener('focus', syncPro);
     document.addEventListener('visibilitychange', onVisibility);
     const interval = window.setInterval(syncPro, 30_000);
@@ -101,7 +173,7 @@ export function App() {
       window.clearInterval(interval);
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [authUser]);
 
   // PWA Install Prompt
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -313,6 +385,46 @@ export function App() {
               >
                 <Download className="w-3.5 h-3.5" />
                 Instalar
+              </button>
+            )}
+
+            {authUser ? (
+              <button
+                type="button"
+                onClick={() => setShowAccountModal(true)}
+                className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-100 transition-colors"
+                title={`Cuenta: ${authUser.email}`}
+              >
+                {authUser.avatarUrl ? (
+                  <img
+                    src={authUser.avatarUrl}
+                    alt={authUser.fullName || authUser.email}
+                    className="w-4 h-4 rounded-full object-cover border border-emerald-400/40"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <span className="w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[9px] font-black inline-flex items-center justify-center uppercase">
+                    {(authUser.fullName || authUser.email).slice(0, 1)}
+                  </span>
+                )}
+                <span className="hidden md:inline max-w-[96px] truncate">
+                  {authUser.fullName || authUser.email.split('@')[0]}
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={authLoading}
+                onClick={() => {
+                  setAuthPromptReason(null);
+                  setReturnToProAfterAuth(false);
+                  setShowAuthModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-200 transition-colors disabled:opacity-60"
+                title="Iniciar sesión o crear cuenta gratis"
+              >
+                <LogIn className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Entrar</span>
               </button>
             )}
 
@@ -533,15 +645,53 @@ export function App() {
 
       {showProModal && (
         <ProUpgradeModal
+          user={authUser}
           subscription={proSub}
           onClose={() => setShowProModal(false)}
+          onRequireAuth={() => {
+            setShowProModal(false);
+            setAuthPromptReason(
+              'Inicia sesión o crea tu cuenta gratis para vincular tu Plan PRO en Web y App Móvil.'
+            );
+            setReturnToProAfterAuth(true);
+            setShowAuthModal(true);
+          }}
           onActivated={(sub) => {
             setProSub(sub);
             setShowProModal(false);
           }}
-          onDeactivated={() => {
+        />
+      )}
+
+      {showAuthModal && (
+        <AuthModal
+          promptReason={authPromptReason}
+          onClose={() => {
+            setShowAuthModal(false);
+            setAuthPromptReason(null);
+            setReturnToProAfterAuth(false);
+          }}
+          onSuccess={() => {
+            setShowAuthModal(false);
+            setAuthPromptReason(null);
+          }}
+        />
+      )}
+
+      {showAccountModal && authUser && (
+        <AccountModal
+          profile={authUser}
+          subscription={proSub}
+          onClose={() => setShowAccountModal(false)}
+          onOpenProModal={() => {
+            setShowAccountModal(false);
+            setShowProModal(true);
+          }}
+          onSignedOut={() => {
+            setShowAccountModal(false);
+            setAuthUser(null);
             setProSub(null);
-            setShowProModal(false);
+            clearProSubscription();
           }}
         />
       )}
