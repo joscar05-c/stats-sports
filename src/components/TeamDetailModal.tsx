@@ -92,7 +92,7 @@ export function TeamDetailModal({
       >
         {/* Header */}
         <div
-          className="p-5 border-b border-white/[0.08]"
+          className="shrink-0 p-5 border-b border-white/[0.08]"
           style={{
             background: `linear-gradient(135deg, ${accent}38 0%, #080d1a 72%)`,
           }}
@@ -135,7 +135,7 @@ export function TeamDetailModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-800 bg-slate-900/50">
+        <div className="shrink-0 flex border-b border-slate-800 bg-slate-900/50">
           <button
             onClick={() => setTab('stats')}
             className={`flex-1 py-2.5 text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 border-b-2 transition-colors ${
@@ -169,7 +169,7 @@ export function TeamDetailModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto p-3 sm:p-4">
+        <div className="flex-1 min-h-0 overflow-auto p-3 sm:p-4">
           {loading ? (
             <div className="py-12 text-center text-slate-400 text-sm">Cargando datos...</div>
           ) : tab === 'stats' ? (

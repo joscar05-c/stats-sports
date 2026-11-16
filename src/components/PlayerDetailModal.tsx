@@ -155,7 +155,7 @@ export function PlayerDetailModal({
           <>
             {/* Hero Header */}
             <div
-              className="relative p-5 border-b border-white/[0.08]"
+              className="shrink-0 relative p-5 border-b border-white/[0.08]"
               style={{
                 background: `linear-gradient(135deg, ${accent}38 0%, #080d1a 72%)`,
               }}
@@ -240,7 +240,7 @@ export function PlayerDetailModal({
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-auto p-4 sm:p-5 space-y-5">
+            <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-5 space-y-5">
               {average ? (
                 <>
                   {/* Main Averages Grid */}

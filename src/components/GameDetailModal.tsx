@@ -366,12 +366,12 @@ export function GameDetailModal({
       >
         {/* Header */}
         <div
-          className="p-4 sm:p-5 border-b border-white/[0.08]"
+          className="shrink-0 p-3.5 sm:p-5 border-b border-white/[0.08]"
           style={{
             background: `linear-gradient(120deg, ${awayColor}2b 0%, #080d1a 50%, ${homeColor}2b 100%)`,
           }}
         >
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2 sm:mb-3">
             <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-300">
               <Calendar className="w-3.5 h-3.5 text-emerald-400" />
               {game.status_detail || game.game_date}
@@ -386,13 +386,13 @@ export function GameDetailModal({
           </div>
 
           {/* Matchup Scoreboard */}
-          <div className="grid grid-cols-3 items-center gap-2 py-1">
+          <div className="grid grid-cols-3 items-center gap-2 py-0.5 sm:py-1">
             <div className="flex flex-col items-center text-center">
               {game.away_team.logo_url && (
                 <img
                   src={game.away_team.logo_url}
                   alt={game.away_team.abbreviation}
-                  className="w-12 h-12 object-contain mb-1.5 drop-shadow"
+                  className="w-10 h-10 sm:w-12 sm:h-12 object-contain mb-1 sm:mb-1.5 drop-shadow"
                 />
               )}
               <span className="font-bold text-sm sm:text-base">{game.away_team.short_name}</span>
@@ -404,9 +404,9 @@ export function GameDetailModal({
               </span>
             </div>
 
-            <div className="flex items-center justify-center gap-3 sm:gap-5 tabular-nums">
+            <div className="flex items-center justify-center gap-2.5 sm:gap-5 tabular-nums">
               <span
-                className={`text-3xl sm:text-4xl font-black ${
+                className={`text-2xl sm:text-4xl font-black ${
                   game.away_score >= game.home_score && game.status !== 'scheduled'
                     ? 'text-emerald-300'
                     : 'text-slate-400'
@@ -416,7 +416,7 @@ export function GameDetailModal({
               </span>
               <span className="text-xs font-bold text-slate-500">VS</span>
               <span
-                className={`text-3xl sm:text-4xl font-black ${
+                className={`text-2xl sm:text-4xl font-black ${
                   game.home_score >= game.away_score && game.status !== 'scheduled'
                     ? 'text-emerald-300'
                     : 'text-slate-400'
@@ -431,7 +431,7 @@ export function GameDetailModal({
                 <img
                   src={game.home_team.logo_url}
                   alt={game.home_team.abbreviation}
-                  className="w-12 h-12 object-contain mb-1.5 drop-shadow"
+                  className="w-10 h-10 sm:w-12 sm:h-12 object-contain mb-1 sm:mb-1.5 drop-shadow"
                 />
               )}
               <span className="font-bold text-sm sm:text-base">{game.home_team.short_name}</span>
@@ -501,13 +501,13 @@ export function GameDetailModal({
         </div>
 
         {/* Primary Section Switcher */}
-        <div className="flex border-b border-white/[0.08] bg-black/40 px-3 pt-2 gap-1.5 overflow-x-auto no-scrollbar">
+        <div className="shrink-0 flex border-b border-white/[0.08] bg-[#060a14] px-3 pt-2 gap-1.5 overflow-x-auto no-scrollbar">
           <button
             type="button"
             onClick={() => setSection('betting')}
-            className={`shrink-0 px-3 py-2 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
+            className={`shrink-0 px-3 py-2.5 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
               section === 'betting'
-                ? 'border-emerald-400 text-emerald-300 bg-white/[0.05]'
+                ? 'border-emerald-400 text-emerald-300 bg-white/[0.06]'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -517,9 +517,9 @@ export function GameDetailModal({
           <button
             type="button"
             onClick={() => setSection('teamstats')}
-            className={`shrink-0 px-3 py-2 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
+            className={`shrink-0 px-3 py-2.5 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
               section === 'teamstats'
-                ? 'border-emerald-400 text-white bg-white/[0.05]'
+                ? 'border-emerald-400 text-white bg-white/[0.06]'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -529,9 +529,9 @@ export function GameDetailModal({
           <button
             type="button"
             onClick={() => setSection('boxscore')}
-            className={`shrink-0 px-3 py-2 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
+            className={`shrink-0 px-3 py-2.5 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
               section === 'boxscore'
-                ? 'border-emerald-400 text-white bg-white/[0.05]'
+                ? 'border-emerald-400 text-white bg-white/[0.06]'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -543,7 +543,7 @@ export function GameDetailModal({
         </div>
 
         {section === 'betting' ? (
-          <div className="flex-1 overflow-auto p-4 sm:p-5 space-y-4">
+          <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-5 space-y-4">
             {/* Sportsbook Market Board */}
             <div className="sb-card rounded-2xl p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1108,7 +1108,7 @@ export function GameDetailModal({
             )}
           </div>
         ) : section === 'teamstats' ? (
-          <div className="flex-1 overflow-auto p-4 sm:p-5 space-y-4">
+          <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-5 space-y-4">
             {/* Live or Final Game Collective Comparison */}
             {game.status !== 'scheduled' && stats.length > 0 && (
               <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-4 space-y-3.5 tabular-nums">
@@ -1420,7 +1420,7 @@ export function GameDetailModal({
         ) : (
           <>
             {/* Team Switcher for Box Score */}
-            <div className="flex border-b border-slate-800 bg-slate-900/50">
+            <div className="shrink-0 flex border-b border-slate-800 bg-slate-900/50">
               {[game.away_team, game.home_team].map((t) => (
                 <button
                   key={t.id}
@@ -1438,7 +1438,7 @@ export function GameDetailModal({
             </div>
 
             {/* Box Score Body */}
-            <div className="flex-1 overflow-auto p-2 sm:p-4">
+            <div className="flex-1 min-h-0 overflow-auto p-2 sm:p-4">
               {game.status === 'scheduled' ? (
                 <div className="py-10 text-center space-y-3">
                   <p className="text-slate-400 text-sm">
