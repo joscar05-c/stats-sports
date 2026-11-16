@@ -62,6 +62,7 @@ export function PropAnalysisView({
 
   // Interactive sportsbook line simulator
   const [customLine, setCustomLine] = useState<number>(prop.lineValue);
+  const [targetPick, setTargetPick] = useState<'OVER' | 'UNDER' | 'SPREAD' | 'ML'>(prop.pick);
 
   useEffect(() => {
     setLiveGame(initialGame);
@@ -69,7 +70,8 @@ export function PropAnalysisView({
 
   useEffect(() => {
     setCustomLine(prop.lineValue);
-  }, [prop.id, prop.lineValue]);
+    setTargetPick(prop.pick);
+  }, [prop.id, prop.lineValue, prop.pick]);
 
   // Fetch deeper logs when inspecting a player prop (15 games instead of truncated slice)
   useEffect(() => {
@@ -456,54 +458,55 @@ export function PropAnalysisView({
       ).toFixed(1)} rebotes ofensivos y ${Number(tAvg?.dreb_pg ?? 0).toFixed(1)} defensivos.`;
     }
 
-    // Evaluate customLine dynamically!
-    let effectivePick: 'OVER' | 'UNDER' | 'SPREAD' | 'ML' = prop.pick;
-    let margin = 0;
-    let hits = 0;
+    // Evaluate customLine strictly against targetPick (never silently flip away from user's prop side)
+    const effectivePick: 'OVER' | 'UNDER' | 'SPREAD' | 'ML' = targetPick;
+    const isHitPoint = (val: number): boolean => {
+      if (effectivePick === 'SPREAD') return val + customLine > 0;
+      if (effectivePick === 'ML') return val > 0;
+      if (effectivePick === 'UNDER') return val < customLine;
+      return val > customLine;
+    };
 
-    if (prop.pick === 'SPREAD') {
-      // projectedVal is chosen team's expected margin; winning margin + customLine > 0 covers
-      margin = projectedVal + customLine;
-      hits = historySeries.filter((h) => h.value + customLine > 0).length;
-    } else if (prop.pick === 'ML') {
-      margin = (projectedVal - customLine) / 4; // scale prob edge cleanly
-      hits = historySeries.filter((h) => h.value > 0).length;
+    let signedEdge = 0;
+    if (effectivePick === 'SPREAD') {
+      signedEdge = projectedVal + customLine;
+    } else if (effectivePick === 'ML') {
+      signedEdge = (projectedVal - customLine) / 4;
+    } else if (effectivePick === 'UNDER') {
+      signedEdge = customLine - projectedVal;
     } else {
-      const diff = projectedVal - customLine;
-      effectivePick = diff >= 0 ? 'OVER' : 'UNDER';
-      margin = Math.abs(diff);
-      hits = historySeries.filter((h) =>
-        effectivePick === 'OVER' ? h.value > customLine : h.value < customLine,
-      ).length;
+      signedEdge = projectedVal - customLine;
     }
 
+    const hits = historySeries.filter((h) => isHitPoint(h.value)).length;
     const totalHist = historySeries.length;
     const hitRatePct = totalHist > 0 ? Math.round((hits / totalHist) * 100) : 0;
 
     // Recalculate dynamic confidence at customLine
-    const relDenom = prop.pick === 'SPREAD' ? 8 : prop.pick === 'ML' ? 12 : Math.max(3, customLine);
-    const dynamicConf =
-      Math.abs(customLine - prop.lineValue) < 0.01
-        ? prop.confidence
-        : Math.max(
-            48,
-            Math.min(
-              94,
-              Math.round(
-                50 +
-                  Math.min(26, (Math.abs(margin) / relDenom) * 95) +
-                  (totalHist > 0 ? (hits / totalHist - 0.5) * 30 : 0),
-              ),
+    const relDenom =
+      effectivePick === 'SPREAD' ? 8 : effectivePick === 'ML' ? 12 : Math.max(3, customLine);
+    const matchesOriginalConfig =
+      Math.abs(customLine - prop.lineValue) < 0.01 && effectivePick === prop.pick;
+    const dynamicConf = matchesOriginalConfig
+      ? prop.confidence
+      : Math.max(
+          42,
+          Math.min(
+            94,
+            Math.round(
+              50 +
+                Math.max(-18, Math.min(26, (signedEdge / relDenom) * 95)) +
+                (totalHist > 0 ? (hits / totalHist - 0.5) * 30 : 0),
             ),
-          );
+          ),
+        );
 
     // Accessibility verdict ("¿Es accesible apostar a este mercado?")
     let accessibilityTitle = 'Accesibilidad Moderada';
     let accessibilityLevel: 'high' | 'medium' | 'low' = 'medium';
     let accessibilityText = '';
 
-    const favorableEdge = prop.pick === 'SPREAD' ? projectedVal + customLine : margin;
-    if (prop.pick === 'ML') {
+    if (effectivePick === 'ML') {
       if (dynamicConf >= 68 && projectedVal - customLine >= 4) {
         accessibilityTitle = 'Mercado Accesible';
         accessibilityLevel = 'high';
@@ -519,42 +522,55 @@ export function PropAnalysisView({
         accessibilityLevel = 'low';
         accessibilityText = `La cuota exigida pide una probabilidad mayor a la proyectada por el rendimiento actual.`;
       }
-    } else if (prop.pick === 'SPREAD') {
-      if (favorableEdge >= 3.0 && (totalHist === 0 || hitRatePct >= 50)) {
+    } else if (effectivePick === 'SPREAD') {
+      if (signedEdge >= 3.0 && (totalHist === 0 || hitRatePct >= 50)) {
         accessibilityTitle = 'Mercado Accesible';
         accessibilityLevel = 'high';
-        accessibilityText = `El margen proyectado ofrece +${favorableEdge.toFixed(
+        accessibilityText = `El margen proyectado ofrece +${signedEdge.toFixed(
           1,
         )} pts de colchón sobre el hándicap ${customLine > 0 ? `+${customLine}` : customLine}.`;
-      } else if (favorableEdge >= 0.8) {
+      } else if (signedEdge >= 0.8) {
         accessibilityTitle = 'Accesibilidad Moderada';
         accessibilityLevel = 'medium';
-        accessibilityText = `Ventaja leve (${favorableEdge.toFixed(
+        accessibilityText = `Ventaja leve (+${signedEdge.toFixed(
           1,
         )} pts). Un cierre apretado puede definir si cubre.`;
       } else {
         accessibilityTitle = 'Mercado Exigente';
         accessibilityLevel = 'low';
-        accessibilityText = `A esa línea el margen estadístico queda corto o negativo (${favorableEdge.toFixed(
+        accessibilityText = `A esa línea el margen estadístico queda corto o negativo (${signedEdge.toFixed(
           1,
         )} pts).`;
       }
     } else {
-      const pctBuffer = Math.abs(margin) / Math.max(2, customLine);
-      if ((pctBuffer >= 0.04 || Math.abs(margin) >= 1.2) && (totalHist === 0 || hitRatePct >= 55)) {
+      const pctBuffer = signedEdge / Math.max(2, customLine);
+      if (signedEdge < 0) {
+        accessibilityTitle = 'Mercado Exigente';
+        accessibilityLevel = 'low';
+        accessibilityText = `La proyección (${projectedVal.toFixed(1)} ${unit}) queda ${Math.abs(
+          signedEdge,
+        ).toFixed(1)} ${unit} en contra de ${effectivePick} ${customLine.toFixed(
+          1,
+        )}. Conviene subir/bajar la línea o evaluar el lado opuesto.`;
+      } else if (
+        (pctBuffer >= 0.04 || signedEdge >= 1.0) &&
+        (totalHist === 0 || hitRatePct >= 55)
+      ) {
         accessibilityTitle = 'Mercado Accesible';
         accessibilityLevel = 'high';
-        accessibilityText = `Colchón sólido de ${Math.abs(margin).toFixed(
+        accessibilityText = `Colchón sólido de +${signedEdge.toFixed(
           1,
-        )} ${unit} hacia ${effectivePick} con ${
+        )} ${unit} a favor de ${effectivePick} ${customLine.toFixed(1)} con ${
           totalHist > 0 ? `${hitRatePct}% de acierto reciente` : 'respaldo de promedio de temporada'
         }.`;
-      } else if (Math.abs(margin) >= 0.3) {
+      } else if (signedEdge >= 0.25 || (totalHist > 0 && hitRatePct >= 60)) {
         accessibilityTitle = 'Accesibilidad Moderada';
         accessibilityLevel = 'medium';
-        accessibilityText = `Línea cercana a la proyección (${projectedVal.toFixed(
+        accessibilityText = `Margen positivo de +${signedEdge.toFixed(
           1,
-        )} ${unit}). Conviene esperar una mejor cuota o bajar media unidad.`;
+        )} ${unit} hacia ${effectivePick} frente a la proyección (${projectedVal.toFixed(
+          1,
+        )} ${unit}).`;
       } else {
         accessibilityTitle = 'Mercado Exigente';
         accessibilityLevel = 'low';
@@ -566,9 +582,9 @@ export function PropAnalysisView({
 
     // Limit line recommendation
     const accessibleLimitText =
-      prop.pick === 'SPREAD'
+      effectivePick === 'SPREAD'
         ? `Hasta ${(Math.ceil((-projectedVal + 1.5) * 2) / 2).toFixed(1)}`
-        : prop.pick === 'ML'
+        : effectivePick === 'ML'
           ? `Valor desde prob. implícita <= ${Math.max(45, projectedVal - 3).toFixed(0)}%`
           : effectivePick === 'OVER'
             ? `Accesible hasta ${(Math.floor((projectedVal - 0.5) * 2) / 2).toFixed(1)} ${unit}`
@@ -579,6 +595,7 @@ export function PropAnalysisView({
       seasonBaseline,
       recentBaseline,
       projectedVal,
+      signedEdge,
       rivalFactorLabel,
       rivalFactorDetail,
       playerAvgObj,
@@ -593,7 +610,17 @@ export function PropAnalysisView({
       accessibilityText,
       accessibleLimitText,
     };
-  }, [prop, context, fullPlayerLogs, liveGame, homeRecent, awayRecent, insight, customLine]);
+  }, [
+    prop,
+    context,
+    fullPlayerLogs,
+    liveGame,
+    homeRecent,
+    awayRecent,
+    insight,
+    customLine,
+    targetPick,
+  ]);
 
   // Live current value if game is live/final
   const liveCurrentValue = useMemo(() => {
@@ -811,10 +838,28 @@ export function PropAnalysisView({
             </div>
           </div>
 
-          {/* Card 3: Recommended Side */}
+          {/* Card 3: Recommended Side (with Over/Under switch if applicable) */}
           <div className="rounded-xl bg-slate-950/75 border border-slate-800 p-3.5 space-y-1.5">
-            <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-              Opción Sugerida
+            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+              <span>Opción Evaluada</span>
+              {(prop.pick === 'OVER' || prop.pick === 'UNDER') && (
+                <div className="inline-flex rounded-md bg-slate-900 border border-slate-700 p-0.5 text-[10px]">
+                  {(['OVER', 'UNDER'] as const).map((side) => (
+                    <button
+                      key={side}
+                      type="button"
+                      onClick={() => setTargetPick(side)}
+                      className={`px-1.5 py-0.5 rounded font-semibold transition-colors ${
+                        targetPick === side
+                          ? 'bg-slate-200 text-slate-950'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {side}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="text-xl font-bold text-white">
               {prop.pick === 'SPREAD'
@@ -908,20 +953,26 @@ export function PropAnalysisView({
             </div>
             <div className="flex items-center gap-4 text-[11px] text-slate-400">
               <span className="inline-flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-[2px] bg-slate-200 inline-block" />
-                Cumple
+                <span className="w-2.5 h-2.5 rounded-[2px] bg-emerald-500 inline-block" />
+                Cumple (
+                {analysis.effectivePick === 'UNDER'
+                  ? `< ${customLine.toFixed(1)}`
+                  : analysis.effectivePick === 'OVER'
+                    ? `> ${customLine.toFixed(1)}`
+                    : analysis.effectivePick}
+                )
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-[2px] bg-slate-700 inline-block" />
+                <span className="w-2.5 h-2.5 rounded-[2px] bg-rose-500 inline-block" />
                 No cumple
               </span>
             </div>
           </div>
 
-          {/* Sober Bar Chart */}
-          {prop.pick !== 'SPREAD' && prop.pick !== 'ML' && (
-            <div className="relative pt-5 pb-1">
-              <div className="relative flex items-end gap-1.5 h-36">
+          {/* Bar Chart (Green when hits target pick, Red when misses) */}
+          <div className="relative pt-5 pb-1">
+            <div className="relative flex items-end gap-1.5 h-36">
+              {prop.pick !== 'SPREAD' && prop.pick !== 'ML' && (
                 <div
                   className="absolute left-0 right-0 border-t border-dashed border-slate-400/80 pointer-events-none z-10 flex justify-end"
                   style={{
@@ -932,41 +983,51 @@ export function PropAnalysisView({
                     {customLine.toFixed(1)}
                   </span>
                 </div>
+              )}
 
-                {analysis.historySeries.map((pt) => {
-                  const hit =
-                    analysis.effectivePick === 'OVER'
-                      ? pt.value > customLine
-                      : pt.value < customLine;
-                  const pct = Math.max(8, Math.round((pt.value / maxChartVal) * 100));
-                  return (
-                    <div
-                      key={pt.id}
-                      className="flex-1 min-w-0 flex flex-col items-center justify-end h-full"
-                      title={`${pt.dateLabel} ${pt.matchupLabel}: ${pt.value}`}
+              {analysis.historySeries.map((pt) => {
+                const hit =
+                  analysis.effectivePick === 'SPREAD'
+                    ? pt.value + customLine > 0
+                    : analysis.effectivePick === 'ML'
+                      ? pt.value > 0
+                      : analysis.effectivePick === 'UNDER'
+                        ? pt.value < customLine
+                        : pt.value > customLine;
+                const barMagnitude =
+                  prop.pick === 'SPREAD' || prop.pick === 'ML' ? Math.abs(pt.value) : pt.value;
+                const pct = Math.max(10, Math.round((barMagnitude / maxChartVal) * 100));
+                return (
+                  <div
+                    key={pt.id}
+                    className="flex-1 min-w-0 flex flex-col items-center justify-end h-full"
+                    title={`${pt.dateLabel} ${pt.matchupLabel}: ${pt.value} (${hit ? 'Cumple' : 'No cumple'})`}
+                  >
+                    <span
+                      className={`text-[10px] font-bold mb-1 tabular-nums ${
+                        hit ? 'text-emerald-300' : 'text-rose-300'
+                      }`}
                     >
-                      <span
-                        className={`text-[10px] font-semibold mb-1 tabular-nums ${
-                          hit ? 'text-slate-100' : 'text-slate-500'
-                        }`}
-                      >
-                        {pt.value}
-                      </span>
-                      <div
-                        className={`w-full max-w-[30px] rounded-t-md transition-all ${
-                          hit ? 'bg-slate-200' : 'bg-slate-700/85'
-                        }`}
-                        style={{ height: `${pct}%` }}
-                      />
-                      <span className="mt-1 text-[9px] text-slate-500 truncate max-w-full">
-                        {pt.dateLabel}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+                      {(prop.pick === 'SPREAD' || prop.pick === 'ML') && pt.value > 0
+                        ? `+${pt.value}`
+                        : pt.value}
+                    </span>
+                    <div
+                      className={`w-full max-w-[30px] rounded-t-md transition-all ${
+                        hit
+                          ? 'bg-gradient-to-t from-emerald-600 to-emerald-400'
+                          : 'bg-gradient-to-t from-rose-700/85 to-rose-500/90'
+                      }`}
+                      style={{ height: `${pct}%` }}
+                    />
+                    <span className="mt-1 text-[9px] text-slate-500 truncate max-w-full">
+                      {pt.dateLabel}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-          )}
+          </div>
 
           {/* Clean Tabular Breakdown */}
           <div className="overflow-x-auto rounded-xl border border-slate-800/80">
@@ -983,28 +1044,30 @@ export function PropAnalysisView({
               <tbody className="divide-y divide-slate-800/60">
                 {[...analysis.historySeries].reverse().map((pt) => {
                   const hit =
-                    prop.pick === 'SPREAD'
+                    analysis.effectivePick === 'SPREAD'
                       ? pt.value + customLine > 0
-                      : prop.pick === 'ML'
+                      : analysis.effectivePick === 'ML'
                         ? pt.value > 0
-                        : analysis.effectivePick === 'OVER'
-                          ? pt.value > customLine
-                          : pt.value < customLine;
+                        : analysis.effectivePick === 'UNDER'
+                          ? pt.value < customLine
+                          : pt.value > customLine;
                   return (
                     <tr key={pt.id} className="hover:bg-slate-800/30">
                       <td className="py-2 px-3 text-slate-400">{pt.dateLabel}</td>
                       <td className="py-2 px-2 font-medium text-slate-200">{pt.matchupLabel}</td>
                       <td className="py-2 px-2 text-slate-400">{pt.secondaryText}</td>
                       <td className="text-right py-2 px-2 font-bold text-slate-100">
-                        {prop.pick === 'SPREAD' && pt.value > 0 ? `+${pt.value}` : pt.value}{' '}
+                        {(prop.pick === 'SPREAD' || prop.pick === 'ML') && pt.value > 0
+                          ? `+${pt.value}`
+                          : pt.value}{' '}
                         {prop.pick === 'SPREAD' || prop.pick === 'ML' ? 'pts' : analysis.unit}
                       </td>
                       <td className="text-center py-2 px-3">
                         <span
                           className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded border ${
                             hit
-                              ? 'bg-slate-200 text-slate-950 border-slate-200'
-                              : 'bg-slate-900 text-slate-400 border-slate-700'
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                              : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
                           }`}
                         >
                           {hit ? 'Cumple' : 'No cumple'}

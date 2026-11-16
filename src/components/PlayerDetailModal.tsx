@@ -33,9 +33,10 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
   const [logs, setLogs] = useState<PlayerGameStat[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Interactive chart metric + sportsbook prop line
+  // Interactive chart metric + sportsbook prop line + evaluated side
   const [chartMetric, setChartMetric] = useState<PlayerChartMetric>('pts');
   const [propLine, setPropLine] = useState<number>(15.5);
+  const [targetSide, setTargetSide] = useState<'OVER' | 'UNDER'>('OVER');
   const [selectedBarIdx, setSelectedBarIdx] = useState<number | null>(null);
   const [propsOrder, setPropsOrder] = useState<'asc' | 'desc'>('asc');
 
@@ -43,6 +44,15 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
     const recs = buildSinglePlayerPropsRecommendations(average, logs);
     return propsOrder === 'asc' ? recs : [...recs].reverse();
   }, [average, logs, propsOrder]);
+
+  useEffect(() => {
+    const matching = playerProps.find((p) => p.metricKey === chartMetric);
+    if (matching) {
+      setTargetSide(matching.pick === 'UNDER' ? 'UNDER' : 'OVER');
+    } else {
+      setTargetSide('OVER');
+    }
+  }, [playerId, chartMetric, playerProps]);
 
   useEffect(() => {
     let active = true;
@@ -82,36 +92,37 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
       return {
         values: [] as number[],
         maxScale: 20,
-        overCount: 0,
-        last5Over: 0,
+        hitCount: 0,
+        last5Hit: 0,
         last5Total: 0,
         stretchAvg: 0,
         minVal: 0,
         maxVal: 0,
       };
     }
+    const isHit = (v: number) => (targetSide === 'OVER' ? v > propLine : v < propLine);
     const values = chartLogs.map((g) => metricCfg.getStatValue(g));
     const maxRaw = Math.max(...values, propLine, 4);
     const maxScale = Math.max(5, Math.ceil(maxRaw * 1.15));
-    const overCount = values.filter((v) => v > propLine).length;
+    const hitCount = values.filter(isHit).length;
     const recent5 = values.slice(-5);
-    const last5Over = recent5.filter((v) => v > propLine).length;
+    const last5Hit = recent5.filter(isHit).length;
     const stretchAvg = values.reduce((sum, v) => sum + v, 0) / values.length;
     return {
       values,
       maxScale,
-      overCount,
-      last5Over,
+      hitCount,
+      last5Hit,
       last5Total: recent5.length,
       stretchAvg,
       minVal: Math.min(...values),
       maxVal: Math.max(...values),
     };
-  }, [chartLogs, metricCfg, propLine]);
+  }, [chartLogs, metricCfg, propLine, targetSide]);
 
   const accent = player?.team?.primary_color || '#f97316';
   const hitRatePct =
-    chartLogs.length > 0 ? Math.round((chartStats.overCount / chartLogs.length) * 100) : 0;
+    chartLogs.length > 0 ? Math.round((chartStats.hitCount / chartLogs.length) * 100) : 0;
   const lineBottomPct = Math.min(96, Math.max(4, (propLine / chartStats.maxScale) * 100));
 
   const adjustPropLine = (delta: number) => {
@@ -314,6 +325,7 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                             if (prop.metricKey) {
                               setChartMetric(prop.metricKey);
                               setPropLine(prop.lineValue);
+                              setTargetSide(prop.pick === 'UNDER' ? 'UNDER' : 'OVER');
                             }
                           }}
                           className={`w-full text-left rounded-xl p-2.5 border transition-colors ${
@@ -418,6 +430,22 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                           Prom.
                         </button>
                       )}
+                      <div className="inline-flex rounded-lg bg-slate-900 border border-slate-700 p-0.5 text-[10px]">
+                        {(['OVER', 'UNDER'] as const).map((side) => (
+                          <button
+                            key={side}
+                            type="button"
+                            onClick={() => setTargetSide(side)}
+                            className={`px-2 py-0.5 rounded font-bold transition-colors ${
+                              targetSide === side
+                                ? 'bg-slate-200 text-slate-950'
+                                : 'text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {side}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 text-[11px] tabular-nums">
@@ -430,12 +458,12 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                               : 'bg-amber-500/20 text-amber-300'
                         }`}
                       >
-                        OVER {chartStats.overCount}/{chartLogs.length} ({hitRatePct}%)
+                        {targetSide} {chartStats.hitCount}/{chartLogs.length} ({hitRatePct}%)
                       </span>
                       <span className="text-slate-400">
                         Últ. {chartStats.last5Total}:{' '}
                         <strong className="text-slate-200">
-                          {chartStats.last5Over}/{chartStats.last5Total}
+                          {chartStats.last5Hit}/{chartStats.last5Total}
                         </strong>
                       </span>
                       <span className="text-slate-400">
@@ -462,7 +490,7 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
 
                       {chartLogs.map((g, idx) => {
                         const val = metricCfg.getStatValue(g);
-                        const isOver = val > propLine;
+                        const isHit = targetSide === 'OVER' ? val > propLine : val < propLine;
                         const pct = Math.max(8, Math.round((val / chartStats.maxScale) * 100));
                         const isHome = g.game?.home_team_id === g.team_id;
                         const opp = isHome
@@ -479,7 +507,7 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                           >
                             <span
                               className={`text-[10px] font-bold mb-1 tabular-nums ${
-                                isOver ? 'text-emerald-300' : 'text-rose-300/90'
+                                isHit ? 'text-emerald-300' : 'text-rose-300/90'
                               }`}
                             >
                               {val}
@@ -488,7 +516,7 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                               className={`w-full max-w-[26px] rounded-t-md transition-all ${
                                 isFocused ? 'ring-2 ring-white/80' : ''
                               } ${
-                                isOver
+                                isHit
                                   ? 'bg-gradient-to-t from-emerald-600 to-emerald-400'
                                   : 'bg-gradient-to-t from-rose-700/80 to-rose-500/85'
                               }`}
@@ -506,11 +534,11 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                       <div className="flex items-center gap-3">
                         <span className="inline-flex items-center gap-1">
                           <span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" />
-                          Alta (Over {propLine.toFixed(1)})
+                          Cumple ({targetSide} {propLine.toFixed(1)})
                         </span>
                         <span className="inline-flex items-center gap-1">
                           <span className="w-2.5 h-2.5 rounded-sm bg-rose-500 inline-block" />
-                          Baja (Under {propLine.toFixed(1)})
+                          No cumple
                         </span>
                       </div>
                       <span className="tabular-nums">
@@ -584,7 +612,7 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                           >
                             3P
                           </th>
-                          <th className="text-center py-2 px-2">O/U</th>
+                          <th className="text-center py-2 px-2">ESTADO</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60">
@@ -594,7 +622,8 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                             ? row.game?.away_team?.abbreviation
                             : row.game?.home_team?.abbreviation;
                           const metricVal = metricCfg.getStatValue(row);
-                          const hitOver = metricVal > propLine;
+                          const isHit =
+                            targetSide === 'OVER' ? metricVal > propLine : metricVal < propLine;
                           return (
                             <tr key={row.id} className="hover:bg-slate-800/30">
                               <td className="py-2 px-3 text-slate-400">
@@ -646,12 +675,12 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                               <td className="text-center py-2 px-2">
                                 <span
                                   className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                                    hitOver
+                                    isHit
                                       ? 'bg-emerald-500/20 text-emerald-300'
                                       : 'bg-rose-500/15 text-rose-300'
                                   }`}
                                 >
-                                  {hitOver ? 'O' : 'U'}
+                                  {isHit ? 'Cumple' : 'No cumple'}
                                 </span>
                               </td>
                             </tr>
