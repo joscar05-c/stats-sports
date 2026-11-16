@@ -21,6 +21,8 @@ import { LeadersView } from './components/LeadersView';
 import { CompareView } from './components/CompareView';
 import { StandingsView } from './components/StandingsView';
 import { ExploreView } from './components/ExploreView';
+import { PropsSidebar, type SelectedPropPayload } from './components/PropsSidebar';
+import { PropAnalysisView } from './components/PropAnalysisView';
 import { GameDetailModal } from './components/GameDetailModal';
 import { PlayerDetailModal } from './components/PlayerDetailModal';
 import { TeamDetailModal } from './components/TeamDetailModal';
@@ -45,7 +47,8 @@ export function App() {
   const [loadingInit, setLoadingInit] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Drill-down Modals
+  // Drill-down Modals & Active Main Prop View
+  const [activePropView, setActivePropView] = useState<SelectedPropPayload | null>(null);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<{
@@ -154,6 +157,7 @@ export function App() {
 
   const handleSelectLeague = async (lg: League) => {
     setActiveLeague(lg);
+    setActivePropView(null);
     const sn = await fetchCurrentSeason(lg.id);
     setSeason(sn);
   };
@@ -194,11 +198,14 @@ export function App() {
           <nav className="hidden md:flex items-center gap-1">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const active = tab === item.key;
+              const active = !activePropView && tab === item.key;
               return (
                 <button
                   key={item.key}
-                  onClick={() => setTab(item.key)}
+                  onClick={() => {
+                    setActivePropView(null);
+                    setTab(item.key);
+                  }}
                   className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-colors ${
                     active
                       ? 'bg-orange-500 text-slate-950'
@@ -266,7 +273,18 @@ export function App() {
         </div>
       </header>
 
+      {/* Left Slide-Out Props Sidebar */}
+      {activeLeague && (
+        <PropsSidebar
+          leagueId={activeLeague.id}
+          syncVersion={syncVersion}
+          activePropId={activePropView?.prop.id ?? null}
+          onSelectProp={(selection) => setActivePropView(selection)}
+        />
+      )}
+
       {/* Main Content */}
+      <div className={activeLeague ? 'md:pl-[66px]' : ''}>
       <main className="max-w-5xl mx-auto px-4 pt-4">
         {fromCache && (
           <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300">
@@ -290,6 +308,18 @@ export function App() {
           <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-8 text-center text-sm text-slate-400">
             Aún no hay ligas cargadas en Supabase. Ejecuta el sincronizador para poblar la NBA.
           </div>
+        ) : activePropView ? (
+          <PropAnalysisView
+            game={activePropView.game}
+            prop={activePropView.prop}
+            context={activePropView.context}
+            onBack={() => setActivePropView(null)}
+            onSelectProp={(nextProp) =>
+              setActivePropView((prev) => (prev ? { ...prev, prop: nextProp } : null))
+            }
+            onOpenGameModal={(game) => setSelectedGame(game)}
+            onOpenPlayerModal={(pid) => setSelectedPlayerId(pid)}
+          />
         ) : (
           <>
             {tab === 'games' && (
@@ -339,17 +369,21 @@ export function App() {
           </>
         )}
       </main>
+      </div>
 
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-[#0c1220]/95 backdrop-blur-md border-t border-slate-800/90 pb-safe">
         <div className="grid grid-cols-5">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const active = tab === item.key;
+            const active = !activePropView && tab === item.key;
             return (
               <button
                 key={item.key}
-                onClick={() => setTab(item.key)}
+                onClick={() => {
+                  setActivePropView(null);
+                  setTab(item.key);
+                }}
                 className={`flex flex-col items-center justify-center py-2.5 gap-1 text-[10px] font-bold transition-colors ${
                   active ? 'text-orange-400' : 'text-slate-400 hover:text-slate-200'
                 }`}
