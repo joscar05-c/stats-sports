@@ -9,11 +9,13 @@ import {
   RotateCcw,
   Target,
   ArrowUpDown,
+  Lock,
 } from 'lucide-react';
 import { fetchPlayerProfileAndLogs } from '../services/basketballApi';
 import { downloadPlayerStatCard } from '../utils/shareCard';
 import {
   buildSinglePlayerPropsRecommendations,
+  isHighProbabilityProp,
   PLAYER_CHART_METRICS,
   suggestPropLine,
   type PlayerChartMetric,
@@ -22,12 +24,19 @@ import type { Player, PlayerGameStat, PlayerSeasonAverage } from '../types/datab
 
 interface PlayerDetailModalProps {
   playerId: number;
+  isPro: boolean;
   onClose: () => void;
+  onOpenProModal: () => void;
 }
 
 const METRIC_ORDER: PlayerChartMetric[] = ['pts', 'reb', 'ast', 'pra', 'tpm'];
 
-export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps) {
+export function PlayerDetailModal({
+  playerId,
+  isPro,
+  onClose,
+  onOpenProModal,
+}: PlayerDetailModalProps) {
   const [player, setPlayer] = useState<Player | null>(null);
   const [average, setAverage] = useState<PlayerSeasonAverage | null>(null);
   const [logs, setLogs] = useState<PlayerGameStat[]>([]);
@@ -312,7 +321,8 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
 
                   <div className="space-y-2">
                     {playerProps.map((prop) => {
-                      const isSelected = chartMetric === prop.metricKey;
+                      const locked = !isPro && isHighProbabilityProp(prop.confidence);
+                      const isSelected = !locked && chartMetric === prop.metricKey;
                       const badgeCls =
                         prop.pick === 'OVER'
                           ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
@@ -322,6 +332,10 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                           key={prop.id}
                           type="button"
                           onClick={() => {
+                            if (locked) {
+                              onOpenProModal();
+                              return;
+                            }
                             if (prop.metricKey) {
                               setChartMetric(prop.metricKey);
                               setPropLine(prop.lineValue);
@@ -337,20 +351,27 @@ export function PlayerDetailModal({ playerId, onClose }: PlayerDetailModalProps)
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="text-xs font-bold text-white">{prop.marketLabel}</span>
                             <div className="flex items-center gap-2 tabular-nums">
-                              <span
-                                className={`text-[11px] font-black px-2 py-0.5 rounded-md border ${badgeCls}`}
-                              >
-                                {prop.pickLabel}
-                              </span>
+                              {locked ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-900 text-slate-200 border border-slate-700">
+                                  <Lock className="w-3 h-3 text-slate-400" />
+                                  PRO ($5/mes)
+                                </span>
+                              ) : (
+                                <span
+                                  className={`text-[11px] font-black px-2 py-0.5 rounded-md border ${badgeCls}`}
+                                >
+                                  {prop.pickLabel}
+                                </span>
+                              )}
                               <span className="text-xs font-black text-orange-400">
                                 {prop.confidence}%
                               </span>
                             </div>
                           </div>
                           <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 tabular-nums">
-                            <span>{prop.statSummary}</span>
+                            <span>{locked ? 'Prop de alta probabilidad bloqueado.' : prop.statSummary}</span>
                             <span className="text-amber-300 font-semibold">
-                              {prop.marketLineText} · {prop.confidenceTier}
+                              {locked ? 'Desbloquear PRO' : `${prop.marketLineText} · ${prop.confidenceTier}`}
                             </span>
                           </div>
                         </button>

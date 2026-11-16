@@ -12,6 +12,7 @@ import {
   ArrowUpDown,
   Shield,
   User,
+  Lock,
 } from 'lucide-react';
 import {
   fetchGameBettingContext,
@@ -28,7 +29,9 @@ import {
   formatAmericanOdds,
   formatDecimalOdds,
   formatSpreadCompact,
+  isHighProbabilityProp,
   PLAYER_CHART_METRICS,
+  PRO_CONFIDENCE_THRESHOLD,
   summarizeTeamRecent,
   type PropRecommendation,
 } from '../utils/betting';
@@ -36,8 +39,10 @@ import type { Game, PlayerGameStat } from '../types/database';
 
 interface GameDetailModalProps {
   game: Game;
+  isPro: boolean;
   onClose: () => void;
   onSelectPlayer: (playerId: number) => void;
+  onOpenProModal: () => void;
 }
 
 type ModalSection = 'betting' | 'teamstats' | 'boxscore';
@@ -128,7 +133,13 @@ function computeTeamGameTotals(rows: PlayerGameStat[], fallbackScore = 0): TeamG
   };
 }
 
-export function GameDetailModal({ game: initialGame, onClose, onSelectPlayer }: GameDetailModalProps) {
+export function GameDetailModal({
+  game: initialGame,
+  isPro,
+  onClose,
+  onSelectPlayer,
+  onOpenProModal,
+}: GameDetailModalProps) {
   const [game, setGame] = useState<Game>(initialGame);
   const [section, setSection] = useState<ModalSection>(
     initialGame.status === 'scheduled' ? 'betting' : 'boxscore',
@@ -902,6 +913,7 @@ export function GameDetailModal({ game: initialGame, onClose, onSelectPlayer }: 
                 {/* Props List */}
                 <div className="space-y-2.5">
                   {filteredProps.map((prop) => {
+                    const locked = !isPro && isHighProbabilityProp(prop.confidence);
                     const liveProgress = getLivePropProgress(prop);
                     const pickBadgeClass =
                       prop.pick === 'OVER'
@@ -930,10 +942,14 @@ export function GameDetailModal({ game: initialGame, onClose, onSelectPlayer }: 
                       <div
                         key={prop.id}
                         onClick={
-                          prop.playerId ? () => onSelectPlayer(prop.playerId!) : undefined
+                          locked
+                            ? onOpenProModal
+                            : prop.playerId
+                              ? () => onSelectPlayer(prop.playerId!)
+                              : undefined
                         }
                         className={`rounded-xl bg-slate-950/75 border border-slate-800/90 p-3 space-y-2 transition-colors ${
-                          prop.playerId ? 'cursor-pointer hover:border-orange-500/50' : ''
+                          locked || prop.playerId ? 'cursor-pointer hover:border-orange-500/50' : ''
                         }`}
                       >
                         {/* Header row */}
@@ -957,35 +973,56 @@ export function GameDetailModal({ game: initialGame, onClose, onSelectPlayer }: 
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0 tabular-nums">
-                            {liveProgress && (
+                            {!locked && liveProgress && (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 border border-slate-700">
                                 {liveProgress}
                               </span>
                             )}
-                            <span
-                              className={`text-xs font-black px-2.5 py-0.5 rounded-lg border ${pickBadgeClass}`}
-                            >
-                              {prop.pickLabel}
-                            </span>
+                            {locked ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-lg bg-slate-900 text-slate-200 border border-slate-700">
+                                <Lock className="w-3 h-3 text-slate-400" />
+                                PRO ($5/mes)
+                              </span>
+                            ) : (
+                              <span
+                                className={`text-xs font-black px-2.5 py-0.5 rounded-lg border ${pickBadgeClass}`}
+                              >
+                                {prop.pickLabel}
+                              </span>
+                            )}
                           </div>
                         </div>
 
                         {/* 1. Estadísticas vs 2. Mercado */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] bg-slate-900/70 rounded-lg px-2.5 py-2 border border-slate-800/60 tabular-nums">
-                          <div className="text-slate-300">
-                            <span className="text-slate-500 font-semibold">Estadística: </span>
-                            {prop.statSummary}
+                        {locked ? (
+                          <div className="rounded-lg bg-slate-900/70 px-3 py-2 border border-slate-800/60 text-[11px] text-slate-300 flex items-center justify-between gap-2">
+                            <span>
+                              Prop de alta probabilidad ({PRO_CONFIDENCE_THRESHOLD}%+). Desbloquea
+                              con CourtVision PRO.
+                            </span>
+                            <span className="text-slate-100 font-bold underline shrink-0">
+                              Desbloquear
+                            </span>
                           </div>
-                          <div className="text-slate-200 sm:text-right">
-                            <span className="text-slate-500 font-semibold">Mercado: </span>
-                            <strong className="text-amber-300">{prop.marketLineText}</strong>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] bg-slate-900/70 rounded-lg px-2.5 py-2 border border-slate-800/60 tabular-nums">
+                            <div className="text-slate-300">
+                              <span className="text-slate-500 font-semibold">Estadística: </span>
+                              {prop.statSummary}
+                            </div>
+                            <div className="text-slate-200 sm:text-right">
+                              <span className="text-slate-500 font-semibold">Mercado: </span>
+                              <strong className="text-amber-300">{prop.marketLineText}</strong>
+                            </div>
                           </div>
-                        </div>
+                        )}
 
                         {/* 3. Rationale + Confidence Meter */}
                         <div className="flex flex-wrap items-center justify-between gap-3 pt-0.5">
                           <p className="text-[11px] text-slate-400 flex-1 min-w-[200px]">
-                            {prop.rationale}
+                            {locked
+                              ? 'Pronóstico, línea exacta y respaldo estadístico protegidos en el Plan PRO.'
+                              : prop.rationale}
                           </p>
                           <div className="flex items-center gap-2 shrink-0 tabular-nums">
                             <div className="w-20 h-1.5 rounded-full bg-slate-800 overflow-hidden">

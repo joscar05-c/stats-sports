@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   ExternalLink,
+  Lock,
   Minus,
   Plus,
   RotateCcw,
@@ -21,7 +22,9 @@ import {
   buildGamePropsRecommendations,
   buildMatchupBettingInsight,
   getConfidenceTier,
+  isHighProbabilityProp,
   PLAYER_CHART_METRICS,
+  PRO_CONFIDENCE_THRESHOLD,
   summarizeTeamRecent,
   type PropRecommendation,
 } from '../utils/betting';
@@ -31,10 +34,12 @@ interface PropAnalysisViewProps {
   game: Game;
   prop: PropRecommendation;
   context: GameBettingContext;
+  isPro: boolean;
   onBack: () => void;
   onSelectProp: (prop: PropRecommendation) => void;
   onOpenGameModal: (game: Game) => void;
   onOpenPlayerModal: (playerId: number) => void;
+  onOpenProModal: () => void;
 }
 
 interface HistoryPoint {
@@ -49,11 +54,14 @@ export function PropAnalysisView({
   game: initialGame,
   prop,
   context,
+  isPro,
   onBack,
   onSelectProp,
   onOpenGameModal,
   onOpenPlayerModal,
+  onOpenProModal,
 }: PropAnalysisViewProps) {
+  const isLocked = !isPro && isHighProbabilityProp(prop.confidence);
   const [liveGame, setLiveGame] = useState<Game>(initialGame);
   const [boxStats, setBoxStats] = useState<PlayerGameStat[]>([]);
   const [playerProfile, setPlayerProfile] = useState<Player | null>(null);
@@ -754,17 +762,29 @@ export function PropAnalysisView({
           {/* Right Verdict Pill */}
           <div className="flex flex-col items-start sm:items-end gap-1.5 shrink-0">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700/90 tabular-nums">
-              {analysis.accessibilityLevel === 'high' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400/90 shrink-0" />
+              {isLocked ? (
+                <>
+                  <Lock className="w-4 h-4 text-slate-300 shrink-0" />
+                  <span className="text-sm font-bold text-slate-100">Exclusivo PRO</span>
+                  <span className="text-xs font-semibold text-slate-400">
+                    · {prop.confidence}% ({prop.confidenceTier})
+                  </span>
+                </>
               ) : (
-                <ShieldAlert className="w-4 h-4 text-slate-300 shrink-0" />
+                <>
+                  {analysis.accessibilityLevel === 'high' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400/90 shrink-0" />
+                  ) : (
+                    <ShieldAlert className="w-4 h-4 text-slate-300 shrink-0" />
+                  )}
+                  <span className="text-sm font-bold text-slate-100">{analysis.accessibilityTitle}</span>
+                  <span className="text-xs font-semibold text-slate-400">
+                    · {analysis.dynamicConf}% ({getConfidenceTier(analysis.dynamicConf)})
+                  </span>
+                </>
               )}
-              <span className="text-sm font-bold text-slate-100">{analysis.accessibilityTitle}</span>
-              <span className="text-xs font-semibold text-slate-400">
-                · {analysis.dynamicConf}% ({getConfidenceTier(analysis.dynamicConf)})
-              </span>
             </div>
-            {liveCurrentValue && (
+            {!isLocked && liveCurrentValue && (
               <span className="text-xs text-slate-300 tabular-nums">
                 En el partido ahora: <strong className="text-white">{liveCurrentValue}</strong>
               </span>
@@ -772,6 +792,42 @@ export function PropAnalysisView({
           </div>
         </div>
 
+        {isLocked ? (
+          <div className="rounded-2xl bg-slate-950/90 border border-slate-700/80 p-6 sm:p-8 text-center space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-700 mx-auto flex items-center justify-center">
+              <Lock className="w-5 h-5 text-slate-200" />
+            </div>
+            <div className="space-y-1.5 max-w-md mx-auto">
+              <h2 className="text-lg font-bold text-white">
+                Prop de Alta Probabilidad ({prop.confidence}% · {prop.confidenceTier})
+              </h2>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Los pronósticos con confianza de {PRO_CONFIDENCE_THRESHOLD}% a 94% están reservados para
+                suscriptores de <strong className="text-slate-200">CourtVision PRO ($5 USD/mes)</strong>.
+                Desbloquea al instante el pick exacto, la línea del mercado, el rango accesible y el
+                gráfico histórico.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={onOpenProModal}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-white text-slate-950 font-bold text-xs sm:text-sm transition-colors"
+              >
+                <Lock className="w-4 h-4" />
+                Desbloquear todos los Props PRO ($5/mes)
+              </button>
+              <button
+                type="button"
+                onClick={onBack}
+                className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300 transition-colors"
+              >
+                Volver a partidos gratis
+              </button>
+            </div>
+          </div>
+        ) : (
+        <>
         {/* 4 Key Cards: Line Simulator + Projection + Pick + Accessibility Limit */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 tabular-nums">
           {/* Card 1: Market Line Simulator */}
@@ -935,10 +991,12 @@ export function PropAnalysisView({
             <p className="text-xs text-slate-400">{analysis.rivalFactorDetail}</p>
           </div>
         </div>
+        </>
+        )}
       </section>
 
-      {/* Historical Chart & Game Log (Neutral Bars) */}
-      {analysis.historySeries.length > 0 ? (
+      {/* Historical Chart & Game Log (Green/Red Bars) */}
+      {isLocked ? null : analysis.historySeries.length > 0 ? (
         <section className="rounded-2xl bg-slate-900/80 border border-slate-800/90 p-4 sm:p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -1098,27 +1156,37 @@ export function PropAnalysisView({
             <span className="text-[11px] text-slate-500">Ordenados de menor a mayor confianza</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            {relatedProps.map((rp) => (
-              <button
-                key={rp.id}
-                type="button"
-                onClick={() => onSelectProp(rp)}
-                className="rounded-xl bg-slate-950/75 border border-slate-800 hover:border-slate-600 p-2.5 text-left transition-colors space-y-1"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-bold text-slate-100 truncate">
-                    {rp.subjectName}
-                  </span>
-                  <span className="text-[11px] font-semibold text-slate-300 tabular-nums shrink-0">
-                    {rp.confidence}%
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-400 truncate">{rp.marketLabel}</div>
-                <div className="text-[11px] font-semibold text-slate-200 tabular-nums">
-                  {rp.pickLabel}
-                </div>
-              </button>
-            ))}
+            {relatedProps.map((rp) => {
+              const rpLocked = !isPro && isHighProbabilityProp(rp.confidence);
+              return (
+                <button
+                  key={rp.id}
+                  type="button"
+                  onClick={() => onSelectProp(rp)}
+                  className="rounded-xl bg-slate-950/75 border border-slate-800 hover:border-slate-600 p-2.5 text-left transition-colors space-y-1"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold text-slate-100 truncate">
+                      {rp.subjectName}
+                    </span>
+                    <span className="text-[11px] font-semibold text-slate-300 tabular-nums shrink-0">
+                      {rp.confidence}%
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 truncate">{rp.marketLabel}</div>
+                  <div className="text-[11px] font-semibold text-slate-200 tabular-nums inline-flex items-center gap-1">
+                    {rpLocked ? (
+                      <>
+                        <Lock className="w-3 h-3 text-slate-400" />
+                        <span>PRO · Desbloquear</span>
+                      </>
+                    ) : (
+                      rp.pickLabel
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </section>
       )}

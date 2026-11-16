@@ -357,6 +357,12 @@ function clampConfidence(val: number): number {
   return Math.max(51, Math.min(94, Math.round(val)));
 }
 
+export const PRO_CONFIDENCE_THRESHOLD = 68;
+
+export function isHighProbabilityProp(confidence: number): boolean {
+  return confidence >= PRO_CONFIDENCE_THRESHOLD;
+}
+
 export function getConfidenceTier(confidence: number): 'Baja' | 'Media' | 'Alta' | 'Muy Alta' {
   if (confidence >= 80) return 'Muy Alta';
   if (confidence >= 68) return 'Alta';

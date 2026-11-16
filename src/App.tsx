@@ -4,8 +4,10 @@ import {
   Calendar,
   Download,
   Flame,
+  Lock,
   RefreshCw,
   Search,
+  ShieldCheck,
   Trophy,
   WifiOff,
 } from 'lucide-react';
@@ -15,6 +17,11 @@ import {
   fetchLeagues,
   triggerCloudSync,
 } from './services/basketballApi';
+import {
+  getStoredSubscription,
+  syncCurrentSubscriptionFromCloud,
+  type ProSubscriptionState,
+} from './services/subscriptionService';
 import { supabase } from './lib/supabase';
 import { GamesView } from './components/GamesView';
 import { LeadersView } from './components/LeadersView';
@@ -23,6 +30,7 @@ import { StandingsView } from './components/StandingsView';
 import { ExploreView } from './components/ExploreView';
 import { PropsSidebar, type SelectedPropPayload } from './components/PropsSidebar';
 import { PropAnalysisView } from './components/PropAnalysisView';
+import { ProUpgradeModal } from './components/ProUpgradeModal';
 import { GameDetailModal } from './components/GameDetailModal';
 import { PlayerDetailModal } from './components/PlayerDetailModal';
 import { TeamDetailModal } from './components/TeamDetailModal';
@@ -55,6 +63,39 @@ export function App() {
     team: Team;
     standing?: TeamStanding;
   } | null>(null);
+
+  // Subscription PRO ($5/month)
+  const [proSub, setProSub] = useState<ProSubscriptionState | null>(() => getStoredSubscription());
+  const [showProModal, setShowProModal] = useState(false);
+
+  // Sync subscription state in real time without page reload
+  useEffect(() => {
+    let active = true;
+    const syncPro = () => {
+      syncCurrentSubscriptionFromCloud()
+        .then((sub) => {
+          if (active) setProSub(sub);
+        })
+        .catch(() => {});
+    };
+
+    void syncPro();
+    window.addEventListener('focus', syncPro);
+    const channel = supabase
+      .channel('pro_sub_sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pro_subscriptions' },
+        syncPro,
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      window.removeEventListener('focus', syncPro);
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // PWA Install Prompt
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -249,6 +290,29 @@ export function App() {
             )}
 
             <button
+              type="button"
+              onClick={() => setShowProModal(true)}
+              className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition-colors ${
+                proSub
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25'
+                  : 'bg-slate-900 text-slate-200 border-slate-700 hover:border-slate-500'
+              }`}
+              title={proSub ? `PRO activo (${proSub.accessCode})` : 'Desbloquear Props 68%+ por $5 USD/mes'}
+            >
+              {proSub ? (
+                <>
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>PRO</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>PRO $5/mes</span>
+                </>
+              )}
+            </button>
+
+            <button
               onClick={handleManualSync}
               disabled={syncing}
               title={
@@ -278,8 +342,10 @@ export function App() {
         <PropsSidebar
           leagueId={activeLeague.id}
           syncVersion={syncVersion}
+          isPro={Boolean(proSub)}
           activePropId={activePropView?.prop.id ?? null}
           onSelectProp={(selection) => setActivePropView(selection)}
+          onOpenProModal={() => setShowProModal(true)}
         />
       )}
 
@@ -313,12 +379,14 @@ export function App() {
             game={activePropView.game}
             prop={activePropView.prop}
             context={activePropView.context}
+            isPro={Boolean(proSub)}
             onBack={() => setActivePropView(null)}
             onSelectProp={(nextProp) =>
               setActivePropView((prev) => (prev ? { ...prev, prop: nextProp } : null))
             }
             onOpenGameModal={(game) => setSelectedGame(game)}
             onOpenPlayerModal={(pid) => setSelectedPlayerId(pid)}
+            onOpenProModal={() => setShowProModal(true)}
           />
         ) : (
           <>
@@ -400,8 +468,10 @@ export function App() {
       {selectedGame && (
         <GameDetailModal
           game={selectedGame}
+          isPro={Boolean(proSub)}
           onClose={() => setSelectedGame(null)}
           onSelectPlayer={(pid) => setSelectedPlayerId(pid)}
+          onOpenProModal={() => setShowProModal(true)}
         />
       )}
 
@@ -421,7 +491,24 @@ export function App() {
       {selectedPlayerId != null && (
         <PlayerDetailModal
           playerId={selectedPlayerId}
+          isPro={Boolean(proSub)}
           onClose={() => setSelectedPlayerId(null)}
+          onOpenProModal={() => setShowProModal(true)}
+        />
+      )}
+
+      {showProModal && (
+        <ProUpgradeModal
+          subscription={proSub}
+          onClose={() => setShowProModal(false)}
+          onActivated={(sub) => {
+            setProSub(sub);
+            setShowProModal(false);
+          }}
+          onDeactivated={() => {
+            setProSub(null);
+            setShowProModal(false);
+          }}
         />
       )}
     </div>

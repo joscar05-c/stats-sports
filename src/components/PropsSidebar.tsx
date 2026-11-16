@@ -3,6 +3,7 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  Lock,
   PanelLeftOpen,
   Shield,
   SlidersHorizontal,
@@ -18,6 +19,8 @@ import {
 import { supabase } from '../lib/supabase';
 import {
   buildGamePropsRecommendations,
+  isHighProbabilityProp,
+  PRO_CONFIDENCE_THRESHOLD,
   summarizeTeamRecent,
   type PropRecommendation,
 } from '../utils/betting';
@@ -32,8 +35,10 @@ export interface SelectedPropPayload {
 interface PropsSidebarProps {
   leagueId: number;
   syncVersion: number;
+  isPro: boolean;
   activePropId: string | null;
   onSelectProp: (selection: SelectedPropPayload) => void;
+  onOpenProModal: () => void;
 }
 
 function formatDateOption(isoDate: string): string {
@@ -52,8 +57,10 @@ function formatDateOption(isoDate: string): string {
 export function PropsSidebar({
   leagueId,
   syncVersion,
+  isPro,
   activePropId,
   onSelectProp,
+  onOpenProModal,
 }: PropsSidebarProps) {
   const [dates, setDates] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>('');
@@ -443,6 +450,27 @@ export function PropsSidebar({
 
       {/* Props List */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2 pb-16">
+        {!isPro && (
+          <button
+            type="button"
+            onClick={onOpenProModal}
+            className="w-full rounded-xl bg-slate-900 border border-slate-700/90 hover:border-slate-500 px-3 py-2 flex items-center justify-between gap-2 text-left transition-colors"
+          >
+            <div className="min-w-0">
+              <div className="text-[11px] font-bold text-slate-100">
+                Props {PRO_CONFIDENCE_THRESHOLD}%+ bloqueados
+              </div>
+              <div className="text-[10px] text-slate-400">
+                Desbloquea todos por $5 USD/mes
+              </div>
+            </div>
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-200 text-slate-950 shrink-0">
+              <Lock className="w-3 h-3" />
+              PRO
+            </span>
+          </button>
+        )}
+
         {!focusedGame ? (
           <div className="py-10 text-center text-xs text-slate-500">
             Selecciona un partido en el riel izquierdo.
@@ -460,6 +488,7 @@ export function PropsSidebar({
         ) : (
           visibleProps.map((prop) => {
             const isActive = activePropId === prop.id;
+            const locked = !isPro && isHighProbabilityProp(prop.confidence);
             return (
               <button
                 key={prop.id}
@@ -488,20 +517,32 @@ export function PropsSidebar({
                       {prop.subjectName}
                     </span>
                   </div>
-                  <span className="text-[11px] font-bold text-slate-200 tabular-nums shrink-0">
-                    {prop.confidence}%
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0 tabular-nums">
+                    {!isPro && !locked && (
+                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-800/70 text-slate-400">
+                        Gratis
+                      </span>
+                    )}
+                    <span className="text-[11px] font-bold text-slate-200">{prop.confidence}%</span>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] text-slate-400 truncate">{prop.marketLabel}</span>
-                  <span className="text-[11px] font-bold text-slate-100 bg-slate-950/90 border border-slate-700/80 px-2 py-0.5 rounded-md tabular-nums shrink-0">
-                    {prop.pickLabel}
-                  </span>
+                  {locked ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-200 bg-slate-950 border border-slate-700 px-2 py-0.5 rounded-md shrink-0">
+                      <Lock className="w-3 h-3 text-slate-400" />
+                      PRO · Desbloquear
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-bold text-slate-100 bg-slate-950/90 border border-slate-700/80 px-2 py-0.5 rounded-md tabular-nums shrink-0">
+                      {prop.pickLabel}
+                    </span>
+                  )}
                 </div>
 
                 <div className="text-[10px] text-slate-400 truncate tabular-nums">
-                  {prop.marketLineText}
+                  {locked ? 'Línea y pronóstico ocultos · Plan PRO ($5/mes)' : prop.marketLineText}
                 </div>
               </button>
             );
