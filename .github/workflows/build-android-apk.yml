@@ -34,6 +34,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://dowxayyvtghtjkctasfn.supabase.co' }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_ofEQ4jJ_O8ziwbOemySWiA_stfFYEhE' }}
+          VITE_LEMONSQUEEZY_CHECKOUT_URL: ${{ vars.VITE_LEMONSQUEEZY_CHECKOUT_URL || secrets.VITE_LEMONSQUEEZY_CHECKOUT_URL || '' }}
         run: |
           npm ci
           npm run build

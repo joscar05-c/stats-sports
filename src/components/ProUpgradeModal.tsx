@@ -1,24 +1,28 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   CheckCircle2,
   CreditCard,
   ExternalLink,
   EyeOff,
   KeyRound,
+  Loader2,
   Lock,
   ShieldCheck,
   X,
 } from 'lucide-react';
 import {
-  activateProSubscription,
   CHECKOUT_URLS,
+  clearPendingCheckoutEmail,
   clearProSubscription,
+  getPendingCheckoutEmail,
   getRemainingProDays,
   PRO_MONTHLY_PRICE_USD,
+  setPendingCheckoutEmail,
   verifyProSubscriptionByEmailOrCode,
   type PaymentProvider,
   type ProSubscriptionState,
 } from '../services/subscriptionService';
+import { supabase } from '../lib/supabase';
 import { PRO_CONFIDENCE_THRESHOLD } from '../utils/betting';
 
 interface ProUpgradeModalProps {
@@ -35,18 +39,18 @@ const PROVIDERS: Array<{
 }> = [
   {
     key: 'lemonsqueezy',
-    label: 'Lemon Squeezy ($5 USD)',
-    subtitle: 'Tarjeta / Apple Pay / Google Pay · $0 costo fijo mensual · Sin LLC',
+    label: 'Lemon Squeezy ($5 USD/mes)',
+    subtitle: 'Tarjeta / Apple Pay / Google Pay · Verificación automática por webhook',
   },
   {
     key: 'stripe',
-    label: 'Stripe ($5 USD)',
-    subtitle: 'Tarjeta internacional · Checkout directo · $0 costo fijo mensual',
+    label: 'Stripe ($5 USD/mes)',
+    subtitle: 'Tarjeta internacional · Checkout directo',
   },
   {
     key: 'mercadopago',
     label: 'Mercado Pago / Yape',
-    subtitle: 'Pago único por 30 días en moneda local · Ideal LATAM / Perú',
+    subtitle: 'Pago único por 30 días en moneda local · LATAM / Perú',
   },
 ];
 
@@ -57,50 +61,93 @@ export function ProUpgradeModal({
   onDeactivated,
 }: ProUpgradeModalProps) {
   const [provider, setProvider] = useState<PaymentProvider>('lemonsqueezy');
-  const [email, setEmail] = useState(subscription?.email ?? '');
+  const [email, setEmail] = useState(() => subscription?.email ?? getPendingCheckoutEmail() ?? '');
   const [recoverInput, setRecoverInput] = useState('');
   const [mode, setMode] = useState<'buy' | 'recover'>('buy');
+  const [awaitingWebhook, setAwaitingWebhook] = useState(() => Boolean(!subscription && getPendingCheckoutEmail()));
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const remainingDays = getRemainingProDays(subscription);
   const checkoutUrl = CHECKOUT_URLS[provider];
 
-  const handleCheckoutOrActivate = async () => {
+  // Live auto-unlock listener while waiting for Lemon Squeezy webhook confirmation (zero F5 needed)
+  useEffect(() => {
+    if (subscription || !awaitingWebhook) return;
+    const lookup = (email || getPendingCheckoutEmail() || '').trim().toLowerCase();
+    if (!lookup) return;
+
+    let active = true;
+    const pollVerify = async () => {
+      const found = await verifyProSubscriptionByEmailOrCode(lookup);
+      if (active && found) {
+        setAwaitingWebhook(false);
+        onActivated(found);
+      }
+    };
+
+    void pollVerify();
+    const timer = window.setInterval(pollVerify, 3000);
+    window.addEventListener('focus', pollVerify);
+
+    const channel = supabase
+      .channel('pro_unlock_modal')
+      .on('broadcast', { event: 'pro_updated' }, () => {
+        void pollVerify();
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', pollVerify);
+      supabase.removeChannel(channel);
+    };
+  }, [subscription, awaitingWebhook, email, onActivated]);
+
+  const handleOpenCheckout = () => {
     setFeedback(null);
-    if (!email.trim() || !email.includes('@')) {
-      setFeedback('Ingresa un correo válido para asociar tu pase mensual de 30 días.');
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setFeedback('Ingresa el correo con el que pagarás para vincular tu pase mensual.');
       return;
     }
 
-    if (checkoutUrl) {
-      const sep = checkoutUrl.includes('?') ? '&' : '?';
-      window.open(
-        `${checkoutUrl}${sep}checkout[email]=${encodeURIComponent(email.trim())}`,
-        '_blank',
-        'noopener,noreferrer',
-      );
+    if (!checkoutUrl) {
       setFeedback(
-        'Se abrió la pasarela de pago en una nueva pestaña. Al completar tu pago, ingresa tu correo o código en "Ya pagué" o activa tu pase.',
+        'Falta configurar el enlace de pago de esta pasarela en el entorno (VITE_LEMONSQUEEZY_CHECKOUT_URL).',
       );
       return;
     }
 
-    setBusy(true);
-    try {
-      const sub = await activateProSubscription(email, provider);
-      onActivated(sub);
-    } finally {
-      setBusy(false);
-    }
+    setPendingCheckoutEmail(cleanEmail);
+    setAwaitingWebhook(true);
+
+    const sep = checkoutUrl.includes('?') ? '&' : '?';
+    const url = `${checkoutUrl}${sep}checkout[email]=${encodeURIComponent(
+      cleanEmail,
+    )}&checkout[custom][email]=${encodeURIComponent(cleanEmail)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setFeedback(
+      'Se abrió la pasarela en una nueva pestaña. Apenas completes el pago, el sistema desbloqueará PRO automáticamente aquí.',
+    );
   };
 
-  const handleDemoActivate = async () => {
+  const handleManualCheckAfterPay = async () => {
+    const cleanEmail = (email || getPendingCheckoutEmail() || '').trim();
+    if (!cleanEmail) return;
     setBusy(true);
     setFeedback(null);
     try {
-      const sub = await activateProSubscription(email || 'demo@courtvision.app', 'demo');
-      onActivated(sub);
+      const found = await verifyProSubscriptionByEmailOrCode(cleanEmail);
+      if (found) {
+        setAwaitingWebhook(false);
+        onActivated(found);
+      } else {
+        setFeedback(
+          'Aún no llega la confirmación del pago para ese correo. Revisa si usaste otro correo al pagar o espera unos segundos.',
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -109,7 +156,7 @@ export function ProUpgradeModal({
   const handleRecover = async () => {
     setFeedback(null);
     if (!recoverInput.trim()) {
-      setFeedback('Ingresa tu correo o código CVPRO-XXXX-XXXX.');
+      setFeedback('Ingresa el correo con el que pagaste o tu código CVPRO-XXXX-XXXX.');
       return;
     }
     setBusy(true);
@@ -118,7 +165,9 @@ export function ProUpgradeModal({
       if (found) {
         onActivated(found);
       } else {
-        setFeedback('No encontramos un pase mensual activo con ese correo o código.');
+        setFeedback(
+          'No encontramos una suscripción activa con ese correo o código. Si acabas de pagar, espera unos segundos y vuelve a intentar.',
+        );
       }
     } finally {
       setBusy(false);
@@ -144,13 +193,15 @@ export function ProUpgradeModal({
           <div>
             <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-300">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              CourtVision PRO · Acceso Mensual
+              CourtVision PRO · Suscripción Mensual
             </div>
             <h2 className="text-xl font-bold text-white mt-1">
-              {subscription ? 'Suscripción PRO Activa' : `Desbloquea Props ${PRO_CONFIDENCE_THRESHOLD}%+ por $${PRO_MONTHLY_PRICE_USD.toFixed(0)}/mes`}
+              {subscription
+                ? 'Suscripción PRO Activa'
+                : `Desbloquea Props ${PRO_CONFIDENCE_THRESHOLD}%+ por $${PRO_MONTHLY_PRICE_USD.toFixed(0)}/mes`}
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Pago único por 30 días. Los props menores a {PRO_CONFIDENCE_THRESHOLD}% siempre son gratis.
+              Acceso por 30 días a los props más probables. Los props menores a {PRO_CONFIDENCE_THRESHOLD}% siguen gratis.
             </p>
           </div>
           <button
@@ -170,7 +221,8 @@ export function ProUpgradeModal({
                 <div className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400">
                     <CheckCircle2 className="w-4 h-4" />
-                    Pase Mensual Activo
+                    Suscripción Verificada
+                    {subscription.testMode ? ' (Test Mode)' : ''}
                   </span>
                   <span className="text-xs font-bold text-slate-200 tabular-nums">
                     {remainingDays} días restantes
@@ -189,11 +241,11 @@ export function ProUpgradeModal({
                   </div>
                 </div>
                 <div className="text-[11px] text-slate-400">
-                  Vence el{' '}
+                  Vigente hasta el{' '}
                   <strong className="text-slate-200">
                     {new Date(subscription.expiresAt).toLocaleDateString('es-PE')}
                   </strong>{' '}
-                  · Estado en nube: {subscription.syncedToCloud ? 'Sincronizado en Supabase' : 'Local'}
+                  · Sincronizado con Supabase Webhook
                 </div>
               </div>
 
@@ -210,7 +262,7 @@ export function ProUpgradeModal({
                 className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-200 transition-colors"
               >
                 <EyeOff className="w-4 h-4 text-slate-400" />
-                Cambiar a Vista Gratis (Probar bloqueo de Props {PRO_CONFIDENCE_THRESHOLD}%+)
+                Cerrar sesión PRO en este navegador (Vista Gratis)
               </button>
             </div>
           ) : (
@@ -218,9 +270,9 @@ export function ProUpgradeModal({
               {/* Plan Summary */}
               <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-4 flex items-center justify-between gap-3">
                 <div className="space-y-1">
-                  <div className="text-xs font-bold text-slate-200">Pase Mensual Único · 30 Días</div>
+                  <div className="text-xs font-bold text-slate-200">Suscripción Mensual · 30 Días</div>
                   <div className="text-[11px] text-slate-400">
-                    Desbloquea al instante todos los props de alta probabilidad en NBA.
+                    Validación automática mediante webhook seguro de Lemon Squeezy.
                   </div>
                 </div>
                 <div className="text-right shrink-0 tabular-nums">
@@ -280,7 +332,7 @@ export function ProUpgradeModal({
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  Ya tengo pase / Recuperar
+                  Ya pagué / Recuperar
                 </button>
               </div>
 
@@ -293,6 +345,7 @@ export function ProUpgradeModal({
                     <div className="space-y-1.5">
                       {PROVIDERS.map((pv) => {
                         const selected = provider === pv.key;
+                        const configured = Boolean(CHECKOUT_URLS[pv.key]);
                         return (
                           <button
                             key={pv.key}
@@ -304,15 +357,20 @@ export function ProUpgradeModal({
                                 : 'bg-slate-950/70 border-slate-800 text-slate-300 hover:border-slate-700'
                             }`}
                           >
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-bold">{pv.label}</span>
-                              <span
-                                className={`w-3 h-3 rounded-full border ${
-                                  selected
-                                    ? 'bg-emerald-400 border-emerald-400'
-                                    : 'border-slate-600'
-                                }`}
-                              />
+                              <div className="flex items-center gap-2">
+                                {!configured && (
+                                  <span className="text-[10px] text-slate-500">Sin enlace</span>
+                                )}
+                                <span
+                                  className={`w-3 h-3 rounded-full border ${
+                                    selected
+                                      ? 'bg-emerald-400 border-emerald-400'
+                                      : 'border-slate-600'
+                                  }`}
+                                />
+                              </div>
                             </div>
                             <div className="text-[11px] text-slate-400 mt-0.5">{pv.subtitle}</div>
                           </button>
@@ -323,7 +381,7 @@ export function ProUpgradeModal({
 
                   <div className="space-y-1.5">
                     <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-                      Tu correo (para guardar tu pase de 30 días)
+                      Tu correo (debe coincidir con el del checkout)
                     </label>
                     <input
                       type="email"
@@ -336,35 +394,51 @@ export function ProUpgradeModal({
 
                   <button
                     type="button"
-                    disabled={busy}
-                    onClick={handleCheckoutOrActivate}
-                    className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-white text-slate-950 font-bold text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60 transition-colors"
+                    disabled={busy || !checkoutUrl}
+                    onClick={handleOpenCheckout}
+                    className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-white text-slate-950 font-bold text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
                   >
                     <CreditCard className="w-4 h-4" />
                     {checkoutUrl
                       ? `Ir a Pagar $5.00 USD (${PROVIDERS.find((p) => p.key === provider)?.label.split(' ')[0]})`
-                      : busy
-                        ? 'Activando pase...'
-                        : 'Activar Pase Mensual ($5.00 USD · 30 días)'}
+                      : 'Configura enlace de esta pasarela'}
                     {checkoutUrl && <ExternalLink className="w-3.5 h-3.5" />}
                   </button>
 
-                  {checkoutUrl && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={handleDemoActivate}
-                      className="w-full py-2 px-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-600 text-xs font-semibold text-slate-300 transition-colors"
-                    >
-                      Probar acceso PRO (Modo Demo 30 días)
-                    </button>
+                  {awaitingWebhook && (
+                    <div className="rounded-xl bg-slate-900 border border-slate-700 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2 text-xs text-slate-200">
+                        <span className="inline-flex items-center gap-2 font-semibold">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                          Esperando confirmación del pago...
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearPendingCheckoutEmail();
+                            setAwaitingWebhook(false);
+                          }}
+                          className="text-[10px] text-slate-400 hover:text-slate-200 underline"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={handleManualCheckAfterPay}
+                        className="w-full py-1.5 px-3 rounded-lg bg-slate-950 border border-slate-700 hover:border-slate-500 text-[11px] font-semibold text-slate-200 transition-colors"
+                      >
+                        {busy ? 'Consultando...' : 'Ya completé el pago · Verificar ahora'}
+                      </button>
+                    </div>
                   )}
                 </div>
               ) : (
                 <div className="space-y-3">
                   <div className="space-y-1.5">
                     <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-                      Correo o Código de Acceso (ej. CVPRO-XXXX-XXXX)
+                      Correo con el que pagaste o Código CVPRO-XXXX-XXXX
                     </label>
                     <input
                       type="text"
@@ -381,7 +455,7 @@ export function ProUpgradeModal({
                     className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-white text-slate-950 font-bold text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60 transition-colors"
                   >
                     <KeyRound className="w-4 h-4" />
-                    {busy ? 'Verificando...' : 'Validar Acceso PRO'}
+                    {busy ? 'Verificando con Supabase...' : 'Validar Acceso PRO'}
                   </button>
                 </div>
               )}

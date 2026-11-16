@@ -68,7 +68,7 @@ export function App() {
   const [proSub, setProSub] = useState<ProSubscriptionState | null>(() => getStoredSubscription());
   const [showProModal, setShowProModal] = useState(false);
 
-  // Sync subscription state in real time without page reload
+  // Sync subscription state in real time via RPC + Realtime broadcast without page reload
   useEffect(() => {
     let active = true;
     const syncPro = () => {
@@ -78,21 +78,24 @@ export function App() {
         })
         .catch(() => {});
     };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') syncPro();
+    };
 
     void syncPro();
     window.addEventListener('focus', syncPro);
+    document.addEventListener('visibilitychange', onVisibility);
+    const interval = window.setInterval(syncPro, 30_000);
     const channel = supabase
-      .channel('pro_sub_sync')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'pro_subscriptions' },
-        syncPro,
-      )
+      .channel('pro_unlock')
+      .on('broadcast', { event: 'pro_updated' }, syncPro)
       .subscribe();
 
     return () => {
       active = false;
       window.removeEventListener('focus', syncPro);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.clearInterval(interval);
       supabase.removeChannel(channel);
     };
   }, []);

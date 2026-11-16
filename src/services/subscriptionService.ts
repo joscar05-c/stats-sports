@@ -9,11 +9,12 @@ export interface ProSubscriptionState {
   amountUsd: number;
   activatedAt: string;
   expiresAt: string;
+  testMode?: boolean;
   syncedToCloud: boolean;
 }
 
 const STORAGE_KEY = 'cv_pro_subscription_v1';
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const PENDING_EMAIL_KEY = 'cv_pro_pending_email_v1';
 
 export const PRO_MONTHLY_PRICE_USD = 5.0;
 
@@ -22,17 +23,6 @@ export const CHECKOUT_URLS: Partial<Record<PaymentProvider, string>> = {
   stripe: import.meta.env.VITE_STRIPE_CHECKOUT_URL as string | undefined,
   mercadopago: import.meta.env.VITE_MERCADOPAGO_CHECKOUT_URL as string | undefined,
 };
-
-function generateAccessCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let part1 = '';
-  let part2 = '';
-  for (let i = 0; i < 4; i += 1) {
-    part1 += chars[Math.floor(Math.random() * chars.length)];
-    part2 += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return `CVPRO-${part1}-${part2}`;
-}
 
 export function getStoredSubscription(): ProSubscriptionState | null {
   try {
@@ -53,6 +43,7 @@ export function getStoredSubscription(): ProSubscriptionState | null {
 export function saveStoredSubscription(sub: ProSubscriptionState): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(sub));
+    localStorage.removeItem(PENDING_EMAIL_KEY);
   } catch {
     // Ignore storage quota errors
   }
@@ -61,6 +52,32 @@ export function saveStoredSubscription(sub: ProSubscriptionState): void {
 export function clearProSubscription(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(PENDING_EMAIL_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function getPendingCheckoutEmail(): string | null {
+  try {
+    return localStorage.getItem(PENDING_EMAIL_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setPendingCheckoutEmail(email: string): void {
+  try {
+    const clean = email.trim().toLowerCase();
+    if (clean) localStorage.setItem(PENDING_EMAIL_KEY, clean);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function clearPendingCheckoutEmail(): void {
+  try {
+    localStorage.removeItem(PENDING_EMAIL_KEY);
   } catch {
     // Ignore storage errors
   }
@@ -72,44 +89,27 @@ export function getRemainingProDays(sub: ProSubscriptionState | null): number {
   return Math.max(0, Math.ceil(diff / (24 * 60 * 60 * 1000)));
 }
 
-export async function activateProSubscription(
-  emailInput: string,
-  provider: PaymentProvider,
-): Promise<ProSubscriptionState> {
-  const cleanEmail = emailInput.trim().toLowerCase() || 'usuario@courtvision.app';
-  const accessCode = generateAccessCode();
-  const now = new Date();
-  const expires = new Date(now.getTime() + THIRTY_DAYS_MS);
+interface CheckProRow {
+  email: string;
+  access_code: string;
+  provider: PaymentProvider;
+  amount_usd: number;
+  starts_at: string;
+  expires_at: string;
+  test_mode?: boolean;
+}
 
-  let syncedToCloud = false;
-  try {
-    const { error } = await supabase.from('pro_subscriptions').insert({
-      email: cleanEmail,
-      access_code: accessCode,
-      provider,
-      amount_usd: PRO_MONTHLY_PRICE_USD,
-      status: 'active',
-      starts_at: now.toISOString(),
-      expires_at: expires.toISOString(),
-    });
-    if (!error) {
-      syncedToCloud = true;
-    }
-  } catch {
-    // Fallback cleanly to localStorage if migration has not been applied yet
-  }
-
-  const state: ProSubscriptionState = {
-    email: cleanEmail,
-    accessCode,
-    provider,
-    amountUsd: PRO_MONTHLY_PRICE_USD,
-    activatedAt: now.toISOString(),
-    expiresAt: expires.toISOString(),
-    syncedToCloud,
+function rowToState(row: CheckProRow): ProSubscriptionState {
+  return {
+    email: row.email,
+    accessCode: row.access_code,
+    provider: row.provider ?? 'lemonsqueezy',
+    amountUsd: Number(row.amount_usd ?? PRO_MONTHLY_PRICE_USD),
+    activatedAt: row.starts_at,
+    expiresAt: row.expires_at,
+    testMode: Boolean(row.test_mode),
+    syncedToCloud: true,
   };
-  saveStoredSubscription(state);
-  return state;
 }
 
 export async function verifyProSubscriptionByEmailOrCode(
@@ -118,40 +118,16 @@ export async function verifyProSubscriptionByEmailOrCode(
   const trimmed = query.trim();
   if (!trimmed) return null;
 
-  const stored = getStoredSubscription();
-  if (
-    stored &&
-    (stored.accessCode.toUpperCase() === trimmed.toUpperCase() ||
-      stored.email.toLowerCase() === trimmed.toLowerCase())
-  ) {
-    return stored;
-  }
-
   try {
-    const nowIso = new Date().toISOString();
-    const isCode = trimmed.toUpperCase().startsWith('CVPRO-');
-    let req = supabase
-      .from('pro_subscriptions')
-      .select('email, access_code, provider, amount_usd, starts_at, expires_at')
-      .eq('status', 'active')
-      .gt('expires_at', nowIso)
-      .order('expires_at', { ascending: false })
-      .limit(1);
+    const { data, error } = await supabase.rpc('check_pro_access', {
+      p_lookup: trimmed,
+    });
+    if (error) return null;
 
-    req = isCode ? req.eq('access_code', trimmed.toUpperCase()) : req.ilike('email', trimmed);
+    const row = Array.isArray(data) ? (data[0] as CheckProRow | undefined) : (data as CheckProRow | null);
+    if (!row || !row.access_code) return null;
 
-    const { data, error } = await req.maybeSingle();
-    if (error || !data) return null;
-
-    const synced: ProSubscriptionState = {
-      email: data.email as string,
-      accessCode: data.access_code as string,
-      provider: (data.provider as PaymentProvider) ?? 'lemonsqueezy',
-      amountUsd: Number(data.amount_usd ?? PRO_MONTHLY_PRICE_USD),
-      activatedAt: data.starts_at as string,
-      expiresAt: data.expires_at as string,
-      syncedToCloud: true,
-    };
+    const synced = rowToState(row);
     saveStoredSubscription(synced);
     return synced;
   } catch {
@@ -161,32 +137,30 @@ export async function verifyProSubscriptionByEmailOrCode(
 
 export async function syncCurrentSubscriptionFromCloud(): Promise<ProSubscriptionState | null> {
   const local = getStoredSubscription();
-  if (!local) return null;
-  try {
-    const { data, error } = await supabase
-      .from('pro_subscriptions')
-      .select('email, access_code, provider, amount_usd, starts_at, expires_at, status')
-      .eq('access_code', local.accessCode)
-      .maybeSingle();
-
-    if (error || !data) return local;
-    if (data.status !== 'active' || new Date(data.expires_at as string).getTime() <= Date.now()) {
-      clearProSubscription();
-      return null;
+  if (local) {
+    try {
+      const { data, error } = await supabase.rpc('check_pro_access', {
+        p_lookup: local.accessCode,
+      });
+      if (error) return local;
+      const row = Array.isArray(data)
+        ? (data[0] as CheckProRow | undefined)
+        : (data as CheckProRow | null);
+      if (!row || !row.access_code) {
+        clearProSubscription();
+        return null;
+      }
+      const fresh = rowToState(row);
+      saveStoredSubscription(fresh);
+      return fresh;
+    } catch {
+      return local;
     }
-
-    const fresh: ProSubscriptionState = {
-      email: data.email as string,
-      accessCode: data.access_code as string,
-      provider: (data.provider as PaymentProvider) ?? local.provider,
-      amountUsd: Number(data.amount_usd ?? PRO_MONTHLY_PRICE_USD),
-      activatedAt: data.starts_at as string,
-      expiresAt: data.expires_at as string,
-      syncedToCloud: true,
-    };
-    saveStoredSubscription(fresh);
-    return fresh;
-  } catch {
-    return local;
   }
+
+  const pendingEmail = getPendingCheckoutEmail();
+  if (pendingEmail) {
+    return verifyProSubscriptionByEmailOrCode(pendingEmail);
+  }
+  return null;
 }
