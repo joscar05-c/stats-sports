@@ -343,9 +343,8 @@ export function ProUpgradeModal({
                       Método de pago
                     </label>
                     <div className="space-y-1.5">
-                      {PROVIDERS.map((pv) => {
+                      {PROVIDERS.filter((pv) => Boolean(CHECKOUT_URLS[pv.key])).map((pv) => {
                         const selected = provider === pv.key;
-                        const configured = Boolean(CHECKOUT_URLS[pv.key]);
                         return (
                           <button
                             key={pv.key}
@@ -359,18 +358,13 @@ export function ProUpgradeModal({
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-bold">{pv.label}</span>
-                              <div className="flex items-center gap-2">
-                                {!configured && (
-                                  <span className="text-[10px] text-slate-500">Sin enlace</span>
-                                )}
-                                <span
-                                  className={`w-3 h-3 rounded-full border ${
-                                    selected
-                                      ? 'bg-emerald-400 border-emerald-400'
-                                      : 'border-slate-600'
-                                  }`}
-                                />
-                              </div>
+                              <span
+                                className={`w-3 h-3 rounded-full border ${
+                                  selected
+                                    ? 'bg-emerald-400 border-emerald-400'
+                                    : 'border-slate-600'
+                                }`}
+                              />
                             </div>
                             <div className="text-[11px] text-slate-400 mt-0.5">{pv.subtitle}</div>
                           </button>

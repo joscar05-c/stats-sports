@@ -18,10 +18,16 @@ const PENDING_EMAIL_KEY = 'cv_pro_pending_email_v1';
 
 export const PRO_MONTHLY_PRICE_USD = 5.0;
 
+const DEFAULT_LEMONSQUEEZY_URL =
+  'https://appsubscription.lemonsqueezy.com/checkout/buy/c8c5ec5d-1da0-483a-a37b-1ba5028fa4df';
+
 export const CHECKOUT_URLS: Partial<Record<PaymentProvider, string>> = {
-  lemonsqueezy: import.meta.env.VITE_LEMONSQUEEZY_CHECKOUT_URL as string | undefined,
-  stripe: import.meta.env.VITE_STRIPE_CHECKOUT_URL as string | undefined,
-  mercadopago: import.meta.env.VITE_MERCADOPAGO_CHECKOUT_URL as string | undefined,
+  lemonsqueezy:
+    (import.meta.env.VITE_LEMONSQUEEZY_CHECKOUT_URL as string | undefined)?.trim() ||
+    DEFAULT_LEMONSQUEEZY_URL,
+  stripe: (import.meta.env.VITE_STRIPE_CHECKOUT_URL as string | undefined)?.trim() || undefined,
+  mercadopago:
+    (import.meta.env.VITE_MERCADOPAGO_CHECKOUT_URL as string | undefined)?.trim() || undefined,
 };
 
 export function getStoredSubscription(): ProSubscriptionState | null {
