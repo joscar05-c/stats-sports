@@ -707,7 +707,7 @@ export function PropsSidebar({
   return (
     <>
       {/* Desktop Persistent Left Rail + Slide-out Drawer */}
-      <aside className="hidden md:flex fixed left-0 top-14 bottom-0 z-40 shadow-2xl shadow-black/70">
+      <aside className="hidden md:flex fixed left-0 top-[110px] bottom-0 z-30 shadow-2xl shadow-black/70">
         {renderLogoRail(false)}
         <div
           className={`h-full border-r border-white/[0.08] overflow-hidden transition-all duration-200 ${
@@ -722,7 +722,7 @@ export function PropsSidebar({
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed left-0 top-[70px] z-40 flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-r-xl bg-[#070d1b]/95 border border-l-0 border-emerald-500/40 text-emerald-300 shadow-lg backdrop-blur-md"
+        className="md:hidden fixed left-0 top-[76px] z-30 flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-r-xl bg-[#070d1b]/95 border border-l-0 border-emerald-500/40 text-emerald-300 shadow-lg backdrop-blur-md"
         aria-label="Abrir barra lateral de Props"
       >
         <PanelLeftOpen className="w-3.5 h-3.5" />

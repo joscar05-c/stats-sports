@@ -299,64 +299,61 @@ export function App() {
   return (
     <div className="min-h-screen text-slate-100 pb-24 md:pb-10">
       {/* Sportsbook Command Header */}
-      <header className="sticky top-0 z-30 sb-glass-header">
-        <div className="max-w-6xl mx-auto px-3 sm:px-4 h-14 flex items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="relative shrink-0">
-              <img src="/icon.svg" alt="CourtVision" className="w-8 h-8 rounded-lg ring-1 ring-emerald-400/30" />
+      <header className="sticky top-0 z-40 sb-glass-header">
+        <div className="sb-header-accent" />
+
+        {/* Row 1: Brand Identity + User/Account & Utility Controls */}
+        <div className="max-w-7xl mx-auto px-3 sm:px-5 h-16 flex items-center justify-between gap-3">
+          {/* Left Brand Block (never squeezes or overlaps) */}
+          <button
+            type="button"
+            onClick={() => {
+              setActivePropView(null);
+              setTab('games');
+            }}
+            className="flex items-center gap-2.5 sm:gap-3 shrink-0 text-left group"
+          >
+            <div className="relative shrink-0 p-0.5 rounded-xl bg-gradient-to-br from-emerald-400/35 via-cyan-400/20 to-transparent shadow-[0_0_20px_rgba(16,185,129,0.22)] group-hover:shadow-[0_0_24px_rgba(16,185,129,0.38)] transition-shadow">
+              <img
+                src="/icon.svg"
+                alt="CourtVision"
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-[10px] block"
+              />
               <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#060a14]" />
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="font-black text-base tracking-tight leading-none text-white">
+
+            <div className="shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="font-black text-lg sm:text-xl tracking-tight leading-none text-white">
                   Court<span className="text-emerald-400">Vision</span>
                 </span>
-                <span className="hidden lg:inline-flex items-center gap-1 text-[9px] font-black tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                  <Activity className="w-2.5 h-2.5" />
+                <span className="hidden sm:inline-flex items-center gap-1 text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  <Activity className="w-2.5 h-2.5 animate-pulse" />
                   LIVE ODDS &amp; PROPS
                 </span>
               </div>
-              <div className="text-[10px] text-slate-400 font-medium mt-0.5 truncate">
-                {season ? `${activeLeague?.short_name ?? 'NBA'} ${season.name}` : 'Analytics Pro'}
+              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400 font-semibold tracking-wide">
+                <span>
+                  {season ? `${activeLeague?.short_name ?? 'NBA'} ${season.name}` : 'Analytics Pro'}
+                </span>
+                <span className="hidden md:inline text-slate-600">•</span>
+                <span className="hidden md:inline text-cyan-300/90">
+                  Terminal de Cuotas &amp; Estadísticas
+                </span>
               </div>
             </div>
-          </div>
+          </button>
 
-          {/* Desktop Glass Pill Nav */}
-          <nav className="hidden md:flex items-center gap-1 rounded-2xl bg-white/[0.04] border border-white/[0.08] p-1">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const active = !activePropView && tab === item.key;
-              return (
-                <button
-                  key={item.key}
-                  onClick={() => {
-                    setActivePropView(null);
-                    setTab(item.key);
-                  }}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    active
-                      ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 shadow-[0_4px_14px_rgba(16,185,129,0.3)]'
-                      : 'text-slate-300 hover:text-white hover:bg-white/[0.06]'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  {item.label}
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* Right Controls */}
+          {/* Right Controls Cluster */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {activeLeague && (
               <button
                 type="button"
                 onClick={() => setSidebarToggleTick((t) => t + 1)}
-                className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-emerald-500/12 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors"
+                className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-emerald-500/12 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors whitespace-nowrap"
                 title="Abrir / fijar barra lateral de Props"
               >
-                <PanelLeft className="w-3.5 h-3.5" />
+                <PanelLeft className="w-3.5 h-3.5 shrink-0" />
                 <span>Props</span>
               </button>
             )}
@@ -368,7 +365,7 @@ export function App() {
                   const found = leagues.find((l) => l.id === Number(e.target.value));
                   if (found) handleSelectLeague(found);
                 }}
-                className="bg-slate-900/90 border border-white/[0.1] rounded-xl px-2 py-1 text-xs font-bold text-slate-200"
+                className="bg-slate-900/90 border border-white/[0.12] rounded-xl px-2 py-1.5 text-xs font-bold text-slate-200 whitespace-nowrap"
               >
                 {leagues.map((l) => (
                   <option key={l.id} value={l.id}>
@@ -381,9 +378,9 @@ export function App() {
             {installPrompt && (
               <button
                 onClick={handleInstallPwa}
-                className="hidden sm:inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/25"
+                className="hidden md:inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/25 whitespace-nowrap"
               >
-                <Download className="w-3.5 h-3.5" />
+                <Download className="w-3.5 h-3.5 shrink-0" />
                 Instalar
               </button>
             )}
@@ -392,22 +389,22 @@ export function App() {
               <button
                 type="button"
                 onClick={() => setShowAccountModal(true)}
-                className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-100 transition-colors"
+                className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 sm:px-2.5 py-1.5 rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-slate-700/80 text-slate-100 transition-colors whitespace-nowrap"
                 title={`Cuenta: ${authUser.email}`}
               >
                 {authUser.avatarUrl ? (
                   <img
                     src={authUser.avatarUrl}
                     alt={authUser.fullName || authUser.email}
-                    className="w-4 h-4 rounded-full object-cover border border-emerald-400/40"
+                    className="w-4 h-4 rounded-full object-cover border border-emerald-400/40 shrink-0"
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <span className="w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[9px] font-black inline-flex items-center justify-center uppercase">
+                  <span className="w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[9px] font-black inline-flex items-center justify-center uppercase shrink-0">
                     {(authUser.fullName || authUser.email).slice(0, 1)}
                   </span>
                 )}
-                <span className="hidden md:inline max-w-[96px] truncate">
+                <span className="hidden sm:inline max-w-[110px] truncate">
                   {authUser.fullName || authUser.email.split('@')[0]}
                 </span>
               </button>
@@ -420,10 +417,10 @@ export function App() {
                   setReturnToProAfterAuth(false);
                   setShowAuthModal(true);
                 }}
-                className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-200 transition-colors disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-slate-700/80 text-slate-200 transition-colors disabled:opacity-60 whitespace-nowrap"
                 title="Iniciar sesión o crear cuenta gratis"
               >
-                <LogIn className="w-3.5 h-3.5 text-emerald-400" />
+                <LogIn className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <span>Entrar</span>
               </button>
             )}
@@ -431,10 +428,10 @@ export function App() {
             <button
               type="button"
               onClick={() => setShowProModal(true)}
-              className={`inline-flex items-center gap-1.5 text-[11px] font-black px-2.5 py-1.5 rounded-xl border transition-all ${
+              className={`inline-flex items-center gap-1.5 text-[11px] font-black px-2.5 sm:px-3 py-1.5 rounded-xl border transition-all whitespace-nowrap ${
                 proSub
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50 shadow-[0_0_14px_rgba(16,185,129,0.2)]'
-                  : 'sb-pro-pill hover:brightness-110'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50 shadow-[0_0_14px_rgba(16,185,129,0.25)]'
+                  : 'sb-pro-pill shadow-[0_0_16px_rgba(245,158,11,0.16)] hover:brightness-110'
               }`}
               title={
                 proSub
@@ -444,14 +441,14 @@ export function App() {
             >
               {proSub ? (
                 <>
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>PRO</span>
+                  <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                  <span>PRO ACTIVO</span>
                 </>
               ) : (
                 <>
-                  <Lock className="w-3.5 h-3.5 text-amber-300" />
+                  <Lock className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                   <span>
-                    PRO <span className="hidden sm:inline">$5 · S/ 19</span>
+                    PRO <span className="hidden sm:inline">· $5 / S/ 19</span>
                   </span>
                 </>
               )}
@@ -465,10 +462,10 @@ export function App() {
                   ? `Última sincronización: ${new Date(lastSync.ran_at).toLocaleString('es-PE')}. Clic para actualizar.`
                   : 'Sincronizar marcadores ahora'
               }
-              className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-xl bg-white/[0.04] text-slate-300 border border-white/[0.08] hover:border-white/20 hover:text-white disabled:opacity-60 transition-colors"
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 sm:px-2.5 py-1.5 rounded-xl bg-white/[0.04] text-slate-300 border border-white/[0.09] hover:border-white/20 hover:text-white disabled:opacity-60 transition-colors whitespace-nowrap"
             >
               <RefreshCw
-                className={`w-3.5 h-3.5 text-emerald-400 ${syncing ? 'animate-spin' : ''}`}
+                className={`w-3.5 h-3.5 text-emerald-400 shrink-0 ${syncing ? 'animate-spin' : ''}`}
               />
               <span className="hidden lg:inline tabular-nums">
                 {syncing
@@ -478,6 +475,45 @@ export function App() {
                     : 'Sync'}
               </span>
             </button>
+          </div>
+        </div>
+
+        {/* Row 2: Dedicated Desktop Navigation Rail (zero logo/button collisions at all widths) */}
+        <div className="hidden md:block border-t border-white/[0.06] bg-[#040812]/80">
+          <div className="max-w-7xl mx-auto px-5 h-11 flex items-center justify-between gap-4">
+            <nav className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const active = !activePropView && tab === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => {
+                      setActivePropView(null);
+                      setTab(item.key);
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
+                      active
+                        ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 shadow-[0_4px_14px_rgba(16,185,129,0.28)]'
+                        : 'text-slate-300 hover:text-white hover:bg-white/[0.06]'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div className="hidden lg:flex items-center gap-2 text-[11px] font-semibold text-slate-400 shrink-0">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.03] border border-white/[0.07]">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Picks ≥ 68%</span>
+                <span className={proSub ? 'text-emerald-300 font-bold' : 'text-amber-300 font-bold'}>
+                  {proSub ? 'Desbloqueados' : 'PRO'}
+                </span>
+              </span>
+            </div>
           </div>
         </div>
       </header>
