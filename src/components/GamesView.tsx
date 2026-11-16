@@ -163,7 +163,7 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
   }, [leagueId, selectedDate, hasLiveOrStarting]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 @container">
       {/* Horizontal Date Strip */}
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
         {dates.slice(0, 14).map((d) => {
@@ -188,7 +188,7 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
 
       {/* Games List */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 @[620px]:grid-cols-2 gap-3">
           {[1, 2, 3, 4].map((i) => (
             <div
               key={i}
@@ -205,7 +205,7 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+        <div className="grid grid-cols-1 @[620px]:grid-cols-2 gap-3.5">
           {games.map((g) => {
             const awayWon = g.status === 'final' && g.away_score > g.home_score;
             const homeWon = g.status === 'final' && g.home_score > g.away_score;

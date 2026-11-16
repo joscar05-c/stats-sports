@@ -62,6 +62,7 @@ export function App() {
   const [loadingInit, setLoadingInit] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [sidebarToggleTick, setSidebarToggleTick] = useState(0);
+  const [propsDrawerOpen, setPropsDrawerOpen] = useState(false);
 
   // Drill-down Modals & Active Main Prop View
   const [activePropView, setActivePropView] = useState<SelectedPropPayload | null>(null);
@@ -528,12 +529,21 @@ export function App() {
           activePropId={activePropView?.prop.id ?? null}
           onSelectProp={(selection) => setActivePropView(selection)}
           onOpenProModal={() => setShowProModal(true)}
+          onDesktopExpandedChange={setPropsDrawerOpen}
         />
       )}
 
-      {/* Main Content */}
-      <div className={activeLeague ? 'md:pl-[68px]' : ''}>
-        <main className="max-w-5xl mx-auto px-3 sm:px-4 pt-4">
+      {/* Main Content (pushes smoothly right when desktop Props sidebar opens) */}
+      <div
+        className={`transition-[padding] duration-200 ease-out ${
+          activeLeague
+            ? propsDrawerOpen
+              ? 'md:pl-[396px] lg:pl-[436px]'
+              : 'md:pl-[68px]'
+            : ''
+        }`}
+      >
+        <main className="max-w-6xl mx-auto px-3 sm:px-4 pt-4">
           {fromCache && (
             <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300">
               <WifiOff className="w-3.5 h-3.5 shrink-0" />

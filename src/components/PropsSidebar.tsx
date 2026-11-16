@@ -43,6 +43,7 @@ interface PropsSidebarProps {
   activePropId: string | null;
   onSelectProp: (selection: SelectedPropPayload) => void;
   onOpenProModal: () => void;
+  onDesktopExpandedChange?: (expanded: boolean) => void;
 }
 
 function formatDateOption(isoDate: string): string {
@@ -81,6 +82,7 @@ export function PropsSidebar({
   activePropId,
   onSelectProp,
   onOpenProModal,
+  onDesktopExpandedChange,
 }: PropsSidebarProps) {
   const [dates, setDates] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>('');
@@ -91,6 +93,11 @@ export function PropsSidebar({
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [desktopPinned, setDesktopPinned] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const isDesktopExpanded = desktopOpen || desktopPinned;
+
+  useEffect(() => {
+    onDesktopExpandedChange?.(isDesktopExpanded);
+  }, [isDesktopExpanded, onDesktopExpandedChange]);
 
   const [contextsByGame, setContextsByGame] = useState<Record<number, GameBettingContext>>({});
   const [boxScoresByGame, setBoxScoresByGame] = useState<Record<number, PlayerGameStat[]>>({});
@@ -702,8 +709,6 @@ export function PropsSidebar({
     );
   };
 
-  const isDesktopExpanded = desktopOpen || desktopPinned;
-
   return (
     <>
       {/* Desktop Persistent Left Rail + Slide-out Drawer */}
@@ -711,10 +716,10 @@ export function PropsSidebar({
         {renderLogoRail(false)}
         <div
           className={`h-full border-r border-white/[0.08] overflow-hidden transition-all duration-200 ${
-            isDesktopExpanded ? 'w-[348px] lg:w-[378px] opacity-100' : 'w-0 opacity-0 border-r-0'
+            isDesktopExpanded ? 'w-[328px] lg:w-[368px] opacity-100' : 'w-0 opacity-0 border-r-0'
           }`}
         >
-          <div className="w-[348px] lg:w-[378px] h-full">{renderDrawerContent(false)}</div>
+          <div className="w-[328px] lg:w-[368px] h-full">{renderDrawerContent(false)}</div>
         </div>
       </aside>
 
