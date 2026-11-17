@@ -6,6 +6,7 @@ export interface League {
   country: string | null;
   sport?: 'basketball' | 'football';
   source_type: 'api' | 'manual';
+  external_id?: string | null;
   logo_url: string | null;
   is_public: boolean;
 }

@@ -198,8 +198,16 @@ export function App() {
 
   const getFootballLeagueCode = (lg: League | null): string => {
     if (!lg) return 'eng.1';
-    if (lg.slug === 'laliga') return 'esp.1';
-    return 'eng.1';
+    if (lg.external_id) return lg.external_id;
+    const map: Record<string, string> = {
+      'premier-league': 'eng.1',
+      laliga: 'esp.1',
+      'serie-a': 'ita.1',
+      bundesliga: 'ger.1',
+      'ligue-1': 'fra.1',
+      'champions-league': 'uefa.champions',
+    };
+    return map[lg.slug] ?? 'eng.1';
   };
 
   const handleManualSync = async () => {
@@ -454,7 +462,7 @@ export function App() {
                   const found = sportLeagues.find((l) => l.id === Number(e.target.value));
                   if (found) void handleSelectLeague(found);
                 }}
-                className="bg-[#12151c] border border-white/[0.1] rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 whitespace-nowrap"
+                className="sm:hidden bg-[#12151c] border border-white/[0.1] rounded-lg px-2 py-1.5 text-xs font-medium text-slate-200 max-w-[115px] truncate"
               >
                 {sportLeagues.map((l) => (
                   <option key={l.id} value={l.id}>
@@ -655,7 +663,44 @@ export function App() {
             <div className="sb-card rounded-2xl p-8 text-center text-sm text-slate-400">
               Aún no hay ligas cargadas en Supabase. Ejecuta el sincronizador para poblar la NBA.
             </div>
-          ) : activePropView ? (
+          ) : (
+            <>
+              {sportLeagues.length > 1 && !activePropView && (
+                <div
+                  role="region"
+                  aria-label="Ligas disponibles"
+                  className="mb-4 flex items-center gap-1.5 overflow-x-auto no-scrollbar sb-scroll-fade-x pb-1"
+                >
+                  {sportLeagues.map((lg) => {
+                    const isSelected = activeLeague.id === lg.id;
+                    return (
+                      <button
+                        key={lg.id}
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => void handleSelectLeague(lg)}
+                        className={`shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                          isSelected
+                            ? 'cv-tab-active border-transparent'
+                            : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
+                        }`}
+                      >
+                        {lg.logo_url && (
+                          <img
+                            src={lg.logo_url}
+                            alt=""
+                            aria-hidden="true"
+                            className="w-4 h-4 object-contain shrink-0"
+                          />
+                        )}
+                        <span>{lg.short_name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {activePropView ? (
             <PropAnalysisView
               game={activePropView.game}
               prop={activePropView.prop}
@@ -677,6 +722,7 @@ export function App() {
                   key={`games_${activeLeague.id}_${syncVersion}`}
                   leagueId={activeLeague.id}
                   sport={activeSport}
+                  leagueCode={activeSport === 'football' ? getFootballLeagueCode(activeLeague) : undefined}
                   onSelectGame={(game) => setSelectedGame(game)}
                   onGamesUpdated={(updatedGames) => {
                     setSelectedGame((prev) => {
@@ -709,6 +755,7 @@ export function App() {
                   key={`standings_${season.id}_${syncVersion}`}
                   seasonId={season.id}
                   sport={activeSport}
+                  leagueSlug={activeLeague.slug}
                   onSelectTeam={(team, standing) => setSelectedTeam({ team, standing })}
                 />
               )}
@@ -720,6 +767,8 @@ export function App() {
                   onSelectTeam={(team) => setSelectedTeam({ team })}
                 />
               )}
+            </>
+          )}
             </>
           )}
           <footer className="mt-10 pt-5 border-t border-white/[0.06] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-400 pb-4">

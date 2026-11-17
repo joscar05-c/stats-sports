@@ -6,12 +6,14 @@ import type { Team, TeamStanding } from '../types/database';
 interface StandingsViewProps {
   seasonId: number;
   sport?: 'basketball' | 'football';
+  leagueSlug?: string;
   onSelectTeam: (team: Team, standing?: TeamStanding) => void;
 }
 
 export function StandingsView({
   seasonId,
   sport = 'basketball',
+  leagueSlug,
   onSelectTeam,
 }: StandingsViewProps) {
   const [standings, setStandings] = useState<TeamStanding[]>([]);
@@ -131,15 +133,23 @@ export function StandingsView({
               <tbody className="divide-y divide-white/[0.06]">
                 {rows.map((s, index) => {
                   const seed = s.playoff_seed ?? index + 1;
+                  const isUcl = leagueSlug === 'champions-league';
+                  const is18Team = leagueSlug === 'bundesliga' || leagueSlug === 'ligue-1';
                   const seedZone =
                     sport === 'football'
-                      ? seed <= 4
-                        ? 'bg-emerald-400/75'
-                        : seed === 5
-                          ? 'bg-blue-400/75'
-                          : seed >= 18
-                            ? 'bg-rose-400/75'
-                            : 'bg-slate-700'
+                      ? isUcl
+                        ? seed <= 8
+                          ? 'bg-emerald-400/75'
+                          : seed <= 24
+                            ? 'bg-blue-400/75'
+                            : 'bg-rose-400/75'
+                        : seed <= 4
+                          ? 'bg-emerald-400/75'
+                          : seed === 5
+                            ? 'bg-blue-400/75'
+                            : seed >= (is18Team ? 16 : 18)
+                              ? 'bg-rose-400/75'
+                              : 'bg-slate-700'
                       : seed <= 6
                         ? 'bg-emerald-400/75'
                         : seed <= 10
@@ -254,20 +264,39 @@ export function StandingsView({
 
           <div className="px-4 py-2.5 bg-[#0e1117] border-t border-white/[0.06] flex flex-wrap items-center gap-4 text-[11px] text-slate-400">
             {sport === 'football' ? (
-              <>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400/75" />
-                  1-4 UEFA Champions League
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-blue-400/75" />
-                  5 UEFA Europa League
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-rose-400/75" />
-                  18-20 Descenso
-                </span>
-              </>
+              leagueSlug === 'champions-league' ? (
+                <>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400/75" />
+                    1-8 Octavos de Final directos
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-400/75" />
+                    9-24 Play-offs eliminatorios
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-rose-400/75" />
+                    25-36 Eliminados
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400/75" />
+                    1-4 UEFA Champions League
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-400/75" />
+                    5 UEFA Europa League
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-rose-400/75" />
+                    {leagueSlug === 'bundesliga' || leagueSlug === 'ligue-1'
+                      ? '16-18 Descenso / Promoción'
+                      : '18-20 Descenso'}
+                  </span>
+                </>
+              )
             ) : (
               <>
                 <span className="inline-flex items-center gap-1.5">

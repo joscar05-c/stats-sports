@@ -12,6 +12,7 @@ import type { Game } from '../types/database';
 interface GamesViewProps {
   leagueId: number;
   sport?: 'basketball' | 'football';
+  leagueCode?: string;
   onSelectGame: (game: Game) => void;
   onGamesUpdated?: (games: Game[]) => void;
 }
@@ -47,6 +48,7 @@ function formatTipoffLocal(iso: string): string {
 export function GamesView({
   leagueId,
   sport = 'basketball',
+  leagueCode = 'eng.1',
   onSelectGame,
   onGamesUpdated,
 }: GamesViewProps) {
@@ -155,7 +157,7 @@ export function GamesView({
       tick += 1;
       try {
         if (hasLiveOrStarting && tick % 3 === 0) {
-          await triggerCloudSync(0, 0, sport).catch(() => {});
+          await triggerCloudSync(0, 0, sport, leagueCode).catch(() => {});
         }
         const res = await fetchGamesByDate(leagueId, selectedDate);
         if (active) {

@@ -27,6 +27,34 @@ const LEAGUE_CATALOG: Record<
     country: "España",
     logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/15.png",
   },
+  "ita.1": {
+    slug: "serie-a",
+    name: "Italian Serie A",
+    short_name: "Serie A",
+    country: "Italia",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/12.png",
+  },
+  "ger.1": {
+    slug: "bundesliga",
+    name: "German Bundesliga",
+    short_name: "Bundesliga",
+    country: "Alemania",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/10.png",
+  },
+  "fra.1": {
+    slug: "ligue-1",
+    name: "French Ligue 1",
+    short_name: "Ligue 1",
+    country: "Francia",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/9.png",
+  },
+  "uefa.champions": {
+    slug: "champions-league",
+    name: "UEFA Champions League",
+    short_name: "Champions League",
+    country: "Europa",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/2.png",
+  },
 };
 
 function safeInt(val: unknown, def = 0): number {
@@ -184,7 +212,7 @@ const FPL_TO_ESPN_ABBR: Record<string, string> = {
 async function buildFplPhotoResolver(
   leagueCode: string,
 ): Promise<(fullName: string, teamAbbr?: string | null) => string | null> {
-  if (leagueCode !== "eng.1") return () => null;
+  if (leagueCode !== "eng.1" && leagueCode !== "uefa.champions") return () => null;
   try {
     const fpl = await fetchJson("https://fantasy.premierleague.com/api/bootstrap-static/");
     const teamAbbrById: Record<number, string> = {};
@@ -559,14 +587,30 @@ Deno.serve(async (req: Request) => {
     const targetDates: string[] = [];
     const seenDates = new Set<string>();
     for (const c of calRaw) {
-      const dStr = String(c).slice(0, 10);
+      if (typeof c !== "string") continue;
+      const dStr = c.slice(0, 10);
       if (dStr.length !== 10 || seenDates.has(dStr)) continue;
       if (dStr >= minStr && dStr <= maxStr) {
         seenDates.add(dStr);
         targetDates.push(dStr);
       }
     }
-    if (targetDates.length === 0) targetDates.push(todayStr);
+    if (targetDates.length === 0) {
+      // Structured calendar (e.g. UEFA Champions League): scan window dates (Tue-Thu for UCL backfill)
+      const startDateStr = backfillSeason ? `${seasonYear}-09-01` : minStr;
+      let cursor = new Date(`${startDateStr}T12:00:00Z`).getTime();
+      const endMs = new Date(`${maxStr}T12:00:00Z`).getTime();
+      while (cursor <= endMs) {
+        const dt = new Date(cursor);
+        const dow = dt.getUTCDay(); // 0=Sun..6=Sat
+        const dStr = dt.toISOString().slice(0, 10);
+        if (!backfillSeason || leagueCode !== "uefa.champions" || dow === 2 || dow === 3 || dow === 4) {
+          targetDates.push(dStr);
+        }
+        cursor += 86400000;
+      }
+      if (targetDates.length === 0) targetDates.push(todayStr);
+    }
 
     const gamesByExt: Record<string, any> = {};
     for (let i = 0; i < targetDates.length; i += 10) {
@@ -631,7 +675,12 @@ Deno.serve(async (req: Request) => {
       const batchStats = await Promise.all(
         batch.map(async (g) => {
           const eid = g.external_id;
-          const summ = await fetchJson(`${ESPN_BASE}/site/v2/sports/soccer/${leagueCode}/summary?event=${eid}`);
+          let summ: any = null;
+          try {
+            summ = await fetchJson(`${ESPN_BASE}/site/v2/sports/soccer/${leagueCode}/summary?event=${eid}`);
+          } catch {
+            return [];
+          }
           const pickOdds = extractSoccerOdds(summ?.odds ?? summ?.pickcenter);
           if (pickOdds) g.odds = { ...(g.odds ?? {}), ...pickOdds };
 

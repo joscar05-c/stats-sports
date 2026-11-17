@@ -52,6 +52,34 @@ LEAGUE_CATALOG: dict[str, dict[str, str]] = {
         "country": "España",
         "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/15.png",
     },
+    "ita.1": {
+        "slug": "serie-a",
+        "name": "Italian Serie A",
+        "short_name": "Serie A",
+        "country": "Italia",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/12.png",
+    },
+    "ger.1": {
+        "slug": "bundesliga",
+        "name": "German Bundesliga",
+        "short_name": "Bundesliga",
+        "country": "Alemania",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/10.png",
+    },
+    "fra.1": {
+        "slug": "ligue-1",
+        "name": "French Ligue 1",
+        "short_name": "Ligue 1",
+        "country": "Francia",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/9.png",
+    },
+    "uefa.champions": {
+        "slug": "champions-league",
+        "name": "UEFA Champions League",
+        "short_name": "Champions League",
+        "country": "Europa",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/2.png",
+    },
 }
 
 
@@ -256,7 +284,7 @@ def normalize_person_name(val: str | None) -> str:
 
 
 def build_fpl_photo_resolver(league_code: str) -> Callable[[str, str | None], str | None]:
-    if league_code != "eng.1":
+    if league_code not in ("eng.1", "uefa.champions"):
         return lambda _name, _abbr=None: None
     try:
         fpl = fetch_json("https://fantasy.premierleague.com/api/bootstrap-static/")
@@ -594,7 +622,9 @@ def sync_league(
     target_dates: list[str] = []
     seen_cal: set[str] = set()
     for c in cal_raw:
-        d_str = str(c)[:10]
+        if not isinstance(c, str):
+            continue
+        d_str = c[:10]
         if len(d_str) != 10 or d_str in seen_cal:
             continue
         try:
@@ -606,7 +636,14 @@ def sync_league(
             target_dates.append(d_str)
 
     if not target_dates:
-        target_dates = [today_date.isoformat()]
+        start_d = dt.date(season_year, 9, 1) if backfill_season else min_date
+        cur = start_d
+        while cur <= max_date:
+            if not backfill_season or league_code != "uefa.champions" or cur.weekday() in (1, 2, 3):
+                target_dates.append(cur.isoformat())
+            cur += dt.timedelta(days=1)
+        if not target_dates:
+            target_dates = [today_date.isoformat()]
 
     def fetch_day_sb(d_str: str) -> tuple[str, dict[str, Any]]:
         ymd = d_str.replace("-", "")
@@ -916,6 +953,7 @@ def sync_league(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Sync football league stats from ESPN to Supabase")
     parser.add_argument("--league", default="eng.1", choices=list(LEAGUE_CATALOG.keys()))
+    parser.add_argument("--all-leagues", action="store_true", help="Sync all configured football leagues")
     parser.add_argument("--days-back", type=int, default=6)
     parser.add_argument("--days-ahead", type=int, default=12)
     parser.add_argument("--backfill-season", action="store_true")
@@ -927,14 +965,16 @@ def main() -> int:
         print("Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY env vars are required.", file=sys.stderr)
         return 1
 
-    sync_league(
-        league_code=args.league,
-        days_back=args.days_back,
-        days_ahead=args.days_ahead,
-        backfill_season=args.backfill_season,
-        sb_url=sb_url,
-        sb_key=sb_key,
-    )
+    targets = list(LEAGUE_CATALOG.keys()) if args.all_leagues else [args.league]
+    for code in targets:
+        sync_league(
+            league_code=code,
+            days_back=args.days_back,
+            days_ahead=args.days_ahead,
+            backfill_season=args.backfill_season,
+            sb_url=sb_url,
+            sb_key=sb_key,
+        )
     return 0
 
 

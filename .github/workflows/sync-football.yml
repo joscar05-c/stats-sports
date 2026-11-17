@@ -1,4 +1,4 @@
-name: Sync Premier League Stats
+name: Sync Football Leagues Stats
 
 on:
   push:
@@ -28,13 +28,13 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Run Premier League sync to Supabase
+      - name: Run Football leagues sync to Supabase
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.VITE_SUPABASE_URL || 'https://dowxayyvtghtjkctasfn.supabase.co' }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           if [ "${{ github.event.inputs.backfill_season }}" = "true" ]; then
-            python scripts/sync_football.py --league eng.1 --backfill-season
+            python scripts/sync_football.py --all-leagues --backfill-season
           else
-            python scripts/sync_football.py --league eng.1 --days-back 6 --days-ahead 14
+            python scripts/sync_football.py --all-leagues --days-back 6 --days-ahead 14
           fi

@@ -18,7 +18,7 @@ export async function fetchLeagues(): Promise<{ data: League[]; fromCache: boole
   return withOfflineCache('leagues', async () => {
     const { data, error } = await supabase
       .from('leagues')
-      .select('id, slug, name, short_name, country, sport, source_type, logo_url, is_public')
+      .select('id, slug, name, short_name, country, sport, source_type, external_id, logo_url, is_public')
       .order('id', { ascending: true });
     if (error) throw error;
     return (data ?? []) as League[];
