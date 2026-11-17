@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import {
   ArrowLeftRight,
   Calendar,
+  ChevronDown,
   Download,
   Flame,
   LogIn,
@@ -35,6 +36,7 @@ import { StandingsView } from './components/StandingsView';
 import { ExploreView } from './components/ExploreView';
 import { PropsSidebar, type SelectedPropPayload } from './components/PropsSidebar';
 import { PropAnalysisView } from './components/PropAnalysisView';
+import { LeaguePickerModal } from './components/LeaguePickerModal';
 import { ProUpgradeModal } from './components/ProUpgradeModal';
 import { AuthModal } from './components/AuthModal';
 import { AccountModal } from './components/AccountModal';
@@ -44,21 +46,27 @@ import { TeamDetailModal } from './components/TeamDetailModal';
 import type { Game, League, Season, SyncRun, Team, TeamStanding } from './types/database';
 
 type TabKey = 'games' | 'leaders' | 'compare' | 'standings' | 'explore';
-type LeagueRegion = 'all' | 'southamerica' | 'cups' | 'europe';
 
-const CUP_LEAGUE_SLUGS = new Set(['champions-league', 'libertadores', 'sudamericana']);
-const EURO_LEAGUE_SLUGS = new Set([
+const FAV_LEAGUES_STORAGE_KEY = 'cv_favorite_leagues_v1';
+const DEFAULT_QUICK_LEAGUE_SLUGS = [
   'premier-league',
   'laliga',
-  'serie-a',
-  'bundesliga',
-  'ligue-1',
-]);
+  'libertadores',
+  'argentina',
+  'peru',
+];
 
-function getLeagueRegion(slug: string): Exclude<LeagueRegion, 'all'> {
-  if (CUP_LEAGUE_SLUGS.has(slug)) return 'cups';
-  if (EURO_LEAGUE_SLUGS.has(slug)) return 'europe';
-  return 'southamerica';
+function loadFavoriteLeagueIds(): number[] {
+  try {
+    const raw = window.localStorage.getItem(FAV_LEAGUES_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is number => typeof id === 'number' && Number.isFinite(id))
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 interface BeforeInstallPromptEvent extends Event {
@@ -70,7 +78,8 @@ export function App() {
   const [tab, setTab] = useState<TabKey>('games');
   const [leagues, setLeagues] = useState<League[]>([]);
   const [activeLeague, setActiveLeague] = useState<League | null>(null);
-  const [leagueRegion, setLeagueRegion] = useState<LeagueRegion>('all');
+  const [showLeaguePicker, setShowLeaguePicker] = useState(false);
+  const [favoriteLeagueIds, setFavoriteLeagueIds] = useState<number[]>(loadFavoriteLeagueIds);
   const [season, setSeason] = useState<Season | null>(null);
   const [lastSync, setLastSync] = useState<SyncRun | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -212,6 +221,32 @@ export function App() {
   );
   const hasBasketball = leagues.some((l) => (l.sport ?? 'basketball') === 'basketball');
   const hasFootball = leagues.some((l) => l.sport === 'football');
+
+  const toggleFavoriteLeague = (leagueId: number) => {
+    setFavoriteLeagueIds((prev) => {
+      const next = prev.includes(leagueId)
+        ? prev.filter((id) => id !== leagueId)
+        : [...prev, leagueId];
+      try {
+        window.localStorage.setItem(FAV_LEAGUES_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Ignore storage quota errors
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (sportLeagues.length <= 1) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowLeaguePicker((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [sportLeagues.length]);
 
   const getFootballLeagueCode = (lg: League | null): string => {
     if (!lg) return 'eng.1';
@@ -729,71 +764,71 @@ export function App() {
           ) : (
             <>
               {sportLeagues.length > 1 && !activePropView && (() => {
-                const showRegionTabs = activeSport === 'football' && sportLeagues.length > 6;
-                const filteredLeagues = showRegionTabs && leagueRegion !== 'all'
-                  ? sportLeagues.filter((lg) => getLeagueRegion(lg.slug) === leagueRegion)
-                  : sportLeagues;
-                const saCount = sportLeagues.filter((lg) => getLeagueRegion(lg.slug) === 'southamerica').length;
-                const cupCount = sportLeagues.filter((lg) => getLeagueRegion(lg.slug) === 'cups').length;
-                const euCount = sportLeagues.filter((lg) => getLeagueRegion(lg.slug) === 'europe').length;
+                const favInSport = sportLeagues.filter((lg) => favoriteLeagueIds.includes(lg.id));
+                const quickBase = favInSport.length > 0
+                  ? favInSport
+                  : DEFAULT_QUICK_LEAGUE_SLUGS
+                      .map((slug) => sportLeagues.find((lg) => lg.slug === slug))
+                      .filter((lg): lg is League => Boolean(lg));
+                const quickLeagues = quickBase.slice(0, 5);
+                const activeSubtitle =
+                  activeLeague.country && activeLeague.country !== activeLeague.short_name
+                    ? `${activeLeague.country} · ${activeLeague.name}`
+                    : activeLeague.name;
 
                 return (
-                  <div className="mb-4 space-y-2">
-                    {showRegionTabs && (
-                      <div
-                        role="tablist"
-                        aria-label="Filtrar ligas por región"
-                        className="flex items-center gap-1.5 overflow-x-auto no-scrollbar sb-scroll-fade-x pb-0.5"
-                      >
-                        {(
-                          [
-                            { key: 'all', label: `Todas (${sportLeagues.length})` },
-                            { key: 'southamerica', label: `Sudamérica (${saCount})` },
-                            { key: 'cups', label: `Copas Regionales (${cupCount})` },
-                            { key: 'europe', label: `Europa (${euCount})` },
-                          ] as const
-                        ).map((reg) => {
-                          const isRegActive = leagueRegion === reg.key;
-                          return (
-                            <button
-                              key={reg.key}
-                              type="button"
-                              role="tab"
-                              aria-selected={isRegActive}
-                              onClick={(e) => {
-                                setLeagueRegion(reg.key);
-                                e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-                              }}
-                              className={`shrink-0 px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
-                                isRegActive
-                                  ? 'bg-white/[0.10] text-white border-white/[0.22]'
-                                  : 'bg-transparent text-slate-400 border-white/[0.06] hover:text-slate-200 hover:border-white/[0.14]'
-                              }`}
-                            >
-                              {reg.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    <div
-                      role="region"
-                      aria-label="Ligas disponibles"
-                      className="flex items-center gap-1.5 overflow-x-auto no-scrollbar sb-scroll-fade-x pb-1"
+                  <div
+                    role="region"
+                    aria-label="Selector de competición"
+                    className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setShowLeaguePicker(true)}
+                      className="w-full sm:w-auto sm:min-w-[260px] max-w-full inline-flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-[#12151c] border border-white/[0.10] hover:border-white/[0.22] hover:bg-[#171b24] transition-colors text-left"
+                      title="Explorar todas las ligas y copas (Ctrl+K)"
                     >
-                      {filteredLeagues.map((lg) => {
+                      <span className="inline-flex items-center gap-2.5 min-w-0">
+                        <span className="w-7 h-7 rounded-lg bg-[#0b0d11] border border-white/[0.08] flex items-center justify-center shrink-0 p-1">
+                          {activeLeague.logo_url ? (
+                            <img
+                              src={activeLeague.logo_url}
+                              alt=""
+                              aria-hidden="true"
+                              className="w-full h-full object-contain"
+                            />
+                          ) : (
+                            <Trophy className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+                          )}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-xs font-bold text-white truncate">
+                            {activeLeague.short_name}
+                          </span>
+                          <span className="block text-[11px] text-slate-400 truncate">
+                            {activeSubtitle}
+                          </span>
+                        </span>
+                      </span>
+
+                      <span className="inline-flex items-center gap-1.5 shrink-0 pl-2 border-l border-white/[0.08]">
+                        <span className="text-[11px] font-semibold text-slate-300 tabular-nums">
+                          {sportLeagues.length} ligas
+                        </span>
+                        <ChevronDown className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+                      </span>
+                    </button>
+
+                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar sb-scroll-fade-x pb-0.5 sm:pb-0">
+                      {quickLeagues.map((lg) => {
                         const isSelected = activeLeague.id === lg.id;
                         return (
                           <button
                             key={lg.id}
                             type="button"
                             aria-pressed={isSelected}
-                            onClick={(e) => {
-                              void handleSelectLeague(lg);
-                              e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-                            }}
-                            className={`shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                            onClick={() => void handleSelectLeague(lg)}
+                            className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                               isSelected
                                 ? 'cv-tab-active border-transparent'
                                 : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
@@ -804,13 +839,21 @@ export function App() {
                                 src={lg.logo_url}
                                 alt=""
                                 aria-hidden="true"
-                                className="w-4 h-4 object-contain shrink-0"
+                                className="w-3.5 h-3.5 object-contain shrink-0"
                               />
                             )}
                             <span>{lg.short_name}</span>
                           </button>
                         );
                       })}
+                      <button
+                        type="button"
+                        onClick={() => setShowLeaguePicker(true)}
+                        className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white/[0.04] text-slate-300 border border-white/[0.08] hover:border-white/[0.18] hover:text-white transition-colors"
+                      >
+                        <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                        <span>Explorar</span>
+                      </button>
                     </div>
                   </div>
                 );
@@ -995,6 +1038,17 @@ export function App() {
             setShowAuthModal(false);
             setAuthPromptReason(null);
           }}
+        />
+      )}
+
+      {showLeaguePicker && activeLeague && sportLeagues.length > 1 && (
+        <LeaguePickerModal
+          leagues={sportLeagues}
+          activeLeague={activeLeague}
+          favoriteIds={favoriteLeagueIds}
+          onToggleFavorite={toggleFavoriteLeague}
+          onSelectLeague={(lg) => void handleSelectLeague(lg)}
+          onClose={() => setShowLeaguePicker(false)}
         />
       )}
 
