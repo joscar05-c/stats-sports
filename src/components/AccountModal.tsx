@@ -24,6 +24,7 @@ import {
   PRO_MONTHLY_PRICE_USD,
   type ProSubscriptionState,
 } from '../services/subscriptionService';
+import { ModalDialog } from './ModalDialog';
 
 interface AccountModalProps {
   profile: UserProfile;
@@ -101,14 +102,14 @@ export function AccountModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#03050a]/85 backdrop-blur-md"
-      onClick={onClose}
+    <ModalDialog
+      onClose={onClose}
+      ariaLabelledBy="account-modal-title"
+      maxWidthCss="32rem"
+      borderClass="border border-white/[0.12]"
     >
-      <div
-        className="w-full max-w-lg max-h-[92vh] flex flex-col bg-[#080d1a] border border-white/[0.12] rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.85)]"
-        onClick={(e) => e.stopPropagation()}
-      >
+      {(requestClose) => (
+        <div className="flex flex-col flex-1 min-h-0">
         {/* Header */}
         <div className="p-5 border-b border-white/[0.08] bg-[radial-gradient(ellipse_at_top_left,rgba(16,185,129,0.14),transparent_65%)] flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -125,7 +126,7 @@ export function AccountModal({
             )}
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-black text-white truncate">
+                <h2 id="account-modal-title" className="text-base font-black text-white truncate">
                   {profile.fullName || 'Usuario CourtVision'}
                 </h2>
                 {profile.isAdmin && (
@@ -140,15 +141,15 @@ export function AccountModal({
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="p-1.5 rounded-full bg-white/[0.05] text-slate-400 hover:text-white border border-white/[0.08]"
             aria-label="Cerrar"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto p-5 space-y-4">
+        <div className="flex-1 overflow-auto sb-scroller p-5 space-y-4">
           {/* Plan Status Card */}
           {subscription ? (
             <div className="rounded-xl bg-emerald-500/[0.08] border border-emerald-500/40 p-4 space-y-2.5">
@@ -226,7 +227,11 @@ export function AccountModal({
               </div>
 
               {adminMsg && (
-                <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-[11px] text-emerald-200 font-semibold">
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-[11px] text-emerald-200 font-semibold"
+                >
                   {adminMsg}
                 </div>
               )}
@@ -317,7 +322,8 @@ export function AccountModal({
             Cerrar sesión
           </button>
         </div>
-      </div>
-    </div>
+        </div>
+      )}
+    </ModalDialog>
   );
 }

@@ -32,6 +32,7 @@ import {
 import type { UserProfile } from '../services/authService';
 import { supabase } from '../lib/supabase';
 import { PRO_CONFIDENCE_THRESHOLD } from '../utils/betting';
+import { ModalDialog } from './ModalDialog';
 
 interface ProUpgradeModalProps {
   user: UserProfile | null;
@@ -278,22 +279,22 @@ export function ProUpgradeModal({
     );
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#03050a]/85 backdrop-blur-md"
-      onClick={onClose}
+    <ModalDialog
+      onClose={onClose}
+      ariaLabelledBy="pro-modal-title"
+      maxWidthCss="32rem"
+      borderClass="border border-emerald-500/25"
     >
-      <div
-        className="w-full max-w-lg max-h-[92vh] flex flex-col bg-[#080d1a] border border-emerald-500/25 rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.85)]"
-        onClick={(e) => e.stopPropagation()}
-      >
+      {(requestClose) => (
+        <div className="flex flex-col flex-1 min-h-0">
         {/* Header */}
         <div className="relative p-5 border-b border-white/[0.08] bg-[radial-gradient(ellipse_at_top_left,rgba(16,185,129,0.16),transparent_65%)] flex items-start justify-between gap-3">
           <div>
             <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <ShieldCheck className="w-4 h-4 text-emerald-400" aria-hidden="true" />
               CourtVision PRO · Suscripción Mensual
             </div>
-            <h2 className="text-xl font-black text-white mt-1 tracking-tight">
+            <h2 id="pro-modal-title" className="text-xl font-black text-white mt-1 tracking-tight">
               {subscription
                 ? 'Acceso PRO Activo'
                 : `Desbloquea Picks ${PRO_CONFIDENCE_THRESHOLD}%+ (${PRO_MONTHLY_PRICE_USD.toFixed(0)} USD / S/ ${PRO_MONTHLY_PRICE_PEN.toFixed(0)})`}
@@ -304,15 +305,15 @@ export function ProUpgradeModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="p-1.5 rounded-full bg-white/[0.05] text-slate-400 hover:text-white border border-white/[0.08]"
             aria-label="Cerrar"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto p-5 space-y-4">
+        <div className="flex-1 overflow-auto sb-scroller p-5 space-y-4">
           {subscription ? (
             <div className="space-y-4">
               <div className="rounded-xl bg-emerald-500/[0.07] border border-emerald-500/35 p-4 space-y-2.5">
@@ -526,11 +527,17 @@ export function ProUpgradeModal({
                       </div>
 
                       {provider === 'yape_plin' ? (
-                        <div className="space-y-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/30 p-3.5">
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            void handleSubmitYapePlin();
+                          }}
+                          className="space-y-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/30 p-3.5"
+                        >
                           <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] pb-2.5">
                             <div>
                               <div className="inline-flex items-center gap-1.5 text-xs font-extrabold text-amber-300">
-                                <Smartphone className="w-4 h-4" />
+                                <Smartphone className="w-4 h-4" aria-hidden="true" />
                                 Pago con Yape o Plin · S/ {PRO_MONTHLY_PRICE_PEN.toFixed(2)}
                               </div>
                               <div className="text-[11px] text-slate-300 mt-0.5">
@@ -540,13 +547,14 @@ export function ProUpgradeModal({
                             <button
                               type="button"
                               onClick={handleCopyNumber}
+                              aria-label={`Copiar número ${YAPE_PLIN_CONFIG.number}`}
                               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-950/90 border border-amber-500/40 text-xs font-mono font-bold text-amber-200 hover:bg-slate-900"
                             >
                               <span>{YAPE_PLIN_CONFIG.number}</span>
                               {copiedPhone ? (
-                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                <Check className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
                               ) : (
-                                <Copy className="w-3.5 h-3.5 text-amber-300" />
+                                <Copy className="w-3.5 h-3.5 text-amber-300" aria-hidden="true" />
                               )}
                             </button>
                           </div>
@@ -557,30 +565,51 @@ export function ProUpgradeModal({
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <input
-                              type="text"
-                              value={yapeOpCode}
-                              onChange={(e) => setYapeOpCode(e.target.value)}
-                              placeholder="N° Operación (ej. 048291)"
-                              className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white font-mono placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
-                            />
-                            <input
-                              type="text"
-                              value={yapeSenderName}
-                              onChange={(e) => setYapeSenderName(e.target.value)}
-                              placeholder="Nombre del titular (opcional)"
-                              className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
-                            />
+                            <div className="space-y-1">
+                              <label htmlFor="yape-op-code" className="visually-hidden">
+                                Número de operación Yape o Plin
+                              </label>
+                              <input
+                                id="yape-op-code"
+                                name="operation-code"
+                                type="text"
+                                required
+                                minLength={4}
+                                spellCheck={false}
+                                autoCapitalize="none"
+                                autoCorrect="off"
+                                enterKeyHint="next"
+                                value={yapeOpCode}
+                                onChange={(e) => setYapeOpCode(e.target.value)}
+                                placeholder="N° Operación (ej. 048291)"
+                                className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-base sm:text-xs text-white font-mono placeholder:text-slate-500 focus:border-emerald-400"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label htmlFor="yape-sender-name" className="visually-hidden">
+                                Nombre del titular
+                              </label>
+                              <input
+                                id="yape-sender-name"
+                                name="sender-name"
+                                type="text"
+                                autoComplete="name"
+                                enterKeyHint="done"
+                                value={yapeSenderName}
+                                onChange={(e) => setYapeSenderName(e.target.value)}
+                                placeholder="Nombre del titular (opcional)"
+                                className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-base sm:text-xs text-white placeholder:text-slate-500 focus:border-emerald-400"
+                              />
+                            </div>
                           </div>
 
                           <div className="flex flex-col sm:flex-row gap-2">
                             <button
-                              type="button"
+                              type="submit"
                               disabled={busy}
-                              onClick={handleSubmitYapePlin}
                               className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs inline-flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors"
                             >
-                              <CheckCircle2 className="w-4 h-4" />
+                              <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
                               {busy ? 'Registrando...' : 'Registrar Pago en mi Cuenta'}
                             </button>
                             <a
@@ -589,11 +618,11 @@ export function ProUpgradeModal({
                               rel="noopener noreferrer"
                               className="py-2.5 px-3 rounded-xl bg-slate-950/90 hover:bg-slate-900 border border-emerald-500/40 text-emerald-300 font-bold text-xs inline-flex items-center justify-center gap-1.5 transition-colors"
                             >
-                              <MessageCircle className="w-4 h-4" />
+                              <MessageCircle className="w-4 h-4" aria-hidden="true" />
                               WhatsApp
                             </a>
                           </div>
-                        </div>
+                        </form>
                       ) : (
                         <button
                           type="button"
@@ -638,35 +667,52 @@ export function ProUpgradeModal({
                       )}
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void handleClaimCode();
+                      }}
+                      className="space-y-3"
+                    >
                       <div className="space-y-1.5">
-                        <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                        <label
+                          htmlFor="pro-access-code"
+                          className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide"
+                        >
                           Código CVPRO-XXXX-XXXX
                         </label>
                         <input
+                          id="pro-access-code"
+                          name="access-code"
                           type="text"
+                          required
+                          spellCheck={false}
+                          autoCapitalize="characters"
+                          autoCorrect="off"
+                          enterKeyHint="done"
                           value={codeInput}
                           onChange={(e) => setCodeInput(e.target.value)}
                           placeholder="CVPRO-XXXX-XXXX"
-                          className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-sm text-white font-mono placeholder:font-sans placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
+                          className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-base sm:text-sm text-white font-mono placeholder:font-sans placeholder:text-slate-500 focus:border-emerald-400"
                         />
                       </div>
                       <button
-                        type="button"
+                        type="submit"
                         disabled={busy}
-                        onClick={handleClaimCode}
                         className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-black text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60 transition-all shadow-[0_6px_20px_rgba(16,185,129,0.28)]"
                       >
-                        <KeyRound className="w-4 h-4" />
+                        <KeyRound className="w-4 h-4" aria-hidden="true" />
                         {busy ? 'Validando código...' : 'Vincular Código a mi Cuenta'}
                       </button>
-                    </div>
+                    </form>
                   )}
                 </>
               )}
 
               {feedback && (
                 <div
+                  role={feedback.tone === 'err' ? 'alert' : 'status'}
+                  aria-live="polite"
                   className={`rounded-xl border p-3 text-xs ${
                     feedback.tone === 'ok'
                       ? 'bg-emerald-500/10 border-emerald-500/35 text-emerald-200'
@@ -681,7 +727,8 @@ export function ProUpgradeModal({
             </>
           )}
         </div>
-      </div>
-    </div>
+        </div>
+      )}
+    </ModalDialog>
   );
 }

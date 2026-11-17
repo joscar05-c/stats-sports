@@ -21,6 +21,7 @@ import {
   type PlayerChartMetric,
 } from '../utils/betting';
 import type { Player, PlayerGameStat, PlayerSeasonAverage } from '../types/database';
+import { ModalDialog } from './ModalDialog';
 
 interface PlayerDetailModalProps {
   playerId: number;
@@ -51,7 +52,7 @@ export function PlayerDetailModal({
 
   const playerProps = useMemo(() => {
     const recs = buildSinglePlayerPropsRecommendations(average, logs);
-    return propsOrder === 'desc' ? recs : [...recs].reverse();
+    return propsOrder === 'desc' ? recs : recs.toReversed();
   }, [average, logs, propsOrder]);
 
   useEffect(() => {
@@ -94,7 +95,7 @@ export function PlayerDetailModal({
     setSelectedBarIdx(null);
   }, [playerId, defaultLineForMetric]);
 
-  const chartLogs = useMemo(() => [...logs].reverse(), [logs]);
+  const chartLogs = useMemo(() => logs.toReversed(), [logs]);
 
   const chartStats = useMemo(() => {
     if (chartLogs.length === 0) {
@@ -139,14 +140,15 @@ export function PlayerDetailModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm"
-      onClick={onClose}
+    <ModalDialog
+      onClose={onClose}
+      ariaLabelledBy="player-modal-title"
+      ariaLabel="Ficha del jugador"
+      maxWidthCss="42rem"
+      borderClass="border border-white/[0.1]"
     >
-      <div
-        className="w-full max-w-2xl max-h-[92vh] flex flex-col bg-[#080d1a] border border-white/[0.1] rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.85)]"
-        onClick={(e) => e.stopPropagation()}
-      >
+      {(requestClose) => (
+        <div className="flex flex-col flex-1 min-h-0">
         {loading || !player ? (
           <div className="p-10 text-center text-slate-400 text-sm">
             {loading ? 'Cargando ficha del jugador...' : 'No se encontró al jugador.'}
@@ -189,7 +191,7 @@ export function PlayerDetailModal({
                         #{player.jersey_number ?? '-'} · {player.position ?? 'JUG'}
                       </span>
                     </div>
-                    <h2 className="text-xl sm:text-2xl font-black text-white leading-tight">
+                    <h2 id="player-modal-title" className="text-xl sm:text-2xl font-black text-white leading-tight">
                       {player.full_name}
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
@@ -206,11 +208,12 @@ export function PlayerDetailModal({
                 </div>
 
                 <button
-                  onClick={onClose}
+                  type="button"
+                  onClick={requestClose}
                   className="p-1.5 rounded-full bg-black/50 border border-white/[0.1] text-slate-300 hover:text-white"
                   aria-label="Cerrar"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-4 h-4" aria-hidden="true" />
                 </button>
               </div>
 
@@ -240,7 +243,7 @@ export function PlayerDetailModal({
             </div>
 
             {/* Body */}
-            <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-5 space-y-5">
+            <div className="flex-1 min-h-0 overflow-auto sb-scroller p-4 sm:p-5 space-y-5">
               {average ? (
                 <>
                   {/* Main Averages Grid */}
@@ -609,17 +612,23 @@ export function PlayerDetailModal({
               {/* Recent Game Log */}
               {logs.length > 0 && (
                 <div>
-                  <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                  <h3 id="player-recent-log-heading" className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
                     Últimos Partidos
                   </h3>
-                  <div className="overflow-x-auto rounded-xl border border-slate-800">
+                  <div
+                    tabIndex={0}
+                    role="region"
+                    aria-labelledby="player-recent-log-heading"
+                    className="overflow-x-auto sb-scroller rounded-xl border border-slate-800"
+                  >
                     <table className="w-full text-xs tabular-nums whitespace-nowrap">
                       <thead className="bg-slate-900/80 text-slate-400">
                         <tr>
-                          <th className="text-left py-2 px-3">FECHA</th>
-                          <th className="text-left py-2 px-2">RIVAL</th>
-                          <th className="text-right py-2 px-2">MIN</th>
+                          <th scope="col" className="text-left py-2 px-3">FECHA</th>
+                          <th scope="col" className="text-left py-2 px-2">RIVAL</th>
+                          <th scope="col" className="text-right py-2 px-2">MIN</th>
                           <th
+                            scope="col"
                             className={`text-right py-2 px-2 ${
                               chartMetric === 'pts' ? 'text-orange-400' : ''
                             }`}
@@ -627,6 +636,7 @@ export function PlayerDetailModal({
                             PTS
                           </th>
                           <th
+                            scope="col"
                             className={`text-right py-2 px-2 ${
                               chartMetric === 'reb' ? 'text-orange-400' : ''
                             }`}
@@ -634,21 +644,23 @@ export function PlayerDetailModal({
                             REB
                           </th>
                           <th
+                            scope="col"
                             className={`text-right py-2 px-2 ${
                               chartMetric === 'ast' ? 'text-orange-400' : ''
                             }`}
                           >
                             AST
                           </th>
-                          <th className="text-right py-2 px-2">TC</th>
+                          <th scope="col" className="text-right py-2 px-2">TC</th>
                           <th
+                            scope="col"
                             className={`text-right py-2 px-2 ${
                               chartMetric === 'tpm' ? 'text-orange-400' : ''
                             }`}
                           >
                             3P
                           </th>
-                          <th className="text-center py-2 px-2">ESTADO</th>
+                          <th scope="col" className="text-center py-2 px-2">ESTADO</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60">
@@ -730,7 +742,8 @@ export function PlayerDetailModal({
             </div>
           </>
         )}
-      </div>
-    </div>
+        </div>
+      )}
+    </ModalDialog>
   );
 }

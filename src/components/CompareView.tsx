@@ -170,7 +170,7 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
           setIdA(qualified[0].player_id);
           setIdB(qualified[1].player_id);
         }
-        const sortedTeams = [...tRes.data].sort(
+        const sortedTeams = tRes.data.toSorted(
           (a, b) => Number(b.win_pct ?? 0) - Number(a.win_pct ?? 0),
         );
         setTeams(sortedTeams);
@@ -311,20 +311,24 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
                   </div>
 
                   <div className="relative">
-                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" aria-hidden="true" />
                     <input
-                      type="text"
+                      type="search"
+                      aria-label={`Filtrar ${side.label}`}
+                      spellCheck={false}
+                      enterKeyHint="search"
                       value={side.search}
                       onChange={(e) => side.setSearch(e.target.value)}
                       placeholder="Filtrar nombre..."
-                      className="w-full bg-slate-950/80 border border-white/[0.1] rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
+                      className="w-full bg-slate-950/80 border border-white/[0.1] rounded-lg pl-8 pr-3 py-1.5 text-base sm:text-xs text-slate-200 placeholder:text-slate-500 focus:border-emerald-400"
                     />
                   </div>
 
                   <select
+                    aria-label={`Seleccionar ${side.label}`}
                     value={side.selected.player_id}
                     onChange={(e) => side.onChange(Number(e.target.value))}
-                    className="w-full bg-slate-950/90 border border-white/[0.1] rounded-xl px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-emerald-400"
+                    className="w-full bg-slate-950/90 border border-white/[0.1] rounded-xl px-3 py-2 text-sm font-bold text-white focus:border-emerald-400"
                   >
                     {!side.list.some((p) => p.player_id === side.selected.player_id) && (
                       <option value={side.selected.player_id}>

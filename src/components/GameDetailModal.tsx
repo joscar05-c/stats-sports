@@ -36,6 +36,7 @@ import {
   type PropRecommendation,
 } from '../utils/betting';
 import type { Game, PlayerGameStat } from '../types/database';
+import { ModalDialog } from './ModalDialog';
 
 interface GameDetailModalProps {
   game: Game;
@@ -298,7 +299,7 @@ export function GameDetailModal({
     const list = bettingAnalysis.propsRecs.filter(
       (p) => propsScope === 'all' || p.scope === propsScope,
     );
-    return [...list].sort((a, b) =>
+    return list.toSorted((a, b) =>
       propsOrder === 'asc' ? a.confidence - b.confidence : b.confidence - a.confidence,
     );
   }, [bettingAnalysis, propsScope, propsOrder]);
@@ -356,14 +357,14 @@ export function GameDetailModal({
   const homeColor = game.home_team.primary_color || '#10b981';
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#03050a]/85 backdrop-blur-md"
-      onClick={onClose}
+    <ModalDialog
+      onClose={onClose}
+      ariaLabelledBy="game-modal-title"
+      maxWidthCss="48rem"
+      borderClass="border border-white/[0.1]"
     >
-      <div
-        className="w-full max-w-3xl max-h-[92vh] flex flex-col bg-[#080d1a] border border-white/[0.1] rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.85)]"
-        onClick={(e) => e.stopPropagation()}
-      >
+      {(requestClose) => (
+        <div className="flex flex-col flex-1 min-h-0">
         {/* Header */}
         <div
           className="shrink-0 p-3.5 sm:p-5 border-b border-white/[0.08]"
@@ -372,16 +373,23 @@ export function GameDetailModal({
           }}
         >
           <div className="flex items-center justify-between mb-2 sm:mb-3">
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-300">
-              <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-              {game.status_detail || game.game_date}
-            </span>
+            <h2
+              id="game-modal-title"
+              className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-300"
+            >
+              <Calendar className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
+              <span>
+                {game.away_team.abbreviation} vs {game.home_team.abbreviation} ·{' '}
+                {game.status_detail || game.game_date}
+              </span>
+            </h2>
             <button
-              onClick={onClose}
+              type="button"
+              onClick={requestClose}
               className="p-1.5 rounded-full bg-black/50 border border-white/[0.1] text-slate-300 hover:text-white"
               aria-label="Cerrar"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4" aria-hidden="true" />
             </button>
           </div>
 
@@ -543,7 +551,7 @@ export function GameDetailModal({
         </div>
 
         {section === 'betting' ? (
-          <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-5 space-y-4">
+          <div className="flex-1 min-h-0 overflow-auto sb-scroller p-4 sm:p-5 space-y-4">
             {/* Sportsbook Market Board */}
             <div className="sb-card rounded-2xl p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1438,7 +1446,12 @@ export function GameDetailModal({
             </div>
 
             {/* Box Score Body */}
-            <div className="flex-1 min-h-0 overflow-auto p-2 sm:p-4">
+            <div
+              tabIndex={0}
+              role="region"
+              aria-label="Box Score de Jugadores"
+              className="flex-1 min-h-0 overflow-auto sb-scroller p-2 sm:p-4"
+            >
               {game.status === 'scheduled' ? (
                 <div className="py-10 text-center space-y-3">
                   <p className="text-slate-400 text-sm">
@@ -1449,7 +1462,7 @@ export function GameDetailModal({
                     onClick={() => setSection('betting')}
                     className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-orange-500 text-slate-950 hover:bg-orange-400"
                   >
-                    <Scale className="w-3.5 h-3.5" />
+                    <Scale className="w-3.5 h-3.5" aria-hidden="true" />
                     Ver Líneas de Apuesta y Previa
                   </button>
                 </div>
@@ -1460,20 +1473,25 @@ export function GameDetailModal({
                   Sin estadísticas de jugadores disponibles para este partido.
                 </div>
               ) : (
-                <table className="w-full text-xs tabular-nums whitespace-nowrap">
+                <table className="w-full text-xs tabular-nums whitespace-nowrap border-separate border-spacing-0">
+                  <caption className="visually-hidden">
+                    Estadísticas individuales del partido
+                  </caption>
                   <thead>
                     <tr className="text-slate-400 border-b border-slate-800">
-                      <th className="text-left py-2 px-2 sticky left-0 bg-[#0f1623]">JUGADOR</th>
-                      <th className="text-right py-2 px-2">MIN</th>
-                      <th className="text-right py-2 px-2 text-orange-400">PTS</th>
-                      <th className="text-right py-2 px-2">REB</th>
-                      <th className="text-right py-2 px-2">AST</th>
-                      <th className="text-right py-2 px-2">TC</th>
-                      <th className="text-right py-2 px-2">3P</th>
-                      <th className="text-right py-2 px-2">TL</th>
-                      <th className="text-right py-2 px-2">ROB</th>
-                      <th className="text-right py-2 px-2">TAP</th>
-                      <th className="text-right py-2 px-2">+/-</th>
+                      <th scope="col" className="text-left py-2 px-2 sticky left-0 bg-[#0f1623]">
+                        JUGADOR
+                      </th>
+                      <th scope="col" className="text-right py-2 px-2">MIN</th>
+                      <th scope="col" className="text-right py-2 px-2 text-orange-400">PTS</th>
+                      <th scope="col" className="text-right py-2 px-2">REB</th>
+                      <th scope="col" className="text-right py-2 px-2">AST</th>
+                      <th scope="col" className="text-right py-2 px-2">TC</th>
+                      <th scope="col" className="text-right py-2 px-2">3P</th>
+                      <th scope="col" className="text-right py-2 px-2">TL</th>
+                      <th scope="col" className="text-right py-2 px-2">ROB</th>
+                      <th scope="col" className="text-right py-2 px-2">TAP</th>
+                      <th scope="col" className="text-right py-2 px-2">+/-</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
@@ -1485,7 +1503,7 @@ export function GameDetailModal({
                           row.did_not_play ? 'opacity-45' : ''
                         }`}
                       >
-                        <td className="py-2 px-2 sticky left-0 bg-[#0f1623]">
+                        <th scope="row" className="text-left font-normal py-2 px-2 sticky left-0 bg-[#0f1623]">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-slate-100 hover:text-orange-400">
                               {row.player?.full_name ?? `#${row.player_id}`}
@@ -1496,7 +1514,7 @@ export function GameDetailModal({
                               </span>
                             )}
                           </div>
-                        </td>
+                        </th>
                         {row.did_not_play ? (
                           <td colSpan={10} className="py-2 px-2 text-right text-slate-500 italic">
                             {row.dnp_reason || 'No jugó (DNP)'}
@@ -1564,7 +1582,8 @@ export function GameDetailModal({
             </div>
           </>
         )}
-      </div>
-    </div>
+        </div>
+      )}
+    </ModalDialog>
   );
 }

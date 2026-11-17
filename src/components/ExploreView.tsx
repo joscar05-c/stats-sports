@@ -88,50 +88,67 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
       </div>
 
       {subTab !== 'local' && (
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-emerald-400/80 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={
-                subTab === 'players'
-                  ? 'Buscar jugador o equipo (ej. Jokic, Lakers)...'
-                  : 'Buscar franquicia...'
-              }
-              className="w-full bg-slate-950/80 border border-white/[0.1] rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
-            />
-          </div>
-
-          {subTab === 'players' && (
-            <div className="flex gap-2">
-              <select
-                value={teamFilter}
-                onChange={(e) => setTeamFilter(e.target.value)}
-                className="bg-slate-950/80 border border-white/[0.1] rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-400"
-              >
-                <option value="all">Todos los equipos</option>
-                {teams.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.abbreviation} — {t.short_name}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={posFilter}
-                onChange={(e) => setPosFilter(e.target.value)}
-                className="bg-slate-950/80 border border-white/[0.1] rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-400"
-              >
-                <option value="all">Posición</option>
-                <option value="G">Guard (G)</option>
-                <option value="F">Forward (F)</option>
-                <option value="C">Center (C)</option>
-              </select>
+        <search>
+          <form
+            onSubmit={(e) => e.preventDefault()}
+            className="flex flex-col sm:flex-row gap-2"
+          >
+            <div className="relative flex-1">
+              <Search
+                className="w-4 h-4 text-emerald-400/80 absolute left-3 top-3"
+                aria-hidden="true"
+              />
+              <label htmlFor="explore-search" className="visually-hidden">
+                {subTab === 'players' ? 'Buscar jugador o equipo' : 'Buscar franquicia'}
+              </label>
+              <input
+                id="explore-search"
+                name="q"
+                type="search"
+                spellCheck={false}
+                enterKeyHint="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={
+                  subTab === 'players'
+                    ? 'Buscar jugador o equipo (ej. Jokic, Lakers)...'
+                    : 'Buscar franquicia...'
+                }
+                className="w-full bg-slate-950/80 border border-white/[0.1] rounded-xl pl-9 pr-3 py-2 text-base sm:text-sm text-white placeholder:text-slate-500 focus:border-emerald-400"
+              />
             </div>
-          )}
-        </div>
+
+            {subTab === 'players' && (
+              <div className="flex gap-2">
+                <select
+                  aria-label="Filtrar por equipo"
+                  value={teamFilter}
+                  onChange={(e) => setTeamFilter(e.target.value)}
+                  className="bg-slate-950/80 border border-white/[0.1] rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-emerald-400"
+                >
+                  <option value="all">Todos los equipos</option>
+                  {teams.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.abbreviation} — {t.short_name}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  aria-label="Filtrar por posición"
+                  value={posFilter}
+                  onChange={(e) => setPosFilter(e.target.value)}
+                  className="bg-slate-950/80 border border-white/[0.1] rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-emerald-400"
+                >
+                  <option value="all">Posición</option>
+                  <option value="G">Guard (G)</option>
+                  <option value="F">Forward (F)</option>
+                  <option value="C">Center (C)</option>
+                </select>
+              </div>
+            )}
+          </form>
+        </search>
       )}
 
       {subTab === 'local' ? (
@@ -187,11 +204,14 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
         </div>
       ) : subTab === 'players' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          {filteredPlayers.map((p) => (
+          {filteredPlayers.map((p, idx) => (
             <button
               key={p.id}
+              type="button"
               onClick={() => onSelectPlayer(p.id)}
-              className="flex items-center gap-3 p-3 rounded-2xl bg-slate-900/75 border border-slate-800/80 hover:border-orange-500/50 text-left transition-colors"
+              className={`flex items-center gap-3 p-3 rounded-2xl bg-slate-900/75 border border-slate-800/80 hover:border-orange-500/50 text-left transition-colors ${
+                idx >= 8 ? 'sb-deferred-item' : ''
+              }`}
             >
               <div className="w-12 h-12 rounded-full bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center">
                 {p.headshot_url ? (
@@ -218,11 +238,14 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-          {filteredTeams.map((t) => (
+          {filteredTeams.map((t, idx) => (
             <button
               key={t.id}
+              type="button"
               onClick={() => onSelectTeam(t)}
-              className="flex items-center gap-3 p-3.5 rounded-2xl bg-slate-900/75 border border-slate-800/80 hover:border-orange-500/50 text-left transition-colors"
+              className={`flex items-center gap-3 p-3.5 rounded-2xl bg-slate-900/75 border border-slate-800/80 hover:border-orange-500/50 text-left transition-colors ${
+                idx >= 9 ? 'sb-deferred-item' : ''
+              }`}
             >
               {t.logo_url && (
                 <img src={t.logo_url} alt={t.abbreviation} className="w-10 h-10 object-contain" />

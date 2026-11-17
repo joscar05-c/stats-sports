@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import {
   CheckCircle2,
+  Eye,
+  EyeOff,
   KeyRound,
   Loader2,
   LogIn,
@@ -17,6 +19,7 @@ import {
   signUpWithEmail,
   translateAuthError,
 } from '../services/authService';
+import { ModalDialog } from './ModalDialog';
 
 interface AuthModalProps {
   initialTab?: 'login' | 'signup';
@@ -35,6 +38,7 @@ export function AuthModal({
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; tone: 'ok' | 'err' | 'info' } | null>(
@@ -98,22 +102,22 @@ export function AuthModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#03050a]/85 backdrop-blur-md"
-      onClick={onClose}
+    <ModalDialog
+      onClose={onClose}
+      ariaLabelledBy="auth-modal-title"
+      maxWidthCss="28rem"
+      borderClass="border border-emerald-500/25"
     >
-      <div
-        className="w-full max-w-md max-h-[92vh] flex flex-col bg-[#080d1a] border border-emerald-500/25 rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.85)]"
-        onClick={(e) => e.stopPropagation()}
-      >
+      {(requestClose) => (
+        <div className="flex flex-col flex-1 min-h-0">
         {/* Header */}
         <div className="p-5 border-b border-white/[0.08] bg-[radial-gradient(ellipse_at_top_left,rgba(16,185,129,0.16),transparent_65%)] flex items-start justify-between gap-3">
           <div>
             <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <ShieldCheck className="w-4 h-4 text-emerald-400" aria-hidden="true" />
               Cuenta Gratuita · CourtVision
             </div>
-            <h2 className="text-xl font-black text-white mt-1 tracking-tight">
+            <h2 id="auth-modal-title" className="text-xl font-black text-white mt-1 tracking-tight">
               {mode === 'login'
                 ? 'Inicia sesión'
                 : mode === 'signup'
@@ -126,15 +130,15 @@ export function AuthModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="p-1.5 rounded-full bg-white/[0.05] text-slate-400 hover:text-white border border-white/[0.08]"
             aria-label="Cerrar"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto p-5 space-y-4">
+        <div className="flex-1 overflow-auto sb-scroller p-5 space-y-4">
           {promptReason && (
             <div className="rounded-xl bg-amber-500/10 border border-amber-500/35 px-3.5 py-2.5 text-xs text-amber-200">
               {promptReason}
@@ -149,7 +153,7 @@ export function AuthModal({
             className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-sm inline-flex items-center justify-center gap-2.5 shadow-md transition-colors disabled:opacity-60"
           >
             {googleBusy ? (
-              <Loader2 className="w-4 h-4 animate-spin text-slate-700" />
+              <Loader2 className="w-4 h-4 animate-spin text-slate-700" aria-hidden="true" />
             ) : (
               <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
                 <path
@@ -183,6 +187,7 @@ export function AuthModal({
           <div className="flex rounded-xl bg-black/40 border border-white/[0.08] p-1 text-xs">
             <button
               type="button"
+              aria-pressed={mode === 'login'}
               onClick={() => {
                 setMode('login');
                 setFeedback(null);
@@ -197,6 +202,7 @@ export function AuthModal({
             </button>
             <button
               type="button"
+              aria-pressed={mode === 'signup'}
               onClick={() => {
                 setMode('signup');
                 setFeedback(null);
@@ -214,35 +220,56 @@ export function AuthModal({
           <form onSubmit={handleSubmit} className="space-y-3">
             {mode === 'signup' && (
               <div className="space-y-1">
-                <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                <label
+                  htmlFor="auth-fullname"
+                  className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide"
+                >
                   Tu nombre
                 </label>
                 <div className="relative">
-                  <User className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                  <User
+                    className="w-4 h-4 text-slate-500 absolute left-3 top-3"
+                    aria-hidden="true"
+                  />
                   <input
+                    id="auth-fullname"
+                    name="fullname"
                     type="text"
+                    autoComplete="name"
+                    enterKeyHint="next"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Ej. Carlos Pérez"
-                    className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
+                    className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl pl-9 pr-3 py-2 text-base sm:text-sm text-white placeholder:text-slate-500 focus:border-emerald-400"
                   />
                 </div>
               </div>
             )}
 
             <div className="space-y-1">
-              <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+              <label
+                htmlFor="auth-email"
+                className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide"
+              >
                 Correo electrónico
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" aria-hidden="true" />
                 <input
+                  id="auth-email"
+                  name="email"
                   type="email"
                   required
+                  autoFocus={mode !== 'signup'}
+                  autoComplete="username"
+                  spellCheck={false}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  enterKeyHint={mode === 'reset' ? 'done' : 'next'}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="correo@ejemplo.com"
-                  className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
+                  className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl pl-9 pr-3 py-2 text-base sm:text-sm text-white placeholder:text-slate-500 focus:border-emerald-400"
                 />
               </div>
             </div>
@@ -250,7 +277,10 @@ export function AuthModal({
             {mode !== 'reset' && (
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                  <label
+                    htmlFor="auth-password"
+                    className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide"
+                  >
                     Contraseña
                   </label>
                   {mode === 'login' && (
@@ -267,16 +297,36 @@ export function AuthModal({
                   )}
                 </div>
                 <div className="relative">
-                  <KeyRound className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                  <KeyRound
+                    className="w-4 h-4 text-slate-500 absolute left-3 top-3"
+                    aria-hidden="true"
+                  />
                   <input
-                    type="password"
+                    id="auth-password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
                     required
                     minLength={6}
+                    autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                    enterKeyHint="done"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Mínimo 6 caracteres"
-                    className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
+                    className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl pl-9 pr-10 py-2 text-base sm:text-sm text-white placeholder:text-slate-500 focus:border-emerald-400"
                   />
+                  <button
+                    type="button"
+                    aria-pressed={showPassword}
+                    aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-2.5 top-2 p-1 rounded-lg text-slate-400 hover:text-white"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4" aria-hidden="true" />
+                    ) : (
+                      <Eye className="w-4 h-4" aria-hidden="true" />
+                    )}
+                  </button>
                 </div>
               </div>
             )}
@@ -287,13 +337,13 @@ export function AuthModal({
               className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-black text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60 transition-all shadow-[0_6px_20px_rgba(16,185,129,0.28)]"
             >
               {busy ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
               ) : mode === 'login' ? (
-                <LogIn className="w-4 h-4" />
+                <LogIn className="w-4 h-4" aria-hidden="true" />
               ) : mode === 'signup' ? (
-                <UserPlus className="w-4 h-4" />
+                <UserPlus className="w-4 h-4" aria-hidden="true" />
               ) : (
-                <Mail className="w-4 h-4" />
+                <Mail className="w-4 h-4" aria-hidden="true" />
               )}
               <span>
                 {mode === 'login'
@@ -320,6 +370,8 @@ export function AuthModal({
 
           {feedback && (
             <div
+              role={feedback.tone === 'err' ? 'alert' : 'status'}
+              aria-live="polite"
               className={`rounded-xl border p-3 text-xs flex items-start gap-2 ${
                 feedback.tone === 'ok'
                   ? 'bg-emerald-500/10 border-emerald-500/35 text-emerald-200'
@@ -328,12 +380,15 @@ export function AuthModal({
                     : 'bg-cyan-500/10 border-cyan-500/35 text-cyan-200'
               }`}
             >
-              {feedback.tone === 'ok' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />}
+              {feedback.tone === 'ok' && (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" aria-hidden="true" />
+              )}
               <span>{feedback.text}</span>
             </div>
           )}
         </div>
-      </div>
-    </div>
+        </div>
+      )}
+    </ModalDialog>
   );
 }

@@ -248,10 +248,16 @@ export function LeadersView({
 
       {/* Category Pills */}
       {mode === 'players' ? (
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+        <div
+          role="region"
+          aria-label="Categorías de jugadores"
+          className="flex items-center gap-2 overflow-x-auto no-scrollbar sb-scroll-fade-x pb-1"
+        >
           {PLAYER_CATEGORIES.map((cat) => (
             <button
               key={cat.key}
+              type="button"
+              aria-pressed={playerMetric === cat.key}
               onClick={() => setPlayerMetric(cat.key)}
               className={`shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
                 playerMetric === cat.key
@@ -264,10 +270,16 @@ export function LeadersView({
           ))}
         </div>
       ) : (
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+        <div
+          role="region"
+          aria-label="Categorías de equipos"
+          className="flex items-center gap-2 overflow-x-auto no-scrollbar sb-scroll-fade-x pb-1"
+        >
           {TEAM_CATEGORIES.map((cat) => (
             <button
               key={cat.key}
+              type="button"
+              aria-pressed={teamMetric === cat.key}
               onClick={() => setTeamMetric(cat.key)}
               className={`shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
                 teamMetric === cat.key
@@ -321,8 +333,11 @@ export function LeadersView({
               return (
                 <button
                   key={p.player_id}
+                  type="button"
                   onClick={() => onSelectPlayer(p.player_id)}
-                  className="w-full flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900/75 border border-slate-800/80 hover:border-orange-500/50 transition-all text-left"
+                  className={`w-full flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900/75 border border-slate-800/80 hover:border-orange-500/50 transition-all text-left ${
+                    idx >= 8 ? 'sb-deferred-item' : ''
+                  }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div
@@ -399,7 +414,9 @@ export function LeadersView({
                 key={t.team_id}
                 type="button"
                 onClick={() => handleClickTeam(t)}
-                className="w-full flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900/75 border border-slate-800/80 hover:border-orange-500/50 transition-all text-left"
+                className={`w-full flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900/75 border border-slate-800/80 hover:border-orange-500/50 transition-all text-left ${
+                  idx >= 8 ? 'sb-deferred-item' : ''
+                }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div

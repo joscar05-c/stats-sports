@@ -28,6 +28,7 @@ import {
   type PropRecommendation,
 } from '../utils/betting';
 import type { Game, PlayerGameStat } from '../types/database';
+import { closeTopLayerDialog } from './ModalDialog';
 
 export interface SelectedPropPayload {
   game: Game;
@@ -109,6 +110,71 @@ export function PropsSidebar({
 
   const inFlightRef = useRef<Set<number>>(new Set());
   const boxInFlightRef = useRef<Set<number>>(new Set());
+  const mobileDialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = mobileDialogRef.current;
+    if (!mobileOpen || !dialog) return;
+
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+
+    const handleClose = () => {
+      dialog.returnValue = '';
+      setMobileOpen(false);
+    };
+
+    const handleCancel = (e: Event) => {
+      e.preventDefault();
+      void closeTopLayerDialog(dialog);
+    };
+
+    dialog.addEventListener('close', handleClose);
+    dialog.addEventListener('cancel', handleCancel);
+
+    let cleanupLightDismiss: (() => void) | undefined;
+    if (!('closedBy' in HTMLDialogElement.prototype)) {
+      let pressedOutside = false;
+      const isOutside = (e: PointerEvent) => {
+        const r = dialog.getBoundingClientRect();
+        return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+      };
+      const onPointerDown = (e: PointerEvent) => {
+        pressedOutside = isOutside(e);
+      };
+      const onPointerUp = (e: PointerEvent) => {
+        if (pressedOutside && isOutside(e)) {
+          void closeTopLayerDialog(dialog);
+        }
+        pressedOutside = false;
+      };
+      dialog.addEventListener('pointerdown', onPointerDown);
+      dialog.addEventListener('pointerup', onPointerUp);
+      cleanupLightDismiss = () => {
+        dialog.removeEventListener('pointerdown', onPointerDown);
+        dialog.removeEventListener('pointerup', onPointerUp);
+      };
+    }
+
+    return () => {
+      dialog.removeEventListener('close', handleClose);
+      dialog.removeEventListener('cancel', handleCancel);
+      cleanupLightDismiss?.();
+      if (dialog.open) {
+        dialog.close();
+      }
+    };
+  }, [mobileOpen]);
+
+  const requestMobileClose = () => {
+    const dialog = mobileDialogRef.current;
+    if (dialog && dialog.open) {
+      void closeTopLayerDialog(dialog);
+    } else {
+      setMobileOpen(false);
+    }
+  };
 
   // Respond cleanly to the Header "Props" button on both mobile and desktop
   useEffect(() => {
@@ -274,7 +340,7 @@ export function PropsSidebar({
     if (reliableOnly && reliable.length > 0) {
       list = reliable;
     }
-    return [...list].sort((a, b) =>
+    return list.toSorted((a, b) =>
       sortOrder === 'asc' ? a.confidence - b.confidence : b.confidence - a.confidence,
     );
   }, [gameProps, scopeFilter, reliableOnly, sortOrder]);
@@ -291,7 +357,7 @@ export function PropsSidebar({
         type="button"
         onClick={() => {
           if (isMobileOverlay) {
-            setMobileOpen(false);
+            requestMobileClose();
           } else {
             const next = !(desktopOpen || desktopPinned);
             setDesktopOpen(next);
@@ -425,7 +491,7 @@ export function PropsSidebar({
                 type="button"
                 onClick={() => {
                   if (isMobileOverlay) {
-                    setMobileOpen(false);
+                    requestMobileClose();
                   } else {
                     setDesktopOpen(false);
                     setDesktopPinned(false);
@@ -526,7 +592,7 @@ export function PropsSidebar({
         </div>
 
         {/* Props List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2.5 pb-16">
+        <div className="flex-1 overflow-y-auto sb-scroller p-3 space-y-2.5 pb-16">
           {!isPro && (
             <button
               type="button"
@@ -602,7 +668,7 @@ export function PropsSidebar({
                       prop,
                       context: focusedContext,
                     });
-                    if (isMobileOverlay) setMobileOpen(false);
+                    if (isMobileOverlay) requestMobileClose();
                   }}
                   className={`relative w-full text-left rounded-xl border p-2.5 pl-3.5 space-y-1.5 overflow-hidden transition-all ${
                     isActive
@@ -726,27 +792,29 @@ export function PropsSidebar({
       {/* Mobile Floating Left Handle + Overlay Drawer */}
       <button
         type="button"
+        aria-expanded={mobileOpen}
+        aria-controls="mobile-props-drawer"
         onClick={() => setMobileOpen(true)}
         className="md:hidden fixed left-0 top-[76px] z-30 flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-r-xl bg-[#070d1b]/95 border border-l-0 border-emerald-500/40 text-emerald-300 shadow-lg backdrop-blur-md"
         aria-label="Abrir barra lateral de Props"
       >
-        <PanelLeftOpen className="w-3.5 h-3.5" />
+        <PanelLeftOpen className="w-3.5 h-3.5" aria-hidden="true" />
         <span className="text-[11px] font-black tracking-wide">Props</span>
       </button>
 
       {mobileOpen && (
-        <div
-          className="md:hidden fixed inset-0 z-50 flex bg-black/75 backdrop-blur-sm"
-          onClick={() => setMobileOpen(false)}
+        <dialog
+          id="mobile-props-drawer"
+          ref={mobileDialogRef}
+          aria-label="Panel lateral de Props"
+          className="md:hidden sb-drawer-dialog border-r border-white/[0.1] shadow-2xl"
+          {...({ closedby: 'any' } as Record<string, string>)}
         >
-          <div
-            className="h-full w-[92vw] max-w-[400px] flex border-r border-white/[0.1] shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="h-full w-full flex">
             {renderLogoRail(true)}
             {renderDrawerContent(true)}
           </div>
-        </div>
+        </dialog>
       )}
     </>
   );
