@@ -99,34 +99,34 @@ export function StandingsView({
               <thead className="bg-[#0e1117] text-slate-400 border-b border-white/[0.08]">
                 {sport === 'football' ? (
                   <tr>
-                    <th scope="col" className="text-left py-2.5 px-3 sticky left-0 bg-[#0e1117] z-10">
+                    <th scope="col" className="text-left py-2.5 px-2.5 sm:px-3 sticky left-0 bg-[#0e1117] z-10">
                       # CLUB
                     </th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">PJ</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">G</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">E</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">P</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">GF</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">GC</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">DG</th>
-                    <th scope="col" className="text-right py-2.5 px-3">PTS</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">PJ</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">G</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">E</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">P</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">GF</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">GC</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">DG</th>
+                    <th scope="col" className="text-right py-2.5 px-2.5 sm:px-3">PTS</th>
                   </tr>
                 ) : (
                   <tr>
-                    <th scope="col" className="text-left py-2.5 px-3 sticky left-0 bg-[#0e1117] z-10">
+                    <th scope="col" className="text-left py-2.5 px-2.5 sm:px-3 sticky left-0 bg-[#0e1117] z-10">
                       # EQUIPO
                     </th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">G</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">P</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">PCT</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">JD</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">LOCAL</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">VISITA</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">PPG</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">OPPG</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">DIFF</th>
-                    <th scope="col" className="text-right py-2.5 px-2.5">ÚLT 10</th>
-                    <th scope="col" className="text-right py-2.5 px-3">RACHA</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">G</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">P</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">PCT</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">JD</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">LOCAL</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">VISITA</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">PPG</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">OPPG</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">DIFF</th>
+                    <th scope="col" className="text-right py-2.5 px-1.5 sm:px-2.5">ÚLT 10</th>
+                    <th scope="col" className="text-right py-2.5 px-2.5 sm:px-3">RACHA</th>
                   </tr>
                 )}
               </thead>
@@ -162,33 +162,33 @@ export function StandingsView({
                       onClick={() => onSelectTeam(s.team, s)}
                       className="cursor-pointer hover:bg-white/[0.04] transition-colors"
                     >
-                      <th scope="row" className="text-left font-normal py-2.5 px-3 sticky left-0 bg-[#12151c]">
-                        <div className="flex items-center gap-2.5">
-                          <span className={`w-1 h-5 rounded-full ${seedZone}`} />
-                          <span className="w-4 text-slate-400 font-semibold">{seed}</span>
+                      <th scope="row" className="text-left font-normal py-2.5 px-2.5 sm:px-3 sticky left-0 bg-[#12151c] max-w-[152px] sm:max-w-none">
+                        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                          <span className={`w-1 h-5 rounded-full shrink-0 ${seedZone}`} />
+                          <span className="w-4 text-slate-400 font-semibold shrink-0">{seed}</span>
                           {s.team.logo_url && (
                             <img
                               src={s.team.logo_url}
                               alt={s.team.abbreviation}
-                              className="w-5 h-5 object-contain"
+                              className="w-5 h-5 object-contain shrink-0"
                             />
                           )}
-                          <span className="font-semibold text-slate-100">{s.team.short_name}</span>
-                          <span className="text-[11px] text-slate-400 hidden sm:inline">
+                          <span className="font-semibold text-slate-100 truncate">{s.team.short_name}</span>
+                          <span className="text-[11px] text-slate-400 hidden sm:inline shrink-0">
                             {s.team.abbreviation}
                           </span>
                         </div>
                       </th>
                       {sport === 'football' ? (
                         <>
-                          <td className="text-right py-2.5 px-2.5 text-slate-300">{s.played ?? 0}</td>
-                          <td className="text-right py-2.5 px-2.5 text-slate-200 font-semibold">{s.wins}</td>
-                          <td className="text-right py-2.5 px-2.5 text-slate-300">{s.draws ?? 0}</td>
-                          <td className="text-right py-2.5 px-2.5 text-slate-400">{s.losses}</td>
-                          <td className="text-right py-2.5 px-2.5 text-slate-300">{s.goals_for ?? 0}</td>
-                          <td className="text-right py-2.5 px-2.5 text-slate-300">{s.goals_against ?? 0}</td>
+                          <td className="text-right py-2.5 px-1.5 sm:px-2.5 text-slate-300">{s.played ?? 0}</td>
+                          <td className="text-right py-2.5 px-1.5 sm:px-2.5 text-slate-200 font-semibold">{s.wins}</td>
+                          <td className="text-right py-2.5 px-1.5 sm:px-2.5 text-slate-300">{s.draws ?? 0}</td>
+                          <td className="text-right py-2.5 px-1.5 sm:px-2.5 text-slate-400">{s.losses}</td>
+                          <td className="text-right py-2.5 px-1.5 sm:px-2.5 text-slate-300">{s.goals_for ?? 0}</td>
+                          <td className="text-right py-2.5 px-1.5 sm:px-2.5 text-slate-300">{s.goals_against ?? 0}</td>
                           <td
-                            className={`text-right py-2.5 px-2.5 font-semibold ${
+                            className={`text-right py-2.5 px-1.5 sm:px-2.5 font-semibold ${
                               (s.goal_diff ?? 0) > 0
                                 ? 'text-emerald-300'
                                 : (s.goal_diff ?? 0) < 0
@@ -202,7 +202,7 @@ export function StandingsView({
                                 : s.goal_diff
                               : '-'}
                           </td>
-                          <td className="text-right py-2.5 px-3 font-bold text-white">
+                          <td className="text-right py-2.5 px-2.5 sm:px-3 font-bold text-white">
                             {s.points ?? 0}
                           </td>
                         </>

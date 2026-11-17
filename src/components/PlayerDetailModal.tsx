@@ -264,7 +264,7 @@ export function PlayerDetailModal({
               {sport === 'football' ? (
                 fbAverage ? (
                   <>
-                    <div className="grid grid-cols-4 gap-2 tabular-nums">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 tabular-nums">
                       {[
                         { label: 'GOLES', value: String(fbAverage.goals) },
                         { label: 'ASIST', value: String(fbAverage.assists) },
@@ -273,10 +273,10 @@ export function PlayerDetailModal({
                       ].map((st) => (
                         <div
                           key={st.label}
-                          className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-3 text-center"
+                          className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-2.5 sm:p-3 text-center"
                         >
                           <div className="text-[11px] font-semibold text-slate-400">{st.label}</div>
-                          <div className="text-xl font-bold mt-0.5 text-white">{st.value}</div>
+                          <div className="text-lg sm:text-xl font-bold mt-0.5 text-white">{st.value}</div>
                         </div>
                       ))}
                     </div>
@@ -285,7 +285,7 @@ export function PlayerDetailModal({
                       <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5">
                         Resumen de Temporada ({fbAverage.gp} PJ · {fbAverage.starts} titularidades)
                       </div>
-                      <div className="grid grid-cols-5 gap-2 text-center tabular-nums">
+                      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 text-center tabular-nums">
                         {[
                           { label: 'Gol/PJ', val: Number(fbAverage.goals_pg).toFixed(2) },
                           { label: 'Rem/PJ', val: Number(fbAverage.shots_pg).toFixed(1) },
@@ -309,7 +309,7 @@ export function PlayerDetailModal({
               ) : average ? (
                 <>
                   {/* Main Averages Grid */}
-                  <div className="grid grid-cols-4 gap-2 tabular-nums">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 tabular-nums">
                     {[
                       { label: 'PPG', value: Number(average.ppg ?? 0).toFixed(1) },
                       { label: 'RPG', value: Number(average.rpg ?? 0).toFixed(1) },
@@ -318,10 +318,10 @@ export function PlayerDetailModal({
                     ].map((st) => (
                       <div
                         key={st.label}
-                        className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-3 text-center"
+                        className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-2.5 sm:p-3 text-center"
                       >
                         <div className="text-[11px] font-semibold text-slate-400">{st.label}</div>
-                        <div className="text-xl font-bold mt-0.5 text-white">
+                        <div className="text-lg sm:text-xl font-bold mt-0.5 text-white">
                           {st.value}
                         </div>
                       </div>
@@ -333,7 +333,7 @@ export function PlayerDetailModal({
                     <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5">
                       Eficiencia de Tiro y Métricas Avanzadas ({average.gp} PJ)
                     </div>
-                    <div className="grid grid-cols-5 gap-2 text-center tabular-nums">
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 text-center tabular-nums">
                       {[
                         { label: 'FG%', val: average.fg_pct },
                         { label: '3P%', val: average.tp_pct },

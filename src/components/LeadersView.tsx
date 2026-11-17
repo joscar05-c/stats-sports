@@ -450,7 +450,7 @@ export function LeadersView({
       )}
 
       {/* Section Title */}
-      <div className="flex items-center justify-between px-1">
+      <div className="flex flex-wrap items-center justify-between gap-1.5 px-1">
         <h2 className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-200">
           <Flame className="w-4 h-4 text-slate-400" aria-hidden="true" />
           {mode === 'players'

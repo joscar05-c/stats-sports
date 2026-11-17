@@ -4,7 +4,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Lock,
-  PanelLeftOpen,
   Shield,
   SlidersHorizontal,
   User,
@@ -795,19 +794,7 @@ export function PropsSidebar({
         </div>
       </aside>
 
-      {/* Mobile Floating Left Handle + Overlay Drawer */}
-      <button
-        type="button"
-        aria-expanded={mobileOpen}
-        aria-controls="mobile-props-drawer"
-        onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed left-0 top-[76px] z-30 flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-r-lg bg-[#12151c]/95 border border-l-0 border-white/[0.14] text-slate-200 shadow-lg backdrop-blur-md"
-        aria-label="Abrir panel de análisis"
-      >
-        <PanelLeftOpen className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
-        <span className="text-xs font-semibold">Análisis</span>
-      </button>
-
+      {/* Mobile Overlay Drawer (triggered from mobile header Análisis button) */}
       {mobileOpen && (
         <dialog
           id="mobile-props-drawer"

@@ -381,28 +381,28 @@ export function App() {
       </a>
       {/* Header */}
       <header className="sticky top-0 z-40 sb-glass-header">
-        {/* Row 1: Brand Identity + User/Account & Utility Controls */}
-        <div className="max-w-7xl mx-auto px-3 sm:px-5 h-16 flex items-center justify-between gap-3">
+        {/* Row 1: Brand Identity + Utility Controls */}
+        <div className="max-w-7xl mx-auto px-3 sm:px-5 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-3">
           {/* Left Brand Block */}
           <button
             type="button"
             onClick={() => switchMainTab('games')}
-            className="flex items-center gap-2.5 sm:gap-3 shrink-0 text-left group"
+            className="flex items-center gap-2 sm:gap-3 min-w-0 text-left group"
           >
             <img
               src="/icon.svg"
               alt="CourtVision"
-              className="w-9 h-9 rounded-lg border border-white/[0.1] block shrink-0"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg border border-white/[0.1] block shrink-0"
             />
 
-            <div className="shrink-0">
-              <span className="font-bold text-base sm:text-lg tracking-tight leading-none text-slate-100 block">
+            <div className="min-w-0">
+              <span className="font-bold text-sm sm:text-lg tracking-tight leading-none text-slate-100 block truncate">
                 CourtVision
               </span>
-              <span className="block mt-0.5 text-[11px] text-slate-400 font-medium">
+              <span className="block mt-0.5 text-[11px] text-slate-400 font-medium truncate">
                 {season
-                  ? `${activeLeague?.short_name ?? 'NBA'} · Temporada ${season.name}`
-                  : 'Estadísticas y Análisis Deportivo'}
+                  ? `${activeLeague?.short_name ?? 'NBA'} · ${season.name}`
+                  : 'Estadísticas y Análisis'}
               </span>
             </div>
           </button>
@@ -413,13 +413,13 @@ export function App() {
               <div
                 role="group"
                 aria-label="Seleccionar deporte"
-                className="inline-flex items-center rounded-lg bg-[#12151c] border border-white/[0.1] p-0.5"
+                className="hidden md:inline-flex items-center rounded-lg bg-[#12151c] border border-white/[0.1] p-0.5"
               >
                 <button
                   type="button"
                   onClick={() => handleSelectSport('basketball')}
                   aria-pressed={activeSport === 'basketball'}
-                  className={`px-2 sm:px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors whitespace-nowrap ${
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors whitespace-nowrap ${
                     activeSport === 'basketball'
                       ? 'cv-tab-active'
                       : 'text-slate-400 hover:text-slate-200'
@@ -431,7 +431,7 @@ export function App() {
                   type="button"
                   onClick={() => handleSelectSport('football')}
                   aria-pressed={activeSport === 'football'}
-                  className={`px-2 sm:px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors whitespace-nowrap ${
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors whitespace-nowrap ${
                     activeSport === 'football'
                       ? 'cv-tab-active'
                       : 'text-slate-400 hover:text-slate-200'
@@ -446,30 +446,12 @@ export function App() {
               <button
                 type="button"
                 onClick={() => setSidebarToggleTick((t) => t + 1)}
-                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-slate-200 border border-white/[0.1] hover:bg-white/[0.08] transition-colors whitespace-nowrap"
+                className="hidden md:inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-slate-200 border border-white/[0.1] hover:bg-white/[0.08] transition-colors whitespace-nowrap"
                 title="Abrir o fijar panel de análisis de Props"
               >
                 <PanelLeft className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
                 <span>Análisis</span>
               </button>
-            )}
-
-            {sportLeagues.length > 1 && (
-              <select
-                aria-label="Seleccionar liga"
-                value={activeLeague?.id ?? ''}
-                onChange={(e) => {
-                  const found = sportLeagues.find((l) => l.id === Number(e.target.value));
-                  if (found) void handleSelectLeague(found);
-                }}
-                className="sm:hidden bg-[#12151c] border border-white/[0.1] rounded-lg px-2 py-1.5 text-xs font-medium text-slate-200 max-w-[115px] truncate"
-              >
-                {sportLeagues.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.short_name}
-                  </option>
-                ))}
-              </select>
             )}
 
             {installPrompt && (
@@ -572,6 +554,58 @@ export function App() {
               </span>
             </button>
           </div>
+        </div>
+
+        {/* Row 2 (Mobile): Sport Switcher + Props Drawer Trigger */}
+        <div className="md:hidden border-t border-white/[0.06] bg-[#0b0d11]/95 px-3 py-1.5 flex items-center justify-between gap-2">
+          {hasBasketball && hasFootball ? (
+            <div
+              role="group"
+              aria-label="Cambiar deporte"
+              className="inline-flex items-center rounded-lg bg-[#12151c] border border-white/[0.1] p-0.5"
+            >
+              <button
+                type="button"
+                onClick={() => handleSelectSport('basketball')}
+                aria-pressed={activeSport === 'basketball'}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors whitespace-nowrap ${
+                  activeSport === 'basketball'
+                    ? 'cv-tab-active'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                NBA
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectSport('football')}
+                aria-pressed={activeSport === 'football'}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors whitespace-nowrap ${
+                  activeSport === 'football'
+                    ? 'cv-tab-active'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Fútbol
+              </button>
+            </div>
+          ) : (
+            <span className="text-xs font-semibold text-slate-300 truncate">
+              {activeLeague?.short_name ?? 'CourtVision'}
+            </span>
+          )}
+
+          {activeLeague && (
+            <button
+              type="button"
+              onClick={() => setSidebarToggleTick((t) => t + 1)}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#12151c] text-slate-100 border border-white/[0.12] hover:bg-white/[0.08] transition-colors whitespace-nowrap"
+              title="Abrir panel de análisis y cuotas"
+            >
+              <PanelLeft className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+              <span>Análisis</span>
+            </button>
+          )}
         </div>
 
         {/* Row 2: Dedicated Desktop Navigation Rail */}
@@ -793,12 +827,18 @@ export function App() {
                 type="button"
                 aria-current={active ? 'page' : undefined}
                 onClick={() => switchMainTab(item.key)}
-                className={`flex flex-col items-center justify-center py-2.5 gap-1 text-[11px] font-semibold transition-colors ${
+                className={`relative flex flex-col items-center justify-center py-2 px-1 gap-0.5 text-[11px] font-semibold transition-colors ${
                   active ? 'text-white' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
+                {active && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-0 inset-x-3 h-0.5 rounded-full bg-white"
+                  />
+                )}
                 <Icon className="w-5 h-5" aria-hidden="true" />
-                <span>{item.label}</span>
+                <span className="truncate max-w-full">{item.label}</span>
               </button>
             );
           })}

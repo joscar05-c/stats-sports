@@ -430,16 +430,16 @@ export function GameDetailModal({
           </div>
 
           {/* Matchup Scoreboard */}
-          <div className="grid grid-cols-3 items-center gap-2 py-0.5 sm:py-1">
-            <div className="flex flex-col items-center text-center">
+          <div className="grid grid-cols-3 items-center gap-1.5 sm:gap-2 py-0.5 sm:py-1">
+            <div className="flex flex-col items-center text-center min-w-0">
               {game.away_team.logo_url && (
                 <img
                   src={game.away_team.logo_url}
                   alt={game.away_team.abbreviation}
-                  className="w-10 h-10 sm:w-12 sm:h-12 object-contain mb-1 sm:mb-1.5"
+                  className="w-9 h-9 sm:w-12 sm:h-12 object-contain mb-1 sm:mb-1.5"
                 />
               )}
-              <span className="font-bold text-sm sm:text-base">{game.away_team.short_name}</span>
+              <span className="font-bold text-xs sm:text-base truncate max-w-full">{game.away_team.short_name}</span>
               <span className="text-[11px] text-slate-400">
                 Visita
                 {betCtx?.awayStanding
@@ -450,7 +450,7 @@ export function GameDetailModal({
               </span>
             </div>
 
-            <div className="flex items-center justify-center gap-2.5 sm:gap-5 tabular-nums">
+            <div className="flex items-center justify-center gap-1.5 sm:gap-5 tabular-nums">
               <span
                 className={`text-2xl sm:text-4xl font-bold ${
                   game.away_score >= game.home_score && game.status !== 'scheduled'
@@ -460,7 +460,7 @@ export function GameDetailModal({
               >
                 {game.status === 'scheduled' ? '-' : game.away_score}
               </span>
-              <span className="text-xs font-semibold text-slate-500">VS</span>
+              <span className="text-[11px] sm:text-xs font-semibold text-slate-500">VS</span>
               <span
                 className={`text-2xl sm:text-4xl font-bold ${
                   game.home_score >= game.away_score && game.status !== 'scheduled'
@@ -472,15 +472,15 @@ export function GameDetailModal({
               </span>
             </div>
 
-            <div className="flex flex-col items-center text-center">
+            <div className="flex flex-col items-center text-center min-w-0">
               {game.home_team.logo_url && (
                 <img
                   src={game.home_team.logo_url}
                   alt={game.home_team.abbreviation}
-                  className="w-10 h-10 sm:w-12 sm:h-12 object-contain mb-1 sm:mb-1.5"
+                  className="w-9 h-9 sm:w-12 sm:h-12 object-contain mb-1 sm:mb-1.5"
                 />
               )}
-              <span className="font-bold text-sm sm:text-base">{game.home_team.short_name}</span>
+              <span className="font-bold text-xs sm:text-base truncate max-w-full">{game.home_team.short_name}</span>
               <span className="text-[11px] text-slate-400">
                 Local
                 {betCtx?.homeStanding

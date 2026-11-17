@@ -94,7 +94,7 @@ function GenericRadarChart({
       .join(' ');
 
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} className="w-full max-w-[280px] mx-auto overflow-visible">
+    <svg viewBox={`-20 -10 ${size + 40} ${size + 20}`} className="w-full max-w-[290px] mx-auto block">
       {[0.25, 0.5, 0.75, 1].map((ring) => (
         <polygon
           key={ring}
@@ -401,7 +401,7 @@ export function CompareView({
                 ].map((side) => (
                   <div
                     key={side.label}
-                    className="sb-card rounded-xl border border-white/[0.1] p-3.5 space-y-2.5"
+                    className="sb-card rounded-xl border border-white/[0.1] p-3.5 space-y-2.5 min-w-0"
                   >
                     <div className="flex items-center justify-between">
                       <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-200">

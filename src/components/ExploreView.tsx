@@ -124,12 +124,12 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
             </div>
 
             {subTab === 'players' && (
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 sm:flex gap-2 w-full sm:w-auto">
                 <select
                   aria-label="Filtrar por equipo"
                   value={teamFilter}
                   onChange={(e) => setTeamFilter(e.target.value)}
-                  className="bg-[#12151c] border border-white/[0.1] rounded-lg px-3 py-2 text-xs text-slate-200"
+                  className="w-full min-w-0 bg-[#12151c] border border-white/[0.1] rounded-lg px-2.5 sm:px-3 py-2 text-xs text-slate-200 truncate"
                 >
                   <option value="all">
                     {league.sport === 'football' ? 'Todos los clubes' : 'Todos los equipos'}
@@ -145,7 +145,7 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
                   aria-label="Filtrar por posición"
                   value={posFilter}
                   onChange={(e) => setPosFilter(e.target.value)}
-                  className="bg-[#12151c] border border-white/[0.1] rounded-lg px-3 py-2 text-xs text-slate-200"
+                  className="w-full min-w-0 bg-[#12151c] border border-white/[0.1] rounded-lg px-2.5 sm:px-3 py-2 text-xs text-slate-200 truncate"
                 >
                   <option value="all">Posición</option>
                   {league.sport === 'football' ? (

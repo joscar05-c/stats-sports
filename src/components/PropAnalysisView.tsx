@@ -51,6 +51,7 @@ import type {
   TeamSeasonAverage,
 } from '../types/database';
 import type { AnyBettingContext } from './PropsSidebar';
+import { PlayerAvatar } from './PlayerAvatar';
 
 interface PropAnalysisViewProps {
   game: Game;
@@ -849,17 +850,12 @@ export function PropAnalysisView({
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/[0.08] pb-4">
           <div className="flex items-center gap-3.5 min-w-0">
             {prop.scope === 'player' ? (
-              <div className="w-14 h-14 rounded-xl bg-[#0b0d11] border border-white/[0.12] overflow-hidden shrink-0 flex items-center justify-center">
-                {analysis.playerAvgObj?.headshot_url || playerProfile?.headshot_url ? (
-                  <img
-                    src={analysis.playerAvgObj?.headshot_url ?? playerProfile?.headshot_url ?? ''}
-                    alt={prop.subjectName}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-sm font-bold text-slate-300">{prop.teamAbbr}</span>
-                )}
-              </div>
+              <PlayerAvatar
+                src={analysis.playerAvgObj?.headshot_url ?? playerProfile?.headshot_url}
+                name={prop.subjectName}
+                className="w-14 h-14 rounded-xl bg-[#0b0d11] border border-white/[0.12] overflow-hidden shrink-0 flex items-center justify-center"
+                fallbackText={prop.teamAbbr}
+              />
             ) : (
               <div className="flex items-center -space-x-2 shrink-0">
                 {liveGame.away_team.logo_url && (
