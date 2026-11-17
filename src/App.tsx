@@ -931,8 +931,33 @@ export function App() {
             </>
           )}
           <footer className="mt-10 pt-5 border-t border-white/[0.06] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-400 pb-4">
-            <span>CourtVision · Estadísticas y análisis deportivo</span>
-            <span>Información estadística de carácter informativo y analítico.</span>
+            <span>CourtVision Stats · Análisis y estadísticas deportivas (uso informativo)</span>
+            <div className="flex flex-wrap items-center gap-4">
+              <a
+                href="/privacidad.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-slate-200 underline underline-offset-2"
+              >
+                Privacidad
+              </a>
+              <a
+                href="/terminos.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-slate-200 underline underline-offset-2"
+              >
+                Términos
+              </a>
+              <a
+                href="/eliminar-cuenta.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-slate-200 underline underline-offset-2"
+              >
+                Eliminar cuenta
+              </a>
+            </div>
           </footer>
         </main>
       </div>

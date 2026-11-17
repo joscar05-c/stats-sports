@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CourtVision Stats</string>
+    <string name="title_activity_main">CourtVision Stats</string>
+    <string name="package_name">com.courtvision.stats</string>
+    <string name="custom_url_scheme">com.courtvision.stats</string>
+</resources>

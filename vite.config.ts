@@ -11,10 +11,10 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
-        name: 'CourtVision — Estadísticas de Básquet',
+        name: 'CourtVision Stats — Fútbol y NBA',
         short_name: 'CourtVision',
         description:
-          'Marcadores, líderes, comparador de jugadores y posiciones de básquet en tiempo real.',
+          'Marcadores, líderes, comparador de jugadores y tablas de posiciones de Fútbol y NBA.',
         theme_color: '#090d16',
         background_color: '#090d16',
         display: 'standalone',
@@ -33,6 +33,7 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
+        navigateFallbackDenylist: [/^\/(?:privacidad|terminos|eliminar-cuenta)\.html$/],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         runtimeCaching: [
           {

@@ -32,6 +32,7 @@ import {
 import type { UserProfile } from '../services/authService';
 import { supabase } from '../lib/supabase';
 import { PRO_CONFIDENCE_THRESHOLD } from '../utils/betting';
+import { isNativeAndroid } from '../utils/platform';
 import { ModalDialog } from './ModalDialog';
 
 interface ProUpgradeModalProps {
@@ -81,6 +82,7 @@ export function ProUpgradeModal({
   onRequireAuth,
   onActivated,
 }: ProUpgradeModalProps) {
+  const androidNative = isNativeAndroid();
   const [provider, setProvider] = useState<PaymentProvider>('lemonsqueezy');
   const [yapeOpCode, setYapeOpCode] = useState('');
   const [yapeSenderName, setYapeSenderName] = useState(user?.fullName ?? '');
@@ -88,7 +90,7 @@ export function ProUpgradeModal({
   const [copiedPhone, setCopiedPhone] = useState(false);
 
   const [codeInput, setCodeInput] = useState('');
-  const [mode, setMode] = useState<'buy' | 'code'>('buy');
+  const [mode, setMode] = useState<'buy' | 'code'>(androidNative ? 'code' : 'buy');
   const [awaitingConfirm, setAwaitingConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; tone: 'info' | 'ok' | 'err' } | null>(
@@ -297,10 +299,14 @@ export function ProUpgradeModal({
             <h2 id="pro-modal-title" className="text-xl font-bold text-white mt-1 tracking-tight">
               {subscription
                 ? 'Plan Pro activo'
-                : `Plan Pro ($${PRO_MONTHLY_PRICE_USD.toFixed(0)} USD / S/ ${PRO_MONTHLY_PRICE_PEN.toFixed(0)})`}
+                : androidNative
+                  ? 'Acceso CourtVision Pro'
+                  : `Plan Pro ($${PRO_MONTHLY_PRICE_USD.toFixed(0)} USD / S/ ${PRO_MONTHLY_PRICE_PEN.toFixed(0)})`}
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Acceso por 30 días vinculado a tu cuenta en Web y App Móvil.
+              {androidNative
+                ? 'Sincroniza tu acceso vinculado a tu cuenta o canjea un código de activación.'
+                : 'Acceso por 30 días vinculado a tu cuenta en Web y App Móvil.'}
             </p>
           </div>
           <button
@@ -360,25 +366,27 @@ export function ProUpgradeModal({
           ) : (
             <>
               {/* Plan Summary */}
-              <div className="rounded-xl bg-[#0e1117] border border-white/[0.1] p-4 flex items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="text-xs font-bold text-white">Pase mensual · 30 días</div>
-                  <div className="text-xs text-slate-400">
-                    Activa el acceso completo con tarjeta o Yape / Plin.
+              {!androidNative && (
+                <div className="rounded-xl bg-[#0e1117] border border-white/[0.1] p-4 flex items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="text-xs font-bold text-white">Pase mensual · 30 días</div>
+                    <div className="text-xs text-slate-400">
+                      Activa el acceso completo con tarjeta o Yape / Plin.
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0 tabular-nums">
+                    <div className="text-xl font-bold text-white leading-none">
+                      ${PRO_MONTHLY_PRICE_USD.toFixed(0)}
+                      <span className="text-xs font-medium text-slate-300 ml-1.5">
+                        / S/ {PRO_MONTHLY_PRICE_PEN.toFixed(0)}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 uppercase font-medium mt-1">
+                      USD o PEN · 30 días
+                    </div>
                   </div>
                 </div>
-                <div className="text-right shrink-0 tabular-nums">
-                  <div className="text-xl font-bold text-white leading-none">
-                    ${PRO_MONTHLY_PRICE_USD.toFixed(0)}
-                    <span className="text-xs font-medium text-slate-300 ml-1.5">
-                      / S/ {PRO_MONTHLY_PRICE_PEN.toFixed(0)}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-slate-400 uppercase font-medium mt-1">
-                    USD o PEN · 30 días
-                  </div>
-                </div>
-              </div>
+              )}
 
               {/* Comparison */}
               <div className="grid grid-cols-2 gap-2.5 text-xs">
@@ -416,7 +424,9 @@ export function ProUpgradeModal({
                       Paso 1: Inicia sesión o crea tu cuenta
                     </div>
                     <p className="text-xs text-slate-400 leading-relaxed">
-                      Tu suscripción queda vinculada de forma segura a tu cuenta (Google o correo) para usarla en cualquier dispositivo.
+                      {androidNative
+                        ? 'Inicia sesión con tu correo electrónico para sincronizar tu suscripción o vincular tu código de acceso.'
+                        : 'Tu suscripción queda vinculada de forma segura a tu cuenta (Google o correo) para usarla en cualquier dispositivo.'}
                     </p>
                   </div>
                   <button
@@ -425,7 +435,7 @@ export function ProUpgradeModal({
                     className="w-full py-2.5 px-4 rounded-lg cv-btn-primary text-sm inline-flex items-center justify-center gap-2"
                   >
                     <LogIn className="w-4 h-4" aria-hidden="true" />
-                    Continuar con Google o correo
+                    {androidNative ? 'Iniciar sesión con correo' : 'Continuar con Google o correo'}
                   </button>
                 </div>
               ) : (
@@ -443,39 +453,41 @@ export function ProUpgradeModal({
                     </span>
                   </div>
 
-                  {/* Mode Switch */}
-                  <div className="flex rounded-lg bg-[#0b0d11] border border-white/[0.08] p-1 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMode('buy');
-                        setFeedback(null);
-                      }}
-                      className={`flex-1 py-1.5 rounded-md font-semibold transition-colors ${
-                        mode === 'buy'
-                          ? 'cv-tab-active'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Pagar (${PRO_MONTHLY_PRICE_USD.toFixed(0)} / S/ {PRO_MONTHLY_PRICE_PEN.toFixed(0)})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMode('code');
-                        setFeedback(null);
-                      }}
-                      className={`flex-1 py-1.5 rounded-md font-semibold transition-colors ${
-                        mode === 'code'
-                          ? 'cv-tab-active'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Canjear código CVPRO
-                    </button>
-                  </div>
+                  {/* Mode Switch (Web only — Google Play policy omits external payment flows on Android) */}
+                  {!androidNative && (
+                    <div className="flex rounded-lg bg-[#0b0d11] border border-white/[0.08] p-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMode('buy');
+                          setFeedback(null);
+                        }}
+                        className={`flex-1 py-1.5 rounded-md font-semibold transition-colors ${
+                          mode === 'buy'
+                            ? 'cv-tab-active'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Pagar (${PRO_MONTHLY_PRICE_USD.toFixed(0)} / S/ {PRO_MONTHLY_PRICE_PEN.toFixed(0)})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMode('code');
+                          setFeedback(null);
+                        }}
+                        className={`flex-1 py-1.5 rounded-md font-semibold transition-colors ${
+                          mode === 'code'
+                            ? 'cv-tab-active'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Canjear código CVPRO
+                      </button>
+                    </div>
+                  )}
 
-                  {mode === 'buy' ? (
+                  {!androidNative && mode === 'buy' ? (
                     <div className="space-y-3">
                       <div className="space-y-1.5">
                         <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
@@ -698,6 +710,17 @@ export function ProUpgradeModal({
                         <KeyRound className="w-4 h-4" aria-hidden="true" />
                         {busy ? 'Validando código...' : 'Vincular código a mi cuenta'}
                       </button>
+
+                      {androidNative && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={handleManualCheckAfterPay}
+                          className="w-full py-2 px-3 rounded-lg bg-[#0b0d11] border border-white/[0.12] hover:border-white/[0.24] text-xs font-semibold text-slate-200 transition-colors disabled:opacity-50"
+                        >
+                          {busy ? 'Consultando...' : 'Sincronizar acceso vinculado a mi cuenta'}
+                        </button>
+                      )}
                     </form>
                   )}
                 </>

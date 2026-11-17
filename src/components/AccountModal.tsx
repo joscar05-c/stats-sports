@@ -7,6 +7,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  Trash2,
   User,
   X,
   XCircle,
@@ -14,6 +15,7 @@ import {
 import {
   adminListYapeRequests,
   adminReviewYapeRequest,
+  deleteMyAccount,
   signOutAccount,
   type AdminYapeRequestRow,
   type UserProfile,
@@ -24,6 +26,7 @@ import {
   PRO_MONTHLY_PRICE_USD,
   type ProSubscriptionState,
 } from '../services/subscriptionService';
+import { isNativeAndroid } from '../utils/platform';
 import { ModalDialog } from './ModalDialog';
 
 interface AccountModalProps {
@@ -41,7 +44,12 @@ export function AccountModal({
   onOpenProModal,
   onSignedOut,
 }: AccountModalProps) {
+  const androidNative = isNativeAndroid();
   const [signingOut, setSigningOut] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [yapeReqs, setYapeReqs] = useState<AdminYapeRequestRow[]>([]);
   const [loadingAdmin, setLoadingAdmin] = useState(false);
   const [reviewingId, setReviewingId] = useState<number | null>(null);
@@ -202,7 +210,9 @@ export function AccountModal({
                 className="w-full py-2.5 px-4 rounded-lg cv-btn-primary text-xs sm:text-sm inline-flex items-center justify-center gap-2"
               >
                 <Crown className="w-4 h-4" aria-hidden="true" />
-                Suscribirse al Plan Pro (${PRO_MONTHLY_PRICE_USD.toFixed(0)} USD / S/ {PRO_MONTHLY_PRICE_PEN.toFixed(0)})
+                {androidNative
+                  ? 'Sincronizar o vincular Plan Pro'
+                  : `Suscribirse al Plan Pro ($${PRO_MONTHLY_PRICE_USD.toFixed(0)} USD / S/ ${PRO_MONTHLY_PRICE_PEN.toFixed(0)})`}
               </button>
             </div>
           )}
@@ -310,7 +320,7 @@ export function AccountModal({
           {/* Sign Out */}
           <button
             type="button"
-            disabled={signingOut}
+            disabled={signingOut || deletingAccount}
             onClick={handleSignOut}
             className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.1] text-xs font-semibold text-slate-200 transition-colors disabled:opacity-50"
           >
@@ -321,6 +331,101 @@ export function AccountModal({
             )}
             Cerrar sesión
           </button>
+
+          {/* Account Deletion (Google Play Policy) */}
+          <div className="pt-2 border-t border-white/[0.06] space-y-2">
+            {!confirmDeleteOpen ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+                <div className="flex items-center gap-3">
+                  <a
+                    href="/privacidad.html"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-slate-200 underline underline-offset-2"
+                  >
+                    Privacidad
+                  </a>
+                  <a
+                    href="/terminos.html"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-slate-200 underline underline-offset-2"
+                  >
+                    Términos
+                  </a>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmDeleteOpen(true);
+                    setDeleteConfirmText('');
+                    setDeleteError(null);
+                  }}
+                  className="inline-flex items-center gap-1 text-rose-300/90 hover:text-rose-200 font-semibold"
+                >
+                  <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                  Eliminar mi cuenta
+                </button>
+              </div>
+            ) : (
+              <div className="rounded-xl bg-rose-500/[0.07] border border-rose-500/25 p-3 space-y-2.5">
+                <div className="text-xs font-bold text-rose-200">
+                  Eliminar cuenta y todos tus datos
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Esta acción es permanente: se borrará tu perfil y acceso vinculado. Escribe{' '}
+                  <strong className="text-white font-mono">ELIMINAR</strong> para confirmar.
+                </p>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="ELIMINAR"
+                  aria-label="Escribe ELIMINAR para confirmar"
+                  className="w-full bg-[#0b0d11] border border-rose-500/30 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono placeholder:font-sans placeholder:text-slate-500"
+                />
+                {deleteError && (
+                  <div className="text-[11px] text-rose-300 font-medium">{deleteError}</div>
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={deletingAccount || deleteConfirmText.trim().toUpperCase() !== 'ELIMINAR'}
+                    onClick={async () => {
+                      setDeletingAccount(true);
+                      setDeleteError(null);
+                      try {
+                        await deleteMyAccount();
+                        onSignedOut();
+                      } catch (err) {
+                        setDeleteError(
+                          err instanceof Error ? err.message : 'No se pudo eliminar tu cuenta.',
+                        );
+                      } finally {
+                        setDeletingAccount(false);
+                      }
+                    }}
+                    className="flex-1 py-1.5 px-3 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-white font-bold text-xs inline-flex items-center justify-center gap-1.5 disabled:opacity-45"
+                  >
+                    {deletingAccount ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    )}
+                    {deletingAccount ? 'Eliminando...' : 'Confirmar eliminación'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deletingAccount}
+                    onClick={() => setConfirmDeleteOpen(false)}
+                    className="py-1.5 px-3 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-slate-200 font-semibold text-xs"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         </div>
       )}

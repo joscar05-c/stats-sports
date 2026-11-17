@@ -1,5 +1,5 @@
 import type { User } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseKeyResolved, supabaseUrlResolved } from '../lib/supabase';
 
 export interface UserProfile {
   id: string;
@@ -136,6 +136,29 @@ export async function sendPasswordReset(email: string): Promise<void> {
 export async function signOutAccount(): Promise<void> {
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
+}
+
+export async function deleteMyAccount(): Promise<void> {
+  const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+  if (sessionErr || !sessionData.session?.access_token) {
+    throw new Error('Tu sesión expiró. Inicia sesión nuevamente para eliminar tu cuenta.');
+  }
+
+  const resp = await fetch(`${supabaseUrlResolved}/functions/v1/delete-account`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: supabaseKeyResolved,
+      Authorization: `Bearer ${sessionData.session.access_token}`,
+    },
+  });
+
+  const body = (await resp.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  if (!resp.ok || !body.ok) {
+    throw new Error(body.error || 'No se pudo eliminar tu cuenta.');
+  }
+
+  await supabase.auth.signOut().catch(() => {});
 }
 
 export function translateAuthError(err: unknown): string {
