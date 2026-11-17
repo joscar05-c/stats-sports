@@ -165,13 +165,19 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
   return (
     <div className="space-y-4 @container">
       {/* Horizontal Date Strip */}
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+      <div
+        role="region"
+        aria-label="Fechas disponibles"
+        className="flex items-center gap-2 overflow-x-auto no-scrollbar sb-scroll-fade-x pb-1"
+      >
         {dates.slice(0, 14).map((d) => {
           const { top, bottom } = formatDateLabel(d);
           const isSelected = d === selectedDate;
           return (
             <button
               key={d}
+              type="button"
+              aria-pressed={isSelected}
               onClick={() => setSelectedDate(d)}
               className={`shrink-0 px-3.5 py-2 rounded-xl border text-center transition-all ${
                 isSelected

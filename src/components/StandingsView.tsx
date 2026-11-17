@@ -35,10 +35,13 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="inline-flex items-center gap-2 text-xs font-bold text-slate-200 uppercase tracking-wider">
-          <Trophy className="w-4 h-4 text-emerald-400" />
+        <h2
+          id="standings-heading"
+          className="inline-flex items-center gap-2 text-xs font-bold text-slate-200 uppercase tracking-wider"
+        >
+          <Trophy className="w-4 h-4 text-emerald-400" aria-hidden="true" />
           Tabla de Posiciones
-        </div>
+        </h2>
 
         <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1">
           {(
@@ -49,6 +52,8 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
           ).map((c) => (
             <button
               key={c.key}
+              type="button"
+              aria-pressed={conference === c.key}
               onClick={() => setConference(c.key)}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 conference === c.key
@@ -70,22 +75,32 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
         </div>
       ) : (
         <div className="sb-card rounded-2xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs tabular-nums whitespace-nowrap">
+          <div
+            tabIndex={0}
+            role="region"
+            aria-labelledby="standings-heading"
+            className="overflow-x-auto sb-scroller"
+          >
+            <table className="w-full text-xs tabular-nums whitespace-nowrap border-separate border-spacing-0">
+              <caption className="visually-hidden">
+                Tabla de posiciones Conferencia {conference === 'East' ? 'Este' : 'Oeste'}
+              </caption>
               <thead className="bg-black/40 text-slate-400 border-b border-white/[0.08]">
                 <tr>
-                  <th className="text-left py-2.5 px-3 sticky left-0 bg-[#080d1a]"># EQUIPO</th>
-                  <th className="text-right py-2.5 px-2.5">G</th>
-                  <th className="text-right py-2.5 px-2.5">P</th>
-                  <th className="text-right py-2.5 px-2.5">PCT</th>
-                  <th className="text-right py-2.5 px-2.5">JD</th>
-                  <th className="text-right py-2.5 px-2.5">LOCAL</th>
-                  <th className="text-right py-2.5 px-2.5">VISITA</th>
-                  <th className="text-right py-2.5 px-2.5">PPG</th>
-                  <th className="text-right py-2.5 px-2.5">OPPG</th>
-                  <th className="text-right py-2.5 px-2.5">DIFF</th>
-                  <th className="text-right py-2.5 px-2.5">ÚLT 10</th>
-                  <th className="text-right py-2.5 px-3">RACHA</th>
+                  <th scope="col" className="text-left py-2.5 px-3 sticky left-0 bg-[#080d1a] z-10">
+                    # EQUIPO
+                  </th>
+                  <th scope="col" className="text-right py-2.5 px-2.5">G</th>
+                  <th scope="col" className="text-right py-2.5 px-2.5">P</th>
+                  <th scope="col" className="text-right py-2.5 px-2.5">PCT</th>
+                  <th scope="col" className="text-right py-2.5 px-2.5">JD</th>
+                  <th scope="col" className="text-right py-2.5 px-2.5">LOCAL</th>
+                  <th scope="col" className="text-right py-2.5 px-2.5">VISITA</th>
+                  <th scope="col" className="text-right py-2.5 px-2.5">PPG</th>
+                  <th scope="col" className="text-right py-2.5 px-2.5">OPPG</th>
+                  <th scope="col" className="text-right py-2.5 px-2.5">DIFF</th>
+                  <th scope="col" className="text-right py-2.5 px-2.5">ÚLT 10</th>
+                  <th scope="col" className="text-right py-2.5 px-3">RACHA</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -104,7 +119,7 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
                       onClick={() => onSelectTeam(s.team, s)}
                       className="cursor-pointer hover:bg-slate-800/40 transition-colors"
                     >
-                      <td className="py-2.5 px-3 sticky left-0 bg-[#0d1421]">
+                      <th scope="row" className="text-left font-normal py-2.5 px-3 sticky left-0 bg-[#0d1421]">
                         <div className="flex items-center gap-2.5">
                           <span className={`w-1 h-5 rounded-full ${seedZone}`} />
                           <span className="w-4 text-slate-500 font-bold">{seed}</span>
@@ -120,7 +135,7 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
                             {s.team.abbreviation}
                           </span>
                         </div>
-                      </td>
+                      </th>
                       <td className="text-right py-2.5 px-2.5 font-bold text-white">{s.wins}</td>
                       <td className="text-right py-2.5 px-2.5 text-slate-300">{s.losses}</td>
                       <td className="text-right py-2.5 px-2.5 text-slate-300">

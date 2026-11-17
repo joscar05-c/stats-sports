@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
 import {
   Activity,
   ArrowLeftRight,
@@ -289,6 +290,33 @@ export function App() {
     setInstallPrompt(null);
   };
 
+  const navigateWithTransition = (update: () => void, routeFocus = false) => {
+    const doc = document as Document & {
+      startViewTransition?: (callback: () => void) => { finished: Promise<void> };
+    };
+    const focusHeading = () => {
+      if (routeFocus) {
+        document.getElementById('main-view-heading')?.focus({ preventScroll: true });
+      }
+    };
+    if (!doc.startViewTransition) {
+      update();
+      focusHeading();
+      return;
+    }
+    const transition = doc.startViewTransition(() => {
+      flushSync(update);
+    });
+    void transition.finished.finally(focusHeading);
+  };
+
+  const switchMainTab = (nextTab: TabKey) => {
+    navigateWithTransition(() => {
+      setActivePropView(null);
+      setTab(nextTab);
+    }, true);
+  };
+
   const navItems: Array<{ key: TabKey; label: string; icon: typeof Calendar }> = [
     { key: 'games', label: 'Partidos', icon: Calendar },
     { key: 'leaders', label: 'Líderes', icon: Flame },
@@ -297,8 +325,19 @@ export function App() {
     { key: 'explore', label: 'Explorar', icon: Search },
   ];
 
+  const activeViewLabel = activePropView
+    ? `Análisis de Prop: ${activePropView.prop.subjectName}`
+    : navItems.find((item) => item.key === tab)?.label ?? 'Partidos';
+
+  useEffect(() => {
+    document.title = `${activeViewLabel} | CourtVision`;
+  }, [activeViewLabel]);
+
   return (
     <div className="min-h-screen text-slate-100 pb-24 md:pb-10">
+      <a href="#main-view-heading" className="visually-hidden skip-link">
+        Saltar al contenido principal
+      </a>
       {/* Sportsbook Command Header */}
       <header className="sticky top-0 z-40 sb-glass-header">
         <div className="sb-header-accent" />
@@ -308,10 +347,7 @@ export function App() {
           {/* Left Brand Block (never squeezes or overlaps) */}
           <button
             type="button"
-            onClick={() => {
-              setActivePropView(null);
-              setTab('games');
-            }}
+            onClick={() => switchMainTab('games')}
             className="flex items-center gap-2.5 sm:gap-3 shrink-0 text-left group"
           >
             <div className="relative shrink-0 p-0.5 rounded-xl bg-gradient-to-br from-emerald-400/35 via-cyan-400/20 to-transparent shadow-[0_0_20px_rgba(16,185,129,0.22)] group-hover:shadow-[0_0_24px_rgba(16,185,129,0.38)] transition-shadow">
@@ -361,6 +397,7 @@ export function App() {
 
             {leagues.length > 1 && (
               <select
+                aria-label="Seleccionar liga"
                 value={activeLeague?.id ?? ''}
                 onChange={(e) => {
                   const found = leagues.find((l) => l.id === Number(e.target.value));
@@ -482,24 +519,26 @@ export function App() {
         {/* Row 2: Dedicated Desktop Navigation Rail (zero logo/button collisions at all widths) */}
         <div className="hidden md:block border-t border-white/[0.06] bg-[#040812]/80">
           <div className="max-w-7xl mx-auto px-5 h-11 flex items-center justify-between gap-4">
-            <nav className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <nav
+              aria-label="Principal"
+              className="flex items-center gap-1.5 overflow-x-auto no-scrollbar sb-scroll-fade-x"
+            >
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const active = !activePropView && tab === item.key;
                 return (
                   <button
                     key={item.key}
-                    onClick={() => {
-                      setActivePropView(null);
-                      setTab(item.key);
-                    }}
+                    type="button"
+                    aria-current={active ? 'page' : undefined}
+                    onClick={() => switchMainTab(item.key)}
                     className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
                       active
                         ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 shadow-[0_4px_14px_rgba(16,185,129,0.28)]'
                         : 'text-slate-300 hover:text-white hover:bg-white/[0.06]'
                     }`}
                   >
-                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                     <span>{item.label}</span>
                   </button>
                 );
@@ -527,7 +566,9 @@ export function App() {
           toggleSignal={sidebarToggleTick}
           isPro={Boolean(proSub)}
           activePropId={activePropView?.prop.id ?? null}
-          onSelectProp={(selection) => setActivePropView(selection)}
+          onSelectProp={(selection) =>
+            navigateWithTransition(() => setActivePropView(selection), true)
+          }
           onOpenProModal={() => setShowProModal(true)}
           onDesktopExpandedChange={setPropsDrawerOpen}
         />
@@ -543,7 +584,10 @@ export function App() {
             : ''
         }`}
       >
-        <main className="max-w-6xl mx-auto px-3 sm:px-4 pt-4">
+        <main id="main-content" className="max-w-6xl mx-auto px-3 sm:px-4 pt-4">
+          <h1 id="main-view-heading" tabIndex={-1} className="visually-hidden outline-none">
+            CourtVision — {activeViewLabel}
+          </h1>
           {fromCache && (
             <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300">
               <WifiOff className="w-3.5 h-3.5 shrink-0" />
@@ -632,7 +676,10 @@ export function App() {
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 sb-glass-header border-t border-b-0 pb-safe">
+      <nav
+        aria-label="Móvil"
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 sb-glass-header border-t border-b-0 pb-safe"
+      >
         <div className="grid grid-cols-5">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -640,15 +687,14 @@ export function App() {
             return (
               <button
                 key={item.key}
-                onClick={() => {
-                  setActivePropView(null);
-                  setTab(item.key);
-                }}
+                type="button"
+                aria-current={active ? 'page' : undefined}
+                onClick={() => switchMainTab(item.key)}
                 className={`flex flex-col items-center justify-center py-2.5 gap-1 text-[10px] font-bold transition-colors ${
                   active ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <Icon className="w-5 h-5" />
+                <Icon className="w-5 h-5" aria-hidden="true" />
                 <span>{item.label}</span>
               </button>
             );

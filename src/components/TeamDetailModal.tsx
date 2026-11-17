@@ -9,6 +9,7 @@ import type {
   TeamSeasonAverage,
   TeamStanding,
 } from '../types/database';
+import { ModalDialog } from './ModalDialog';
 
 interface TeamDetailModalProps {
   team: Team;
@@ -60,15 +61,15 @@ export function TeamDetailModal({
   }, [playerAvgs]);
 
   const topScorer = useMemo(
-    () => [...playerAvgs].sort((a, b) => Number(b.ppg ?? 0) - Number(a.ppg ?? 0))[0] ?? null,
+    () => playerAvgs.toSorted((a, b) => Number(b.ppg ?? 0) - Number(a.ppg ?? 0))[0] ?? null,
     [playerAvgs],
   );
   const topRebounder = useMemo(
-    () => [...playerAvgs].sort((a, b) => Number(b.rpg ?? 0) - Number(a.rpg ?? 0))[0] ?? null,
+    () => playerAvgs.toSorted((a, b) => Number(b.rpg ?? 0) - Number(a.rpg ?? 0))[0] ?? null,
     [playerAvgs],
   );
   const topAssister = useMemo(
-    () => [...playerAvgs].sort((a, b) => Number(b.apg ?? 0) - Number(a.apg ?? 0))[0] ?? null,
+    () => playerAvgs.toSorted((a, b) => Number(b.apg ?? 0) - Number(a.apg ?? 0))[0] ?? null,
     [playerAvgs],
   );
 
@@ -82,14 +83,14 @@ export function TeamDetailModal({
   const diff = standing?.diff ?? teamAvg?.diff;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#03050a]/85 backdrop-blur-md"
-      onClick={onClose}
+    <ModalDialog
+      onClose={onClose}
+      ariaLabelledBy="team-modal-title"
+      maxWidthCss="42rem"
+      borderClass="border border-white/[0.1]"
     >
-      <div
-        className="w-full max-w-2xl max-h-[92vh] flex flex-col bg-[#080d1a] border border-white/[0.1] rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.85)]"
-        onClick={(e) => e.stopPropagation()}
-      >
+      {(requestClose) => (
+        <div className="flex flex-col flex-1 min-h-0">
         {/* Header */}
         <div
           className="shrink-0 p-5 border-b border-white/[0.08]"
@@ -111,7 +112,9 @@ export function TeamDetailModal({
                   {team.conference ? `Conferencia ${team.conference}` : 'Equipo'}
                   {team.division ? ` · Div. ${team.division}` : ''}
                 </span>
-                <h2 className="text-xl sm:text-2xl font-black text-white">{team.name}</h2>
+                <h2 id="team-modal-title" className="text-xl sm:text-2xl font-black text-white">
+                  {team.name}
+                </h2>
                 {(wins > 0 || losses > 0) && (
                   <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-slate-300 tabular-nums">
                     <span className="font-bold text-white">
@@ -125,11 +128,12 @@ export function TeamDetailModal({
               </div>
             </div>
             <button
-              onClick={onClose}
+              type="button"
+              onClick={requestClose}
               className="p-1.5 rounded-full bg-slate-900/80 text-slate-300 hover:bg-slate-800"
               aria-label="Cerrar"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -169,7 +173,7 @@ export function TeamDetailModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-h-0 overflow-auto p-3 sm:p-4">
+        <div className="flex-1 min-h-0 overflow-auto sb-scroller p-3 sm:p-4">
           {loading ? (
             <div className="py-12 text-center text-slate-400 text-sm">Cargando datos...</div>
           ) : tab === 'stats' ? (
@@ -465,7 +469,8 @@ export function TeamDetailModal({
             </div>
           )}
         </div>
-      </div>
-    </div>
+        </div>
+      )}
+    </ModalDialog>
   );
 }

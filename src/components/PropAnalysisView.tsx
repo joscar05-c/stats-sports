@@ -1284,19 +1284,27 @@ export function PropAnalysisView({
           </div>
 
           {/* Clean Tabular Breakdown */}
-          <div className="overflow-x-auto rounded-xl border border-white/[0.08]">
+          <div
+            tabIndex={0}
+            role="region"
+            aria-label="Historial de partidos del prop"
+            className="overflow-x-auto sb-scroller rounded-xl border border-white/[0.08]"
+          >
             <table className="w-full text-xs tabular-nums whitespace-nowrap">
+              <caption className="visually-hidden">
+                Desglose histórico de rendimiento frente a la línea del prop
+              </caption>
               <thead className="bg-black/40 text-slate-400 border-b border-white/[0.08]">
                 <tr>
-                  <th className="text-left py-2 px-3 font-semibold">FECHA</th>
-                  <th className="text-left py-2 px-2 font-semibold">PARTIDO</th>
-                  <th className="text-left py-2 px-2 font-semibold">DETALLE</th>
-                  <th className="text-right py-2 px-2 font-semibold">REGISTRO</th>
-                  <th className="text-center py-2 px-3 font-semibold">ESTADO</th>
+                  <th scope="col" className="text-left py-2 px-3 font-semibold">FECHA</th>
+                  <th scope="col" className="text-left py-2 px-2 font-semibold">PARTIDO</th>
+                  <th scope="col" className="text-left py-2 px-2 font-semibold">DETALLE</th>
+                  <th scope="col" className="text-right py-2 px-2 font-semibold">REGISTRO</th>
+                  <th scope="col" className="text-center py-2 px-3 font-semibold">ESTADO</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.06]">
-                {[...analysis.historySeries].reverse().map((pt) => {
+                {analysis.historySeries.toReversed().map((pt) => {
                   const hit =
                     analysis.effectivePick === 'SPREAD'
                       ? pt.value + customLine > 0
