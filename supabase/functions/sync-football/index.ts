@@ -275,6 +275,186 @@ async function buildFplPhotoResolver(
   }
 }
 
+const WIKI_UA = "CourtVisionStats/1.0 (https://github.com/joscar05-c/stats-sports)";
+const FOOTBALL_DESC_RE =
+  /football|soccer|goalkeeper|defender|midfielder|forward|winger|striker|futbolista|portero|defensa|centrocampista|delantero|calciatore|portiere|difensore|attaccante|fußballspieler|torwart|abwehrspieler|mittelfeldspieler|stürmer|footballeur|gardien de but/i;
+const DEATH_DESC_RE = /\b(?:18|19|20)\d{2}\s*[–\-]\s*(?:18|19|20)\d{2}\b/;
+const BORN_YEAR_DESC_RE = /(?:born|n\.|nacido en|geboren)\s+(\d{4})\b/i;
+
+const LEAGUE_SECONDARY_WIKIS: Record<string, string[]> = {
+  "esp.1": ["es"],
+  "ita.1": ["it"],
+  "ger.1": ["de"],
+  "fra.1": ["fr"],
+  "uefa.champions": ["es", "it", "de", "fr"],
+};
+
+async function fetchWikiJson(url: string): Promise<any> {
+  const resp = await fetch(url, {
+    headers: { "User-Agent": WIKI_UA, Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(`Wiki HTTP ${resp.status}`);
+  return await resp.json();
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIdx = 0;
+  async function run() {
+    while (nextIdx < items.length) {
+      const idx = nextIdx++;
+      results[idx] = await worker(items[idx]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => run()));
+  return results;
+}
+
+async function fetchWikidataBirthYears(qids: string[]): Promise<Record<string, number>> {
+  const unique = [...new Set(qids.filter(Boolean))];
+  const out: Record<string, number> = {};
+  if (unique.length === 0) return out;
+  const chunks: string[][] = [];
+  for (let i = 0; i < unique.length; i += 50) chunks.push(unique.slice(i, i + 50));
+
+  await mapWithConcurrency(chunks, 4, async (chunk) => {
+    try {
+      const qs = new URLSearchParams({
+        action: "wbgetentities",
+        ids: chunk.join("|"),
+        props: "claims",
+        format: "json",
+      });
+      const data = await fetchWikiJson(`https://www.wikidata.org/w/api.php?${qs}`);
+      const entities = data?.entities ?? {};
+      for (const [qid, ent] of Object.entries<any>(entities)) {
+        const p569 = ent?.claims?.P569;
+        const timeStr = String(p569?.[0]?.mainsnak?.datavalue?.value?.time ?? "");
+        const m = /^\+?(\d{4})-/.exec(timeStr);
+        if (m) out[qid] = Number(m[1]);
+      }
+    } catch {
+      // Non-fatal fallback: caller still enforces description checks
+    }
+  });
+  return out;
+}
+
+function isBirthYearCompatible(birthYear: number | null, age: number | null, curYear: number): boolean {
+  if (birthYear === null) return false;
+  if (birthYear < 1983) return false;
+  if (age !== null && Math.abs(birthYear - (curYear - age)) > 2) return false;
+  return true;
+}
+
+async function resolveFootballHeadshotsFromWiki(
+  leagueCode: string,
+  players: Array<{ key: string; fullName: string; age: number | null }>,
+): Promise<Record<string, string>> {
+  if (players.length === 0) return {};
+  const curYear = new Date().getUTCFullYear();
+  const resolved: Record<string, string> = {};
+
+  async function runPass(
+    lang: string,
+    titleBuilder: (p: { key: string; fullName: string; age: number | null }) => string[],
+  ): Promise<void> {
+    const remaining = players.filter((p) => !resolved[p.key]);
+    if (remaining.length === 0) return;
+
+    const queryItems: Array<{ key: string; age: number | null; title: string }> = [];
+    for (const p of remaining) {
+      const name = p.fullName.trim();
+      if (!name) continue;
+      for (const title of titleBuilder({ ...p, fullName: name })) {
+        queryItems.push({ key: p.key, age: p.age, title });
+      }
+    }
+    if (queryItems.length === 0) return;
+
+    const chunks: Array<typeof queryItems> = [];
+    for (let i = 0; i < queryItems.length; i += 50) chunks.push(queryItems.slice(i, i + 50));
+
+    type Cand = { key: string; age: number | null; thumb: string; qid: string | null; descYear: number | null };
+    const candidates: Cand[] = [];
+
+    await mapWithConcurrency(chunks, 4, async (chunk) => {
+      try {
+        const qs = new URLSearchParams({
+          action: "query",
+          titles: chunk.map((c) => c.title).join("|"),
+          prop: "pageimages|description|pageprops",
+          ppprop: "wikibase_item",
+          pithumbsize: "240",
+          redirects: "1",
+          format: "json",
+        });
+        const data = await fetchWikiJson(`https://${lang}.wikipedia.org/w/api.php?${qs}`);
+        const q = data?.query ?? {};
+        const normMap = new Map<string, string>();
+        for (const n of q.normalized ?? []) normMap.set(n.from, n.to);
+        const redirMap = new Map<string, string>();
+        for (const r of q.redirects ?? []) redirMap.set(r.from, r.to);
+        const pagesByTitle = new Map<string, any>();
+        for (const page of Object.values<any>(q.pages ?? {})) {
+          if ("missing" in page) continue;
+          pagesByTitle.set(page.title, page);
+        }
+
+        for (const item of chunk) {
+          const t1 = normMap.get(item.title) ?? item.title;
+          const t2 = redirMap.get(t1) ?? t1;
+          const page = pagesByTitle.get(t2);
+          if (!page) continue;
+          const desc = String(page.description ?? "");
+          const thumb = String(page.thumbnail?.source ?? "");
+          if (!thumb || !FOOTBALL_DESC_RE.test(desc) || DEATH_DESC_RE.test(desc)) continue;
+          const ym = BORN_YEAR_DESC_RE.exec(desc);
+          const descYear = ym ? Number(ym[1]) : null;
+          if (descYear !== null && !isBirthYearCompatible(descYear, item.age, curYear)) continue;
+          const qid = page.pageprops?.wikibase_item ? String(page.pageprops.wikibase_item) : null;
+          candidates.push({ key: item.key, age: item.age, thumb, qid, descYear });
+        }
+      } catch {
+        // Ignore transient wiki batch failure
+      }
+    });
+
+    if (candidates.length === 0) return;
+    const birthYears = await fetchWikidataBirthYears(candidates.map((c) => c.qid ?? "").filter(Boolean));
+    for (const c of candidates) {
+      if (resolved[c.key]) continue;
+      const by = (c.qid && birthYears[c.qid] !== undefined ? birthYears[c.qid] : null) ?? c.descYear;
+      if (isBirthYearCompatible(by, c.age, curYear)) {
+        resolved[c.key] = c.thumb;
+      } else if (by === null && lang === "en" && c.age === null) {
+        resolved[c.key] = c.thumb;
+      }
+    }
+  }
+
+  await runPass("en", (p) => [p.fullName]);
+  await runPass("en", (p) => [`${p.fullName} (footballer)`]);
+  await runPass("en", (p) =>
+    p.age !== null
+      ? [
+          `${p.fullName} (footballer, born ${curYear - p.age})`,
+          `${p.fullName} (footballer, born ${curYear - p.age - 1})`,
+        ]
+      : [],
+  );
+
+  for (const secLang of LEAGUE_SECONDARY_WIKIS[leagueCode] ?? []) {
+    await runPass(secLang, (p) => [p.fullName]);
+  }
+
+  return resolved;
+}
+
 async function fetchJson(url: string): Promise<any> {
   const resp = await fetch(url, {
     headers: {
@@ -376,12 +556,83 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const syncHeadshotsOnly = Boolean(bodyParams.sync_headshots_only ?? false);
     const backfillSeason = Boolean(bodyParams.backfill_season ?? false);
     const daysBack = Math.min(120, Math.max(0, safeInt(bodyParams.days_back ?? reqUrl.searchParams.get("days_back"), 5)));
     const daysAhead = Math.min(21, Math.max(0, safeInt(bodyParams.days_ahead ?? reqUrl.searchParams.get("days_ahead"), 14)));
 
     const sb = new SupabaseRest(sbUrl, sbKey);
     const nowIso = new Date().toISOString();
+
+    if (syncHeadshotsOnly) {
+      const leagueRows = await sb.selectAll("leagues", `slug=eq.${meta.slug}&select=id`);
+      if (!leagueRows.length) {
+        return new Response(JSON.stringify({ ok: false, error: `League ${meta.slug} not synced yet` }), {
+          status: 404,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+      const leagueId = leagueRows[0].id;
+      const [dbTeams, dbPlayers, resolveFplPhoto] = await Promise.all([
+        sb.selectAll("teams", `league_id=eq.${leagueId}&select=id,abbreviation`),
+        sb.selectAll(
+          "players",
+          `league_id=eq.${leagueId}&external_source=eq.${EXTERNAL_SOURCE}&headshot_url=is.null&select=id,full_name,team_id,age`,
+        ),
+        buildFplPhotoResolver(leagueCode),
+      ]);
+      const abbrById: Record<number, string> = {};
+      for (const t of dbTeams) {
+        if (t.abbreviation) abbrById[t.id] = t.abbreviation;
+      }
+
+      const patches: Array<{ id: number; headshot_url: string }> = [];
+      const wikiTargets: Array<{ key: string; fullName: string; age: number | null }> = [];
+      for (const ep of dbPlayers) {
+        const abbr = ep.team_id ? abbrById[ep.team_id] ?? null : null;
+        const fpl = resolveFplPhoto(ep.full_name, abbr);
+        if (fpl) {
+          patches.push({ id: ep.id, headshot_url: fpl });
+        } else {
+          wikiTargets.push({
+            key: String(ep.id),
+            fullName: ep.full_name,
+            age: typeof ep.age === "number" ? ep.age : null,
+          });
+        }
+      }
+
+      const wikiMap = await resolveFootballHeadshotsFromWiki(leagueCode, wikiTargets);
+      for (const t of wikiTargets) {
+        const url = wikiMap[t.key];
+        if (url) patches.push({ id: Number(t.key), headshot_url: url });
+      }
+
+      for (let i = 0; i < patches.length; i += 25) {
+        await Promise.all(
+          patches.slice(i, i + 25).map((u) =>
+            sb.request(
+              "PATCH",
+              `players?id=eq.${u.id}`,
+              { headshot_url: u.headshot_url, updated_at: nowIso },
+              { Prefer: "return=minimal" },
+            ),
+          ),
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          mode: "sync_headshots_only",
+          league: meta.slug,
+          missing_checked: dbPlayers.length,
+          headshots_updated: patches.length,
+          synced_at: nowIso,
+        }),
+        { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+      );
+    }
 
     const [teamsJson, standingsJson, defaultSb] = await Promise.all([
       fetchJson(`${ESPN_BASE}/site/v2/sports/soccer/${leagueCode}/teams`),
@@ -522,7 +773,7 @@ Deno.serve(async (req: Request) => {
     // Players lookup
     const existingPlayers = await sb.selectAll(
       "players",
-      `league_id=eq.${leagueId}&external_source=eq.${EXTERNAL_SOURCE}&select=id,external_id,full_name,team_id,headshot_url`,
+      `league_id=eq.${leagueId}&external_source=eq.${EXTERNAL_SOURCE}&select=id,external_id,full_name,team_id,age,headshot_url`,
     );
     const playerIdMap: Record<string, number> = {};
     const teamAbbrByDbId: Record<number, string> = {};
@@ -762,12 +1013,47 @@ Deno.serve(async (req: Request) => {
       for (const rows of batchStats) statsRows.push(...rows);
     }
 
-    // Insert newly discovered players & fill missing Premier League headshots
-    const newPlayers: any[] = [];
+    // Insert newly discovered players & fill missing headshots (FPL + Wikipedia fallback)
+    const wikiLookupQueue: Array<{ key: string; fullName: string; age: number | null }> = [];
+    const preliminaryPhotoByNewExt: Record<string, string> = {};
     for (const p of Object.values(discoveredPlayers)) {
       if (!playerIdMap[p.external_id]) {
         const abbr = teamAbbrByExtId[p.team_external_id] ?? null;
-        const resolvedPhoto = p.headshot_url ?? resolveFplPhoto(p.full_name, abbr);
+        const fplOrEspn = p.headshot_url ?? resolveFplPhoto(p.full_name, abbr);
+        if (fplOrEspn) {
+          preliminaryPhotoByNewExt[p.external_id] = fplOrEspn;
+        } else {
+          wikiLookupQueue.push({
+            key: `new:${p.external_id}`,
+            fullName: p.full_name,
+            age: typeof p.age === "number" ? p.age : null,
+          });
+        }
+      }
+    }
+
+    const preliminaryPhotoByExistingId: Record<number, string> = {};
+    for (const ep of existingPlayers) {
+      if (ep.headshot_url) continue;
+      const abbr = ep.team_id ? teamAbbrByDbId[ep.team_id] ?? null : null;
+      const fpl = resolveFplPhoto(ep.full_name, abbr);
+      if (fpl) {
+        preliminaryPhotoByExistingId[ep.id] = fpl;
+      } else {
+        wikiLookupQueue.push({
+          key: `db:${ep.id}`,
+          fullName: ep.full_name,
+          age: typeof ep.age === "number" ? ep.age : null,
+        });
+      }
+    }
+
+    const wikiPhotoMap = await resolveFootballHeadshotsFromWiki(leagueCode, wikiLookupQueue);
+
+    const newPlayers: any[] = [];
+    for (const p of Object.values(discoveredPlayers)) {
+      if (!playerIdMap[p.external_id]) {
+        const resolvedPhoto = preliminaryPhotoByNewExt[p.external_id] ?? wikiPhotoMap[`new:${p.external_id}`] ?? null;
         newPlayers.push({
           league_id: leagueId,
           team_id: teamIdMap[p.team_external_id] ?? null,
@@ -797,8 +1083,7 @@ Deno.serve(async (req: Request) => {
     const headshotPatches: Array<{ id: number; headshot_url: string }> = [];
     for (const ep of existingPlayers) {
       if (ep.headshot_url) continue;
-      const abbr = ep.team_id ? teamAbbrByDbId[ep.team_id] ?? null : null;
-      const photo = resolveFplPhoto(ep.full_name, abbr);
+      const photo = preliminaryPhotoByExistingId[ep.id] ?? wikiPhotoMap[`db:${ep.id}`] ?? null;
       if (photo) headshotPatches.push({ id: ep.id, headshot_url: photo });
     }
     for (let i = 0; i < headshotPatches.length; i += 25) {

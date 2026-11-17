@@ -22,6 +22,7 @@ import concurrent.futures
 import datetime as dt
 import json
 import os
+import re
 import sys
 import time
 import unicodedata
@@ -348,6 +349,173 @@ def build_fpl_photo_resolver(league_code: str) -> Callable[[str, str | None], st
         return lambda _name, _abbr=None: None
 
 
+WIKI_UA = "CourtVisionStats/1.0 (https://github.com/joscar05-c/stats-sports)"
+FOOTBALL_DESC_RE = re.compile(
+    r"football|soccer|goalkeeper|defender|midfielder|forward|winger|striker|"
+    r"futbolista|portero|defensa|centrocampista|delantero|"
+    r"calciatore|portiere|difensore|attaccante|"
+    r"fußballspieler|torwart|abwehrspieler|mittelfeldspieler|stürmer|"
+    r"footballeur|gardien de but",
+    re.I,
+)
+DEATH_DESC_RE = re.compile(r"\b(?:18|19|20)\d{2}\s*[–\-]\s*(?:18|19|20)\d{2}\b")
+BORN_YEAR_DESC_RE = re.compile(r"(?:born|n\.|nacido en|geboren)\s+(\d{4})\b", re.I)
+LEAGUE_SECONDARY_WIKIS: dict[str, list[str]] = {
+    "esp.1": ["es"],
+    "ita.1": ["it"],
+    "ger.1": ["de"],
+    "fra.1": ["fr"],
+    "uefa.champions": ["es", "it", "de", "fr"],
+}
+
+
+def _fetch_wiki_json(url: str) -> Any:
+    req = urllib.request.Request(url, headers={"User-Agent": WIKI_UA, "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _is_birth_year_compatible(birth_year: int | None, age: int | None, cur_year: int) -> bool:
+    if birth_year is None or birth_year < 1983:
+        return False
+    if age is not None and abs(birth_year - (cur_year - age)) > 2:
+        return False
+    return True
+
+
+def _fetch_wikidata_birth_years(qids: list[str]) -> dict[str, int]:
+    unique = sorted({q for q in qids if q})
+    if not unique:
+        return {}
+    out: dict[str, int] = {}
+    chunks = [unique[i : i + 50] for i in range(0, len(unique), 50)]
+
+    def worker(chunk: list[str]) -> dict[str, int]:
+        local: dict[str, int] = {}
+        try:
+            qs = urllib.parse.urlencode(
+                {"action": "wbgetentities", "ids": "|".join(chunk), "props": "claims", "format": "json"}
+            )
+            data = _fetch_wiki_json(f"https://www.wikidata.org/w/api.php?{qs}")
+            for qid, ent in (data.get("entities") or {}).items():
+                p569 = (ent.get("claims") or {}).get("P569") or []
+                t = str(
+                    ((p569[0].get("mainsnak") or {}).get("datavalue") or {}).get("value", {}).get("time", "")
+                    if p569
+                    else ""
+                )
+                m = re.match(r"^\+?(\d{4})-", t)
+                if m:
+                    local[qid] = int(m.group(1))
+        except Exception:
+            pass
+        return local
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        for res in ex.map(worker, chunks):
+            out.update(res)
+    return out
+
+
+def resolve_football_headshots_from_wiki(
+    league_code: str,
+    players: list[dict[str, Any]],
+) -> dict[str, str]:
+    if not players:
+        return {}
+    cur_year = dt.datetime.now(dt.timezone.utc).year
+    resolved: dict[str, str] = {}
+
+    def run_pass(lang: str, title_builder: Callable[[dict[str, Any]], list[str]]) -> None:
+        remaining = [p for p in players if p["key"] not in resolved]
+        if not remaining:
+            return
+        query_items: list[tuple[str, int | None, str]] = []
+        for p in remaining:
+            name = str(p.get("full_name") or "").strip()
+            if not name:
+                continue
+            for title in title_builder({**p, "full_name": name}):
+                query_items.append((p["key"], p.get("age"), title))
+        if not query_items:
+            return
+
+        chunks = [query_items[i : i + 50] for i in range(0, len(query_items), 50)]
+
+        def fetch_chunk(chunk: list[tuple[str, int | None, str]]) -> list[dict[str, Any]]:
+            cands: list[dict[str, Any]] = []
+            try:
+                qs = urllib.parse.urlencode(
+                    {
+                        "action": "query",
+                        "titles": "|".join(c[2] for c in chunk),
+                        "prop": "pageimages|description|pageprops",
+                        "ppprop": "wikibase_item",
+                        "pithumbsize": "240",
+                        "redirects": "1",
+                        "format": "json",
+                    }
+                )
+                data = _fetch_wiki_json(f"https://{lang}.wikipedia.org/w/api.php?{qs}")
+                q = data.get("query") or {}
+                norm_map = {n["from"]: n["to"] for n in (q.get("normalized") or [])}
+                redir_map = {r["from"]: r["to"] for r in (q.get("redirects") or [])}
+                pages_by_title = {
+                    p["title"]: p for p in (q.get("pages") or {}).values() if "missing" not in p
+                }
+                for key, age, title in chunk:
+                    cur = redir_map.get(norm_map.get(title, title), norm_map.get(title, title))
+                    page = pages_by_title.get(cur)
+                    if not page:
+                        continue
+                    desc = str(page.get("description") or "")
+                    thumb = str((page.get("thumbnail") or {}).get("source") or "")
+                    if not thumb or not FOOTBALL_DESC_RE.search(desc) or DEATH_DESC_RE.search(desc):
+                        continue
+                    ym = BORN_YEAR_DESC_RE.search(desc)
+                    desc_year = int(ym.group(1)) if ym else None
+                    if desc_year is not None and not _is_birth_year_compatible(desc_year, age, cur_year):
+                        continue
+                    qid = (page.get("pageprops") or {}).get("wikibase_item")
+                    cands.append({"key": key, "age": age, "thumb": thumb, "qid": qid, "desc_year": desc_year})
+            except Exception:
+                pass
+            return cands
+
+        candidates: list[dict[str, Any]] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+            for cands in ex.map(fetch_chunk, chunks):
+                candidates.extend(cands)
+        if not candidates:
+            return
+        birth_years = _fetch_wikidata_birth_years([str(c["qid"]) for c in candidates if c.get("qid")])
+        for c in candidates:
+            key = c["key"]
+            if key in resolved:
+                continue
+            qid = c.get("qid")
+            by = birth_years.get(str(qid)) if qid and str(qid) in birth_years else c.get("desc_year")
+            if _is_birth_year_compatible(by, c.get("age"), cur_year):
+                resolved[key] = c["thumb"]
+            elif by is None and lang == "en" and c.get("age") is None:
+                resolved[key] = c["thumb"]
+
+    run_pass("en", lambda p: [p["full_name"]])
+    run_pass("en", lambda p: [f"{p['full_name']} (footballer)"])
+    run_pass(
+        "en",
+        lambda p: [
+            f"{p['full_name']} (footballer, born {cur_year - p['age']})",
+            f"{p['full_name']} (footballer, born {cur_year - p['age'] - 1})",
+        ]
+        if p.get("age") is not None
+        else [],
+    )
+    for sec_lang in LEAGUE_SECONDARY_WIKIS.get(league_code, []):
+        run_pass(sec_lang, lambda p: [p["full_name"]])
+    return resolved
+
+
 class SupabaseRest:
     def __init__(self, url: str, service_key: str) -> None:
         self.base = url.rstrip("/") + "/rest/v1"
@@ -566,7 +734,7 @@ def sync_league(
     # 4. Sync Team Rosters into `players`
     existing_players = sb.select_all(
         "players",
-        f"league_id=eq.{league_id}&external_source=eq.{EXTERNAL_SOURCE}&select=id,external_id,full_name,team_id,headshot_url",
+        f"league_id=eq.{league_id}&external_source=eq.{EXTERNAL_SOURCE}&select=id,external_id,full_name,team_id,age,headshot_url",
     )
     player_id_map: dict[str, int] = {
         str(r["external_id"]): r["id"] for r in existing_players if r.get("external_id")
@@ -793,7 +961,40 @@ def sync_league(
         for rows in ex.map(fetch_summary, games_to_summarize):
             stats_rows.extend(rows)
 
-    # 7. Insert newly discovered players
+    # 7. Insert newly discovered players & fill missing headshots (FPL + Wikipedia fallback)
+    wiki_targets: list[dict[str, Any]] = []
+    prelim_new: dict[str, str] = {}
+    for p in discovered_players.values():
+        if p["external_id"] not in player_id_map:
+            photo = p.get("headshot_url") or resolve_fpl_photo(
+                p["full_name"], team_abbr_by_ext.get(p["team_external_id"])
+            )
+            if photo:
+                prelim_new[p["external_id"]] = photo
+            else:
+                wiki_targets.append(
+                    {"key": f"new:{p['external_id']}", "full_name": p["full_name"], "age": p.get("age")}
+                )
+
+    prelim_existing: dict[int, str] = {}
+    for ep in existing_players:
+        if ep.get("headshot_url"):
+            continue
+        abbr = team_abbr_by_db_id.get(ep.get("team_id") or -1)
+        photo = resolve_fpl_photo(ep.get("full_name") or "", abbr)
+        if photo:
+            prelim_existing[ep["id"]] = photo
+        else:
+            wiki_targets.append(
+                {
+                    "key": f"db:{ep['id']}",
+                    "full_name": ep.get("full_name") or "",
+                    "age": ep.get("age") if isinstance(ep.get("age"), int) else None,
+                }
+            )
+
+    wiki_photo_map = resolve_football_headshots_from_wiki(league_code, wiki_targets)
+
     new_players: list[dict[str, Any]] = []
     for p in discovered_players.values():
         if p["external_id"] not in player_id_map:
@@ -812,8 +1013,8 @@ def sync_league(
                     "weight_display": p.get("weight_display"),
                     "age": p.get("age"),
                     "country": p.get("country"),
-                    "headshot_url": p.get("headshot_url")
-                    or resolve_fpl_photo(p["full_name"], team_abbr_by_ext.get(p["team_external_id"])),
+                    "headshot_url": prelim_new.get(p["external_id"])
+                    or wiki_photo_map.get(f"new:{p['external_id']}"),
                     "status": "active",
                     "is_active": True,
                     "updated_at": now_iso,
@@ -829,8 +1030,7 @@ def sync_league(
     for ep in existing_players:
         if ep.get("headshot_url"):
             continue
-        abbr = team_abbr_by_db_id.get(ep.get("team_id") or -1)
-        photo = resolve_fpl_photo(ep.get("full_name") or "", abbr)
+        photo = prelim_existing.get(ep["id"]) or wiki_photo_map.get(f"db:{ep['id']}")
         if photo:
             headshot_patches.append((ep["id"], photo))
     if headshot_patches:
