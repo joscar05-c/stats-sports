@@ -53,8 +53,11 @@ CourtVision Stats ofrece métricas e información estadística con fines exclusi
   [play-store/assets/icon-512.png](assets/icon-512.png)
 - **Gráfico de funciones / Feature Graphic (1024 × 500 px, PNG):**
   [play-store/assets/feature-graphic-1024x500.png](assets/feature-graphic-1024x500.png)
-- **Capturas de teléfono (mínimo 2, recomendado 4–6, formato 9:16 o 16:9, lado ≥ 320 px):**
-  Al instalar el `app-release.apk` / pista de Pruebas Internas en tu celular, toma 4 capturas limpias (Partidos en vivo, Catálogo de Ligas, Tabla de Posiciones multi-grupo y Comparador H2H).
+- **Capturas de teléfono (4 listas en `1075 × 2200 px`, formato 9:18.4, PNG):**
+  - [play-store/assets/screenshot-1-nba.png](assets/screenshot-1-nba.png)
+  - [play-store/assets/screenshot-2-futbol.png](assets/screenshot-2-futbol.png)
+  - [play-store/assets/screenshot-3-posiciones.png](assets/screenshot-3-posiciones.png)
+  - [play-store/assets/screenshot-4-catalogo.png](assets/screenshot-4-catalogo.png)
 
 ---
 

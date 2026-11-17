@@ -59,7 +59,7 @@ Luego ve a tu repositorio en GitHub → **Settings → Secrets and variables →
    - **Clasificación de contenido (IARC):** Deporte/Entretenimiento informativo, sin apuestas con dinero real.
    - **Público objetivo:** 18+ (No diseñada para niños).
    - **Seguridad de los datos (Data Safety):** Copia las respuestas exactas de `play-store/STORE_LISTING.md` e ingresa `https://TU-DOMINIO/eliminar-cuenta.html` como URL de eliminación de cuenta.
-   - **Ficha de Play Store principal:** Sube `play-store/assets/icon-512.png`, `play-store/assets/feature-graphic-1024x500.png` y al menos 2 capturas de teléfono tomadas de la app en tu Android.
+   - **Ficha de Play Store principal:** Sube `play-store/assets/icon-512.png`, `play-store/assets/feature-graphic-1024x500.png` y las 4 capturas `play-store/assets/screenshot-*.png`.
 
 ---
 
