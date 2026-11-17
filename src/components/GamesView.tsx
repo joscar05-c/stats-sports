@@ -179,14 +179,14 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
               type="button"
               aria-pressed={isSelected}
               onClick={() => setSelectedDate(d)}
-              className={`shrink-0 px-3.5 py-2 rounded-xl border text-center transition-all ${
+              className={`shrink-0 px-3.5 py-2 rounded-lg border text-center transition-colors ${
                 isSelected
-                  ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 border-emerald-300 shadow-[0_6px_20px_rgba(16,185,129,0.28)]'
-                  : 'bg-white/[0.04] text-slate-300 border-white/[0.08] hover:border-emerald-400/40'
+                  ? 'cv-tab-active'
+                  : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
               }`}
             >
-              <div className="text-[10px] font-black tracking-wider">{top}</div>
-              <div className="text-xs font-bold mt-0.5 tabular-nums">{bottom}</div>
+              <div className="text-[10px] font-bold tracking-wider">{top}</div>
+              <div className="text-xs font-semibold mt-0.5 tabular-nums">{bottom}</div>
             </button>
           );
         })}
@@ -203,8 +203,8 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
           ))}
         </div>
       ) : games.length === 0 ? (
-        <div className="sb-card rounded-2xl p-10 text-center">
-          <CalendarDays className="w-8 h-8 text-emerald-400/60 mx-auto mb-2" />
+        <div className="sb-card rounded-xl p-10 text-center">
+          <CalendarDays className="w-8 h-8 text-slate-500 mx-auto mb-2" aria-hidden="true" />
           <p className="text-sm text-slate-200 font-semibold">No hay partidos registrados para esta fecha</p>
           <p className="text-xs text-slate-400 mt-1">
             Prueba seleccionando otra fecha en la barra superior.
@@ -215,43 +215,33 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
           {games.map((g) => {
             const awayWon = g.status === 'final' && g.away_score > g.home_score;
             const homeWon = g.status === 'final' && g.home_score > g.away_score;
-            const awayColor = g.away_team.primary_color || '#06b6d4';
-            const homeColor = g.home_team.primary_color || '#10b981';
 
             return (
               <button
                 key={g.id}
                 onClick={() => onSelectGame(g)}
-                className="group relative overflow-hidden text-left rounded-2xl sb-card sb-card-hover p-4"
+                className="group relative text-left rounded-xl sb-card sb-card-hover p-4"
               >
-                {/* Team Color Split Accent Bar */}
-                <div
-                  className="absolute top-0 inset-x-0 h-[3px] opacity-85"
-                  style={{
-                    background: `linear-gradient(90deg, ${awayColor} 0%, ${awayColor} 45%, ${homeColor} 55%, ${homeColor} 100%)`,
-                  }}
-                />
-
                 {/* Status Header */}
-                <div className="flex items-center justify-between mb-3 pt-0.5">
+                <div className="flex items-center justify-between mb-3">
                   {g.status === 'live' ? (
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-black px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                      <Radio className="w-3 h-3 animate-pulse" />
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-md bg-red-500/12 text-red-300 border border-red-500/25">
+                      <Radio className="w-3 h-3" aria-hidden="true" />
                       EN VIVO · {g.status_detail}
                     </span>
                   ) : g.status === 'final' ? (
-                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-white/[0.06] text-slate-300 border border-white/[0.08]">
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-white/[0.04] text-slate-400 border border-white/[0.08]">
                       {g.status_detail || 'FINAL'}
                     </span>
                   ) : (
-                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 tabular-nums">
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-white/[0.04] text-slate-300 border border-white/[0.08] tabular-nums">
                       {formatTipoffLocal(g.tipoff_at)}
                     </span>
                   )}
 
-                  <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-slate-400 group-hover:text-emerald-300 transition-colors">
-                    {g.status === 'scheduled' ? 'Líneas y Previa' : 'Box Score'}
-                    <ChevronRight className="w-3.5 h-3.5" />
+                  <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-slate-400 group-hover:text-slate-100 transition-colors">
+                    {g.status === 'scheduled' ? 'Líneas y previa' : 'Box Score'}
+                    <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
                   </span>
                 </div>
 
@@ -277,17 +267,17 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
                           <img
                             src={side.team.logo_url}
                             alt={side.team.abbreviation}
-                            className="w-7 h-7 object-contain shrink-0 drop-shadow"
+                            className="w-7 h-7 object-contain shrink-0"
                           />
                         )}
                         <div className="min-w-0">
                           <div
-                            className={`text-sm font-bold truncate ${
-                              side.won || g.status !== 'final' ? 'text-white' : 'text-slate-400'
+                            className={`text-sm font-semibold truncate ${
+                              side.won || g.status !== 'final' ? 'text-slate-100' : 'text-slate-400'
                             }`}
                           >
                             {side.team.short_name}{' '}
-                            <span className="text-xs font-medium text-slate-500">
+                            <span className="text-xs font-normal text-slate-400">
                               ({side.team.abbreviation})
                             </span>
                           </div>
@@ -295,17 +285,17 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
                       </div>
                       <div className="flex items-center gap-2.5">
                         {side.ml != null && (
-                          <span className="text-[11px] font-black px-2 py-0.5 rounded-md bg-white/[0.06] text-amber-300 border border-white/[0.1]">
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-white/[0.04] text-slate-300 border border-white/[0.08]">
                             {formatDecimalOdds(side.ml)}x
                           </span>
                         )}
                         <span
-                          className={`text-xl font-black w-9 text-right ${
+                          className={`text-xl font-bold w-9 text-right ${
                             side.won
-                              ? 'text-emerald-400'
+                              ? 'text-white'
                               : g.status === 'scheduled'
-                                ? 'text-slate-600'
-                                : 'text-slate-200'
+                                ? 'text-slate-500'
+                                : 'text-slate-400'
                           }`}
                         >
                           {g.status === 'scheduled' ? '-' : side.score}
@@ -315,38 +305,38 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
                   ))}
                 </div>
 
-                {/* Sportsbook Market Strip */}
+                {/* Market Summary Strip */}
                 {g.odds &&
                   (g.odds.home_spread != null ||
                     g.odds.over_under != null ||
                     g.odds.home_win_prob != null) && (
-                    <div className="mt-3 pt-2.5 border-t border-white/[0.08] flex flex-wrap items-center justify-between gap-2 text-[11px] tabular-nums">
+                    <div className="mt-3 pt-2.5 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-2 text-[11px] tabular-nums">
                       <div className="flex items-center gap-1.5 text-slate-300">
                         {g.odds.home_spread != null && (
-                          <span className="px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.08] font-semibold">
+                          <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.07]">
                             Hándicap:{' '}
-                            <strong className="text-amber-300">
+                            <strong className="text-slate-100 font-semibold">
                               {g.odds.details ||
                                 `${g.home_team.abbreviation} ${formatSpreadCompact(g.odds.home_spread)}`}
                             </strong>
                           </span>
                         )}
                         {g.odds.over_under != null && (
-                          <span className="px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.08] font-semibold">
-                            O/U <strong className="text-white">{g.odds.over_under}</strong>
+                          <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.07]">
+                            O/U <strong className="text-slate-100 font-semibold">{g.odds.over_under}</strong>
                           </span>
                         )}
                         {g.odds.home_spread == null &&
                           g.odds.over_under == null &&
                           g.odds.away_win_prob != null &&
                           g.odds.home_win_prob != null && (
-                            <span className="px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.08] text-slate-300 font-semibold">
-                              Predictor:{' '}
-                              <strong className="text-emerald-300">
+                            <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.07] text-slate-300">
+                              Prob.:{' '}
+                              <strong className="text-slate-100 font-semibold">
                                 {g.away_team.abbreviation} {Number(g.odds.away_win_prob).toFixed(0)}%
                               </strong>{' '}
                               ·{' '}
-                              <strong className="text-cyan-300">
+                              <strong className="text-slate-100 font-semibold">
                                 {g.home_team.abbreviation} {Number(g.odds.home_win_prob).toFixed(0)}%
                               </strong>
                             </span>
@@ -356,14 +346,14 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
                         (() => {
                           const evalRes = evaluateGameBettingResult(g);
                           return (
-                            <div className="flex items-center gap-1.5 font-bold">
+                            <div className="flex items-center gap-1.5 font-semibold">
                               {evalRes.totalResult && (
                                 <span
                                   className={
                                     evalRes.totalResult === 'OVER'
-                                      ? 'text-emerald-400'
+                                      ? 'text-emerald-300'
                                       : evalRes.totalResult === 'UNDER'
-                                        ? 'text-cyan-300'
+                                        ? 'text-slate-300'
                                         : 'text-slate-400'
                                   }
                                 >
@@ -374,7 +364,7 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
                           );
                         })()
                       ) : (
-                        <span className="text-[10px] text-slate-400 font-semibold">
+                        <span className="text-[11px] text-slate-400">
                           {g.odds.provider || 'Predictor'}
                         </span>
                       )}

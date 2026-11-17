@@ -63,15 +63,11 @@ function formatDateOption(isoDate: string): string {
 function contextBadgeClass(tone: PropContextBadge['tone']): string {
   switch (tone) {
     case 'emerald':
-      return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35';
-    case 'amber':
-      return 'bg-amber-500/15 text-amber-300 border-amber-500/35';
+      return 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25';
     case 'rose':
-      return 'bg-rose-500/15 text-rose-300 border-rose-500/35';
-    case 'cyan':
-      return 'bg-cyan-500/15 text-cyan-300 border-cyan-500/35';
+      return 'bg-rose-500/10 text-rose-300 border-rose-500/25';
     default:
-      return 'bg-white/[0.05] text-slate-300 border-white/[0.1]';
+      return 'bg-white/[0.04] text-slate-300 border-white/[0.08]';
   }
 }
 
@@ -352,7 +348,7 @@ export function PropsSidebar({
   };
 
   const renderLogoRail = (isMobileOverlay: boolean) => (
-    <div className="w-[68px] shrink-0 h-full bg-[#060913] border-r border-white/[0.08] flex flex-col items-center py-2.5">
+    <div className="w-[68px] shrink-0 h-full bg-[#0b0d11] border-r border-white/[0.08] flex flex-col items-center py-2.5">
       <button
         type="button"
         onClick={() => {
@@ -364,8 +360,8 @@ export function PropsSidebar({
             setDesktopPinned(next);
           }
         }}
-        title={desktopOpen || desktopPinned ? 'Ocultar panel de props' : 'Abrir panel de props'}
-        className="w-10 h-9 rounded-xl bg-white/[0.05] border border-white/[0.1] hover:border-emerald-400/50 text-emerald-300 flex items-center justify-center transition-colors mb-2 shrink-0"
+        title={desktopOpen || desktopPinned ? 'Ocultar panel de análisis' : 'Abrir panel de análisis'}
+        className="w-10 h-9 rounded-lg bg-white/[0.04] border border-white/[0.1] hover:border-white/[0.22] text-slate-200 flex items-center justify-center transition-colors mb-2 shrink-0"
       >
         {isMobileOverlay || desktopOpen || desktopPinned ? (
           <ChevronLeft className="w-4 h-4" />
@@ -374,22 +370,21 @@ export function PropsSidebar({
         )}
       </button>
 
-      <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mb-2">
+      <div className="text-[9px] font-semibold uppercase tracking-widest text-slate-400 mb-2">
         Juegos
       </div>
 
       <div className="flex-1 w-full overflow-y-auto no-scrollbar px-1.5 space-y-2 pb-6">
         {loadingGames ? (
           [1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-14 rounded-xl bg-white/[0.04] animate-pulse" />
+            <div key={i} className="h-14 rounded-lg bg-white/[0.04] animate-pulse" />
           ))
         ) : games.length === 0 ? (
-          <div className="text-[10px] text-slate-500 text-center px-1 py-4">Sin juegos</div>
+          <div className="text-[10px] text-slate-400 text-center px-1 py-4">Sin juegos</div>
         ) : (
           games.map((g) => {
             const isSelected = focusedGame?.id === g.id;
             const isLive = g.status === 'live';
-            const teamAccent = g.home_team.primary_color || '#10b981';
             return (
               <button
                 key={g.id}
@@ -398,23 +393,15 @@ export function PropsSidebar({
                   isMobileOverlay ? setFocusedGameId(g.id) : handleGameLogoSelect(g.id)
                 }
                 title={`${g.away_team.abbreviation} @ ${g.home_team.abbreviation}`}
-                style={
+                className={`relative w-full py-2 px-1 rounded-lg border flex flex-col items-center justify-center gap-1 transition-colors ${
                   isSelected
-                    ? {
-                        borderColor: `${teamAccent}aa`,
-                        boxShadow: `0 0 14px ${teamAccent}33`,
-                      }
-                    : undefined
-                }
-                className={`relative w-full py-2 px-1 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
-                  isSelected
-                    ? 'bg-slate-800/80 text-white'
-                    : 'bg-white/[0.03] border-white/[0.07] text-slate-400 hover:border-white/20 hover:bg-white/[0.06]'
+                    ? 'bg-white/[0.1] border-white/[0.3] text-white'
+                    : 'bg-white/[0.02] border-white/[0.07] text-slate-400 hover:border-white/[0.18] hover:bg-white/[0.05]'
                 }`}
               >
                 {isLive && (
                   <span
-                    className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#10b981]"
+                    className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500"
                     title="En vivo"
                   />
                 )}
@@ -423,7 +410,7 @@ export function PropsSidebar({
                     <img
                       src={g.away_team.logo_url}
                       alt={g.away_team.abbreviation}
-                      className="w-6 h-6 object-contain drop-shadow"
+                      className="w-6 h-6 object-contain"
                     />
                   ) : (
                     <span className="text-[9px] font-bold">{g.away_team.abbreviation}</span>
@@ -432,13 +419,13 @@ export function PropsSidebar({
                     <img
                       src={g.home_team.logo_url}
                       alt={g.home_team.abbreviation}
-                      className="w-6 h-6 object-contain drop-shadow"
+                      className="w-6 h-6 object-contain"
                     />
                   ) : (
                     <span className="text-[9px] font-bold">{g.home_team.abbreviation}</span>
                   )}
                 </div>
-                <span className="text-[9px] font-bold tracking-tight text-slate-200 tabular-nums leading-none">
+                <span className="text-[9px] font-semibold tracking-tight text-slate-200 tabular-nums leading-none">
                   {g.away_team.abbreviation}/{g.home_team.abbreviation}
                 </span>
               </button>
@@ -450,35 +437,24 @@ export function PropsSidebar({
   );
 
   const renderDrawerContent = (isMobileOverlay: boolean) => {
-    const awayColor = focusedGame?.away_team.primary_color || '#06b6d4';
-    const homeColor = focusedGame?.home_team.primary_color || '#10b981';
-
     return (
-      <div className="flex-1 h-full flex flex-col bg-[#070c17] min-w-0">
+      <div className="flex-1 h-full flex flex-col bg-[#0e1117] min-w-0">
         {/* Drawer Header */}
-        <div
-          className="p-3.5 border-b border-white/[0.08] space-y-2.5 shrink-0"
-          style={
-            focusedGame
-              ? {
-                  background: `linear-gradient(125deg, ${awayColor}1f 0%, #070c17 50%, ${homeColor}22 100%)`,
-                }
-              : undefined
-          }
-        >
+        <div className="p-3.5 border-b border-white/[0.08] space-y-2.5 shrink-0 bg-[#12151c]">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span className="text-xs font-black text-white tracking-wide uppercase truncate">
-                Props &amp; Multiplicadores
+              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+              <span className="text-xs font-bold text-white tracking-wide uppercase truncate">
+                Análisis de Props
               </span>
             </div>
             <div className="flex items-center gap-1.5">
               {dates.length > 0 && (
                 <select
+                  aria-label="Seleccionar fecha de props"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  className="bg-slate-950/90 border border-white/[0.12] rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-200 focus:outline-none focus:border-emerald-400"
+                  className="bg-[#0b0d11] border border-white/[0.1] rounded-lg px-2 py-1 text-[11px] font-medium text-slate-200"
                 >
                   {dates.slice(0, 14).map((d) => (
                     <option key={d} value={d}>
@@ -497,17 +473,17 @@ export function PropsSidebar({
                     setDesktopPinned(false);
                   }
                 }}
-                className="p-1 rounded-lg bg-white/[0.05] border border-white/[0.1] text-slate-400 hover:text-white"
+                className="p-1 rounded-lg bg-white/[0.04] border border-white/[0.1] text-slate-400 hover:text-white"
                 aria-label="Cerrar panel"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-3.5 h-3.5" aria-hidden="true" />
               </button>
             </div>
           </div>
 
           {/* Focused Game Summary */}
           {focusedGame && (
-            <div className="flex items-center justify-between gap-2 rounded-xl bg-black/40 border border-white/[0.09] px-3 py-2">
+            <div className="flex items-center justify-between gap-2 rounded-lg bg-[#0b0d11] border border-white/[0.08] px-3 py-2">
               <div className="flex items-center gap-2 min-w-0">
                 {focusedGame.away_team.logo_url && (
                   <img
@@ -516,7 +492,7 @@ export function PropsSidebar({
                     className="w-5 h-5 object-contain"
                   />
                 )}
-                <span className="text-xs font-bold text-white truncate">
+                <span className="text-xs font-semibold text-white truncate">
                   {focusedGame.away_team.short_name} @ {focusedGame.home_team.short_name}
                 </span>
                 {focusedGame.home_team.logo_url && (
@@ -527,7 +503,7 @@ export function PropsSidebar({
                   />
                 )}
               </div>
-              <span className="text-[11px] font-bold text-emerald-300 tabular-nums shrink-0">
+              <span className="text-[11px] font-semibold text-slate-200 tabular-nums shrink-0">
                 {focusedGame.status === 'scheduled'
                   ? focusedGame.status_detail?.split('-').pop()?.trim() || 'Prog.'
                   : `${focusedGame.away_score}-${focusedGame.home_score}`}
@@ -537,7 +513,7 @@ export function PropsSidebar({
 
           {/* Filters */}
           <div className="flex items-center justify-between gap-1.5 flex-wrap">
-            <div className="inline-flex rounded-lg bg-black/40 border border-white/[0.08] p-0.5">
+            <div className="inline-flex rounded-lg bg-[#0b0d11] border border-white/[0.08] p-0.5">
               {(
                 [
                   { key: 'all', label: 'Todos', icon: null },
@@ -552,13 +528,13 @@ export function PropsSidebar({
                     key={f.key}
                     type="button"
                     onClick={() => setScopeFilter(f.key)}
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold transition-colors ${
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
                       active
-                        ? 'bg-emerald-500 text-slate-950'
+                        ? 'cv-tab-active'
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    {Icon && <Icon className="w-3 h-3" />}
+                    {Icon && <Icon className="w-3 h-3" aria-hidden="true" />}
                     {f.label}
                   </button>
                 );
@@ -569,22 +545,22 @@ export function PropsSidebar({
               <button
                 type="button"
                 onClick={() => setReliableOnly((r) => !r)}
-                className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors ${
+                className={`px-2 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
                   reliableOnly
-                    ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-200'
+                    ? 'bg-white/[0.1] border-white/[0.2] text-white'
                     : 'bg-white/[0.03] border-white/[0.08] text-slate-400'
                 }`}
-                title="Mostrar props con confianza >= 58% o todos"
+                title="Mostrar análisis con índice >= 58% o todos"
               >
-                {reliableOnly ? 'Confiables' : 'Todos %'}
+                {reliableOnly ? 'Filtrados' : 'Todos %'}
               </button>
               <button
                 type="button"
                 onClick={() => setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold bg-white/[0.04] border border-white/[0.1] text-slate-200 hover:border-emerald-400/50"
-                title="Invertir orden por confianza"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-white/[0.04] border border-white/[0.1] text-slate-200 hover:border-white/[0.2]"
+                title="Invertir orden"
               >
-                <ArrowUpDown className="w-3 h-3 text-emerald-400" />
+                <ArrowUpDown className="w-3 h-3 text-slate-400" aria-hidden="true" />
                 {sortOrder === 'desc' ? 'Mayor→Menor' : 'Menor→Mayor'}
               </button>
             </div>
@@ -597,36 +573,36 @@ export function PropsSidebar({
             <button
               type="button"
               onClick={onOpenProModal}
-              className="w-full rounded-xl sb-pro-pill hover:brightness-110 px-3 py-2 flex items-center justify-between gap-2 text-left transition-all"
+              className="w-full rounded-lg sb-card hover:border-white/[0.2] px-3 py-2.5 flex items-center justify-between gap-2 text-left transition-colors"
             >
               <div className="min-w-0">
-                <div className="text-[11px] font-black text-amber-200">
-                  Picks {PRO_CONFIDENCE_THRESHOLD}%+ bloqueados
+                <div className="text-xs font-semibold text-slate-100">
+                  Análisis avanzado ({PRO_CONFIDENCE_THRESHOLD}%+)
                 </div>
-                <div className="text-[10px] text-slate-200/80">
-                  Desbloquea todos · $5 USD o S/ 19 Yape/Plin
+                <div className="text-[11px] text-slate-400">
+                  Incluido en Plan Pro · $5 USD o S/ 19
                 </div>
               </div>
-              <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg bg-amber-400 text-slate-950 shrink-0">
-                <Lock className="w-3 h-3" />
-                PRO
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-md bg-white/[0.08] text-slate-100 border border-white/[0.14] shrink-0">
+                <Lock className="w-3 h-3" aria-hidden="true" />
+                Plan Pro
               </span>
             </button>
           )}
 
           {!focusedGame ? (
-            <div className="py-10 text-center text-xs text-slate-500">
+            <div className="py-10 text-center text-xs text-slate-400">
               Selecciona un partido en el riel izquierdo.
             </div>
           ) : loadingCtxId === focusedGame.id && !focusedContext ? (
             <div className="space-y-2">
               {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-24 rounded-xl bg-white/[0.04] animate-pulse" />
+                <div key={i} className="h-24 rounded-lg bg-white/[0.04] animate-pulse" />
               ))}
             </div>
           ) : visibleProps.length === 0 ? (
-            <div className="py-10 text-center text-xs text-slate-500">
-              No hay props disponibles para este filtro en el partido seleccionado.
+            <div className="py-10 text-center text-xs text-slate-400">
+              No hay registros disponibles para este filtro en el partido seleccionado.
             </div>
           ) : (
             visibleProps.map((prop) => {
@@ -636,26 +612,24 @@ export function PropsSidebar({
 
               const stripeColor =
                 prop.confidence >= 75
-                  ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]'
+                  ? 'bg-blue-400'
                   : prop.confidence >= PRO_CONFIDENCE_THRESHOLD
-                    ? 'bg-amber-400'
-                    : 'bg-cyan-400';
+                    ? 'bg-slate-400'
+                    : 'bg-slate-600';
 
               const confBarColor =
                 prop.confidence >= 75
-                  ? 'bg-emerald-400'
+                  ? 'bg-blue-400'
                   : prop.confidence >= PRO_CONFIDENCE_THRESHOLD
-                    ? 'bg-amber-400'
-                    : 'bg-cyan-400';
+                    ? 'bg-slate-300'
+                    : 'bg-slate-500';
 
               const statusPillClass =
                 liveStatus?.state === 'won'
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  ? 'bg-emerald-500/12 text-emerald-300 border-emerald-500/25'
                   : liveStatus?.state === 'lost'
-                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                    : liveStatus?.state === 'live'
-                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-                      : 'bg-white/[0.06] text-slate-300 border-white/[0.1]';
+                    ? 'bg-rose-500/12 text-rose-300 border-rose-500/25'
+                    : 'bg-white/[0.05] text-slate-300 border-white/[0.1]';
 
               return (
                 <button
@@ -670,10 +644,10 @@ export function PropsSidebar({
                     });
                     if (isMobileOverlay) requestMobileClose();
                   }}
-                  className={`relative w-full text-left rounded-xl border p-2.5 pl-3.5 space-y-1.5 overflow-hidden transition-all ${
+                  className={`relative w-full text-left rounded-lg border p-2.5 pl-3.5 space-y-1.5 overflow-hidden transition-colors ${
                     isActive
-                      ? 'bg-emerald-500/10 border-emerald-400/60 shadow-[0_0_16px_rgba(16,185,129,0.18)]'
-                      : 'sb-card hover:border-emerald-400/35'
+                      ? 'bg-[#181c25] border-blue-400/60'
+                      : 'sb-card hover:border-white/[0.18]'
                   }`}
                 >
                   {/* Left Confidence Stripe */}
@@ -681,32 +655,18 @@ export function PropsSidebar({
 
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${
-                          prop.scope === 'team'
-                            ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
-                            : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                        }`}
-                      >
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 bg-white/[0.04] text-slate-300 border-white/[0.08]">
                         {prop.scope === 'team' ? 'Equipo' : 'Jugador'}
                       </span>
-                      <span className="text-xs font-extrabold text-white truncate">
+                      <span className="text-xs font-bold text-white truncate">
                         {prop.subjectName}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0 tabular-nums">
-                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-white/[0.06] text-amber-300 border border-white/[0.1]">
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white/[0.05] text-slate-300 border border-white/[0.08]">
                         {prop.estimatedMultiplier.toFixed(2)}x
                       </span>
-                      <span
-                        className={`text-[11px] font-black ${
-                          prop.confidence >= 75
-                            ? 'text-emerald-300'
-                            : prop.confidence >= PRO_CONFIDENCE_THRESHOLD
-                              ? 'text-amber-300'
-                              : 'text-cyan-300'
-                        }`}
-                      >
+                      <span className="text-[11px] font-bold text-slate-100">
                         {prop.confidence}%
                       </span>
                     </div>
@@ -715,18 +675,18 @@ export function PropsSidebar({
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] text-slate-400 truncate">{prop.marketLabel}</span>
                     {locked ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-200 bg-amber-500/15 border border-amber-500/35 px-2 py-0.5 rounded-md shrink-0">
-                        <Lock className="w-3 h-3" />
-                        PRO · Desbloquear
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-200 bg-white/[0.06] border border-white/[0.12] px-2 py-0.5 rounded shrink-0">
+                        <Lock className="w-3 h-3" aria-hidden="true" />
+                        Plan Pro
                       </span>
                     ) : (
                       <span
-                        className={`text-[11px] font-black px-2 py-0.5 rounded-md tabular-nums shrink-0 ${
+                        className={`text-[11px] font-bold px-2 py-0.5 rounded tabular-nums shrink-0 ${
                           prop.pick === 'OVER'
                             ? 'sb-neon-over'
                             : prop.pick === 'UNDER'
                               ? 'sb-neon-under'
-                              : 'bg-amber-500/15 text-amber-300 border border-amber-500/40'
+                              : 'bg-white/[0.08] text-slate-100 border border-white/[0.14]'
                         }`}
                       >
                         {prop.pickLabel}
@@ -746,7 +706,7 @@ export function PropsSidebar({
                   <div className="flex flex-wrap items-center gap-1 pt-0.5">
                     {!locked && liveStatus && (
                       <span
-                        className={`text-[9px] font-black px-1.5 py-0.5 rounded border tabular-nums ${statusPillClass}`}
+                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border tabular-nums ${statusPillClass}`}
                       >
                         {liveStatus.label}
                       </span>
@@ -755,14 +715,14 @@ export function PropsSidebar({
                       prop.contextBadges.slice(0, 3).map((b, i) => (
                         <span
                           key={`${b.label}_${i}`}
-                          className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border tabular-nums ${contextBadgeClass(b.tone)}`}
+                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded border tabular-nums ${contextBadgeClass(b.tone)}`}
                         >
                           {b.label}
                         </span>
                       ))
                     ) : (
-                      <span className="text-[10px] text-amber-200/80">
-                        Incluye cuotas, MPG, splits y B2B · Plan PRO
+                      <span className="text-[10px] text-slate-400">
+                        Incluye métricas de minutos, splits y descanso · Plan Pro
                       </span>
                     )}
                   </div>
@@ -778,7 +738,7 @@ export function PropsSidebar({
   return (
     <>
       {/* Desktop Persistent Left Rail + Slide-out Drawer */}
-      <aside className="hidden md:flex fixed left-0 top-[110px] bottom-0 z-30 shadow-2xl shadow-black/70">
+      <aside className="hidden md:flex fixed left-0 top-[108px] bottom-0 z-30 shadow-2xl shadow-black/50">
         {renderLogoRail(false)}
         <div
           className={`h-full border-r border-white/[0.08] overflow-hidden transition-all duration-200 ${
@@ -795,11 +755,11 @@ export function PropsSidebar({
         aria-expanded={mobileOpen}
         aria-controls="mobile-props-drawer"
         onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed left-0 top-[76px] z-30 flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-r-xl bg-[#070d1b]/95 border border-l-0 border-emerald-500/40 text-emerald-300 shadow-lg backdrop-blur-md"
-        aria-label="Abrir barra lateral de Props"
+        className="md:hidden fixed left-0 top-[76px] z-30 flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-r-lg bg-[#12151c]/95 border border-l-0 border-white/[0.14] text-slate-200 shadow-lg backdrop-blur-md"
+        aria-label="Abrir panel de análisis"
       >
-        <PanelLeftOpen className="w-3.5 h-3.5" aria-hidden="true" />
-        <span className="text-[11px] font-black tracking-wide">Props</span>
+        <PanelLeftOpen className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+        <span className="text-xs font-semibold">Análisis</span>
       </button>
 
       {mobileOpen && (

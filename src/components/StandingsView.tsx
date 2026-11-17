@@ -39,11 +39,11 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
           id="standings-heading"
           className="inline-flex items-center gap-2 text-xs font-bold text-slate-200 uppercase tracking-wider"
         >
-          <Trophy className="w-4 h-4 text-emerald-400" aria-hidden="true" />
+          <Trophy className="w-4 h-4 text-slate-400" aria-hidden="true" />
           Tabla de Posiciones
         </h2>
 
-        <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1">
+        <div className="inline-flex rounded-lg bg-[#12151c] border border-white/[0.08] p-1">
           {(
             [
               { key: 'East', label: 'Este' },
@@ -55,9 +55,9 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
               type="button"
               aria-pressed={conference === c.key}
               onClick={() => setConference(c.key)}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
                 conference === c.key
-                  ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 shadow-[0_4px_14px_rgba(16,185,129,0.28)]'
+                  ? 'cv-tab-active'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -68,13 +68,13 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
       </div>
 
       {loading ? (
-        <div className="h-80 rounded-2xl sb-card animate-pulse" />
+        <div className="h-80 rounded-xl sb-card animate-pulse" />
       ) : rows.length === 0 ? (
-        <div className="sb-card rounded-2xl p-8 text-center text-sm text-slate-400">
+        <div className="sb-card rounded-xl p-8 text-center text-sm text-slate-400">
           Sin tabla de posiciones disponible para esta liga/temporada.
         </div>
       ) : (
-        <div className="sb-card rounded-2xl overflow-hidden">
+        <div className="sb-card rounded-xl overflow-hidden">
           <div
             tabIndex={0}
             role="region"
@@ -85,9 +85,9 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
               <caption className="visually-hidden">
                 Tabla de posiciones Conferencia {conference === 'East' ? 'Este' : 'Oeste'}
               </caption>
-              <thead className="bg-black/40 text-slate-400 border-b border-white/[0.08]">
+              <thead className="bg-[#0e1117] text-slate-400 border-b border-white/[0.08]">
                 <tr>
-                  <th scope="col" className="text-left py-2.5 px-3 sticky left-0 bg-[#080d1a] z-10">
+                  <th scope="col" className="text-left py-2.5 px-3 sticky left-0 bg-[#0e1117] z-10">
                     # EQUIPO
                   </th>
                   <th scope="col" className="text-right py-2.5 px-2.5">G</th>
@@ -103,26 +103,26 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
                   <th scope="col" className="text-right py-2.5 px-3">RACHA</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-white/[0.06]">
                 {rows.map((s, index) => {
                   const seed = s.playoff_seed ?? index + 1;
                   const seedZone =
                     seed <= 6
-                      ? 'bg-emerald-500'
+                      ? 'bg-emerald-400/75'
                       : seed <= 10
-                        ? 'bg-amber-400'
+                        ? 'bg-blue-400/75'
                         : 'bg-slate-700';
 
                   return (
                     <tr
                       key={s.id}
                       onClick={() => onSelectTeam(s.team, s)}
-                      className="cursor-pointer hover:bg-slate-800/40 transition-colors"
+                      className="cursor-pointer hover:bg-white/[0.04] transition-colors"
                     >
-                      <th scope="row" className="text-left font-normal py-2.5 px-3 sticky left-0 bg-[#0d1421]">
+                      <th scope="row" className="text-left font-normal py-2.5 px-3 sticky left-0 bg-[#12151c]">
                         <div className="flex items-center gap-2.5">
                           <span className={`w-1 h-5 rounded-full ${seedZone}`} />
-                          <span className="w-4 text-slate-500 font-bold">{seed}</span>
+                          <span className="w-4 text-slate-400 font-semibold">{seed}</span>
                           {s.team.logo_url && (
                             <img
                               src={s.team.logo_url}
@@ -130,8 +130,8 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
                               className="w-5 h-5 object-contain"
                             />
                           )}
-                          <span className="font-bold text-slate-100">{s.team.short_name}</span>
-                          <span className="text-[11px] text-slate-500 hidden sm:inline">
+                          <span className="font-semibold text-slate-100">{s.team.short_name}</span>
+                          <span className="text-[11px] text-slate-400 hidden sm:inline">
                             {s.team.abbreviation}
                           </span>
                         </div>
@@ -150,7 +150,7 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
                       <td className="text-right py-2.5 px-2.5 text-slate-300">
                         {s.away_record ?? '-'}
                       </td>
-                      <td className="text-right py-2.5 px-2.5 font-semibold text-orange-300">
+                      <td className="text-right py-2.5 px-2.5 font-semibold text-slate-200">
                         {s.ppg != null ? Number(s.ppg).toFixed(1) : '-'}
                       </td>
                       <td className="text-right py-2.5 px-2.5 text-slate-300">
@@ -159,9 +159,9 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
                       <td
                         className={`text-right py-2.5 px-2.5 font-semibold ${
                           (s.diff ?? 0) > 0
-                            ? 'text-emerald-400'
+                            ? 'text-emerald-300'
                             : (s.diff ?? 0) < 0
-                              ? 'text-rose-400'
+                              ? 'text-rose-300'
                               : 'text-slate-400'
                         }`}
                       >
@@ -172,10 +172,10 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
                       </td>
                       <td className="text-right py-2.5 px-3">
                         <span
-                          className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${
+                          className={`px-1.5 py-0.5 rounded text-[11px] font-semibold ${
                             s.streak?.startsWith('W')
-                              ? 'bg-emerald-500/15 text-emerald-400'
-                              : 'bg-rose-500/15 text-rose-400'
+                              ? 'bg-emerald-500/12 text-emerald-300'
+                              : 'bg-rose-500/12 text-rose-300'
                           }`}
                         >
                           {s.streak ?? '-'}
@@ -188,13 +188,13 @@ export function StandingsView({ seasonId, onSelectTeam }: StandingsViewProps) {
             </table>
           </div>
 
-          <div className="px-4 py-2.5 bg-slate-950/60 border-t border-slate-800/80 flex flex-wrap items-center gap-4 text-[11px] text-slate-400">
+          <div className="px-4 py-2.5 bg-[#0e1117] border-t border-white/[0.06] flex flex-wrap items-center gap-4 text-[11px] text-slate-400">
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              1-6 Playoffs Directos
+              <span className="w-2 h-2 rounded-full bg-emerald-400/75" />
+              1-6 Playoffs directos
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              <span className="w-2 h-2 rounded-full bg-blue-400/75" />
               7-10 Torneo Play-In
             </span>
           </div>

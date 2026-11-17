@@ -106,26 +106,26 @@ export function AuthModal({
       onClose={onClose}
       ariaLabelledBy="auth-modal-title"
       maxWidthCss="28rem"
-      borderClass="border border-emerald-500/25"
+      borderClass="border border-white/[0.12]"
     >
       {(requestClose) => (
         <div className="flex flex-col flex-1 min-h-0">
         {/* Header */}
-        <div className="p-5 border-b border-white/[0.08] bg-[radial-gradient(ellipse_at_top_left,rgba(16,185,129,0.16),transparent_65%)] flex items-start justify-between gap-3">
+        <div className="p-5 border-b border-white/[0.08] bg-[#12151c] flex items-start justify-between gap-3">
           <div>
-            <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" aria-hidden="true" />
-              Cuenta Gratuita · CourtVision
+            <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              <ShieldCheck className="w-4 h-4 text-slate-300" aria-hidden="true" />
+              Cuenta · CourtVision
             </div>
-            <h2 id="auth-modal-title" className="text-xl font-black text-white mt-1 tracking-tight">
+            <h2 id="auth-modal-title" className="text-xl font-bold text-white mt-1 tracking-tight">
               {mode === 'login'
                 ? 'Inicia sesión'
                 : mode === 'signup'
-                  ? 'Crea tu cuenta gratis'
+                  ? 'Crea tu cuenta'
                   : 'Recupera tu contraseña'}
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Gratis con Google o correo electrónico. Desde tu cuenta puedes subir a PRO cuando quieras.
+              Accede con Google o correo electrónico para sincronizar tu cuenta.
             </p>
           </div>
           <button
@@ -140,7 +140,7 @@ export function AuthModal({
 
         <div className="flex-1 overflow-auto sb-scroller p-5 space-y-4">
           {promptReason && (
-            <div className="rounded-xl bg-amber-500/10 border border-amber-500/35 px-3.5 py-2.5 text-xs text-amber-200">
+            <div className="rounded-lg bg-white/[0.04] border border-white/[0.12] px-3.5 py-2.5 text-xs text-slate-200">
               {promptReason}
             </div>
           )}
@@ -184,7 +184,7 @@ export function AuthModal({
           </div>
 
           {/* Mode Tabs */}
-          <div className="flex rounded-xl bg-black/40 border border-white/[0.08] p-1 text-xs">
+          <div className="flex rounded-lg bg-[#0b0d11] border border-white/[0.08] p-1 text-xs">
             <button
               type="button"
               aria-pressed={mode === 'login'}
@@ -192,9 +192,9 @@ export function AuthModal({
                 setMode('login');
                 setFeedback(null);
               }}
-              className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
+              className={`flex-1 py-1.5 rounded-md font-semibold transition-colors ${
                 mode === 'login'
-                  ? 'bg-emerald-500 text-slate-950'
+                  ? 'cv-tab-active'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -207,9 +207,9 @@ export function AuthModal({
                 setMode('signup');
                 setFeedback(null);
               }}
-              className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
+              className={`flex-1 py-1.5 rounded-md font-semibold transition-colors ${
                 mode === 'signup'
-                  ? 'bg-emerald-500 text-slate-950'
+                  ? 'cv-tab-active'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -240,7 +240,7 @@ export function AuthModal({
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Ej. Carlos Pérez"
-                    className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl pl-9 pr-3 py-2 text-base sm:text-sm text-white placeholder:text-slate-500 focus:border-emerald-400"
+                    className="w-full bg-[#0b0d11] border border-white/[0.12] rounded-lg pl-9 pr-3 py-2 text-base sm:text-sm text-white placeholder:text-slate-500"
                   />
                 </div>
               </div>
@@ -269,7 +269,7 @@ export function AuthModal({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="correo@ejemplo.com"
-                  className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl pl-9 pr-3 py-2 text-base sm:text-sm text-white placeholder:text-slate-500 focus:border-emerald-400"
+                  className="w-full bg-[#0b0d11] border border-white/[0.12] rounded-lg pl-9 pr-3 py-2 text-base sm:text-sm text-white placeholder:text-slate-500"
                 />
               </div>
             </div>
@@ -290,7 +290,7 @@ export function AuthModal({
                         setMode('reset');
                         setFeedback(null);
                       }}
-                      className="text-[11px] text-cyan-300 hover:text-cyan-200 underline"
+                      className="text-[11px] text-blue-400 hover:text-blue-300 underline"
                     >
                       ¿Olvidaste tu clave?
                     </button>
@@ -312,7 +312,7 @@ export function AuthModal({
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Mínimo 6 caracteres"
-                    className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl pl-9 pr-10 py-2 text-base sm:text-sm text-white placeholder:text-slate-500 focus:border-emerald-400"
+                    className="w-full bg-[#0b0d11] border border-white/[0.12] rounded-lg pl-9 pr-10 py-2 text-base sm:text-sm text-white placeholder:text-slate-500"
                   />
                   <button
                     type="button"
@@ -334,7 +334,7 @@ export function AuthModal({
             <button
               type="submit"
               disabled={busy || googleBusy}
-              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-black text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60 transition-all shadow-[0_6px_20px_rgba(16,185,129,0.28)]"
+              className="w-full py-2.5 px-4 rounded-lg cv-btn-primary text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60"
             >
               {busy ? (
                 <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -349,7 +349,7 @@ export function AuthModal({
                 {mode === 'login'
                   ? 'Entrar a mi cuenta'
                   : mode === 'signup'
-                    ? 'Crear cuenta gratis'
+                    ? 'Crear cuenta'
                     : 'Enviar enlace de recuperación'}
               </span>
             </button>
@@ -372,12 +372,12 @@ export function AuthModal({
             <div
               role={feedback.tone === 'err' ? 'alert' : 'status'}
               aria-live="polite"
-              className={`rounded-xl border p-3 text-xs flex items-start gap-2 ${
+              className={`rounded-lg border p-3 text-xs flex items-start gap-2 ${
                 feedback.tone === 'ok'
-                  ? 'bg-emerald-500/10 border-emerald-500/35 text-emerald-200'
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
                   : feedback.tone === 'err'
-                    ? 'bg-rose-500/10 border-rose-500/35 text-rose-200'
-                    : 'bg-cyan-500/10 border-cyan-500/35 text-cyan-200'
+                    ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
+                    : 'bg-white/[0.04] border-white/[0.12] text-slate-200'
               }`}
             >
               {feedback.tone === 'ok' && (

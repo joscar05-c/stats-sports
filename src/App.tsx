@@ -1,17 +1,16 @@
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import {
-  Activity,
   ArrowLeftRight,
   Calendar,
   Download,
   Flame,
-  Lock,
   LogIn,
   PanelLeft,
   RefreshCw,
   Search,
   ShieldCheck,
+  Sparkles,
   Trophy,
   WifiOff,
 } from 'lucide-react';
@@ -338,46 +337,31 @@ export function App() {
       <a href="#main-view-heading" className="visually-hidden skip-link">
         Saltar al contenido principal
       </a>
-      {/* Sportsbook Command Header */}
+      {/* Header */}
       <header className="sticky top-0 z-40 sb-glass-header">
-        <div className="sb-header-accent" />
-
         {/* Row 1: Brand Identity + User/Account & Utility Controls */}
         <div className="max-w-7xl mx-auto px-3 sm:px-5 h-16 flex items-center justify-between gap-3">
-          {/* Left Brand Block (never squeezes or overlaps) */}
+          {/* Left Brand Block */}
           <button
             type="button"
             onClick={() => switchMainTab('games')}
             className="flex items-center gap-2.5 sm:gap-3 shrink-0 text-left group"
           >
-            <div className="relative shrink-0 p-0.5 rounded-xl bg-gradient-to-br from-emerald-400/35 via-cyan-400/20 to-transparent shadow-[0_0_20px_rgba(16,185,129,0.22)] group-hover:shadow-[0_0_24px_rgba(16,185,129,0.38)] transition-shadow">
-              <img
-                src="/icon.svg"
-                alt="CourtVision"
-                className="w-9 h-9 sm:w-10 sm:h-10 rounded-[10px] block"
-              />
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#060a14]" />
-            </div>
+            <img
+              src="/icon.svg"
+              alt="CourtVision"
+              className="w-9 h-9 rounded-lg border border-white/[0.1] block shrink-0"
+            />
 
             <div className="shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="font-black text-lg sm:text-xl tracking-tight leading-none text-white">
-                  Court<span className="text-emerald-400">Vision</span>
-                </span>
-                <span className="hidden sm:inline-flex items-center gap-1 text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                  <Activity className="w-2.5 h-2.5 animate-pulse" />
-                  LIVE ODDS &amp; PROPS
-                </span>
-              </div>
-              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400 font-semibold tracking-wide">
-                <span>
-                  {season ? `${activeLeague?.short_name ?? 'NBA'} ${season.name}` : 'Analytics Pro'}
-                </span>
-                <span className="hidden md:inline text-slate-600">•</span>
-                <span className="hidden md:inline text-cyan-300/90">
-                  Terminal de Cuotas &amp; Estadísticas
-                </span>
-              </div>
+              <span className="font-bold text-base sm:text-lg tracking-tight leading-none text-slate-100 block">
+                CourtVision
+              </span>
+              <span className="block mt-0.5 text-[11px] text-slate-400 font-medium">
+                {season
+                  ? `${activeLeague?.short_name ?? 'NBA'} · Temporada ${season.name}`
+                  : 'Estadísticas y Análisis NBA'}
+              </span>
             </div>
           </button>
 
@@ -387,11 +371,11 @@ export function App() {
               <button
                 type="button"
                 onClick={() => setSidebarToggleTick((t) => t + 1)}
-                className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-emerald-500/12 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors whitespace-nowrap"
-                title="Abrir / fijar barra lateral de Props"
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-slate-200 border border-white/[0.1] hover:bg-white/[0.08] transition-colors whitespace-nowrap"
+                title="Abrir o fijar panel de análisis de Props"
               >
-                <PanelLeft className="w-3.5 h-3.5 shrink-0" />
-                <span>Props</span>
+                <PanelLeft className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                <span>Análisis</span>
               </button>
             )}
 
@@ -403,7 +387,7 @@ export function App() {
                   const found = leagues.find((l) => l.id === Number(e.target.value));
                   if (found) handleSelectLeague(found);
                 }}
-                className="bg-slate-900/90 border border-white/[0.12] rounded-xl px-2 py-1.5 text-xs font-bold text-slate-200 whitespace-nowrap"
+                className="bg-[#12151c] border border-white/[0.1] rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 whitespace-nowrap"
               >
                 {leagues.map((l) => (
                   <option key={l.id} value={l.id}>
@@ -416,9 +400,9 @@ export function App() {
             {installPrompt && (
               <button
                 onClick={handleInstallPwa}
-                className="hidden md:inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/25 whitespace-nowrap"
+                className="hidden md:inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-slate-200 border border-white/[0.1] hover:bg-white/[0.08] whitespace-nowrap"
               >
-                <Download className="w-3.5 h-3.5 shrink-0" />
+                <Download className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
                 Instalar
               </button>
             )}
@@ -427,18 +411,18 @@ export function App() {
               <button
                 type="button"
                 onClick={() => setShowAccountModal(true)}
-                className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 sm:px-2.5 py-1.5 rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-slate-700/80 text-slate-100 transition-colors whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 text-xs font-medium px-2 sm:px-2.5 py-1.5 rounded-lg bg-[#12151c] hover:bg-[#181c25] border border-white/[0.1] text-slate-200 transition-colors whitespace-nowrap"
                 title={`Cuenta: ${authUser.email}`}
               >
                 {authUser.avatarUrl ? (
                   <img
                     src={authUser.avatarUrl}
                     alt={authUser.fullName || authUser.email}
-                    className="w-4 h-4 rounded-full object-cover border border-emerald-400/40 shrink-0"
+                    className="w-4 h-4 rounded-full object-cover border border-white/[0.2] shrink-0"
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <span className="w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[9px] font-black inline-flex items-center justify-center uppercase shrink-0">
+                  <span className="w-4 h-4 rounded-full bg-white/[0.1] text-slate-200 text-[10px] font-bold inline-flex items-center justify-center uppercase shrink-0">
                     {(authUser.fullName || authUser.email).slice(0, 1)}
                   </span>
                 )}
@@ -455,10 +439,10 @@ export function App() {
                   setReturnToProAfterAuth(false);
                   setShowAuthModal(true);
                 }}
-                className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-slate-700/80 text-slate-200 transition-colors disabled:opacity-60 whitespace-nowrap"
-                title="Iniciar sesión o crear cuenta gratis"
+                className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-[#12151c] hover:bg-[#181c25] border border-white/[0.1] text-slate-200 transition-colors disabled:opacity-60 whitespace-nowrap"
+                title="Iniciar sesión o crear cuenta"
               >
-                <LogIn className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <LogIn className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
                 <span>Entrar</span>
               </button>
             )}
@@ -466,28 +450,26 @@ export function App() {
             <button
               type="button"
               onClick={() => setShowProModal(true)}
-              className={`inline-flex items-center gap-1.5 text-[11px] font-black px-2.5 sm:px-3 py-1.5 rounded-xl border transition-all whitespace-nowrap ${
+              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 sm:px-3 py-1.5 rounded-lg border transition-colors whitespace-nowrap ${
                 proSub
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50 shadow-[0_0_14px_rgba(16,185,129,0.25)]'
-                  : 'sb-pro-pill shadow-[0_0_16px_rgba(245,158,11,0.16)] hover:brightness-110'
+                  ? 'bg-emerald-500/12 text-emerald-300 border-emerald-500/30'
+                  : 'bg-white/[0.06] hover:bg-white/[0.1] text-slate-100 border-white/[0.12]'
               }`}
               title={
                 proSub
-                  ? `PRO activo (${proSub.accessCode})`
-                  : 'Desbloquear Props 68%+ por $5 USD o S/ 19 PEN'
+                  ? `Plan Pro activo (${proSub.accessCode})`
+                  : 'Información y suscripción al Plan Pro'
               }
             >
               {proSub ? (
                 <>
-                  <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                  <span>PRO ACTIVO</span>
+                  <ShieldCheck className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  <span>Pro activo</span>
                 </>
               ) : (
                 <>
-                  <Lock className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span>
-                    PRO <span className="hidden sm:inline">· $5 / S/ 19</span>
-                  </span>
+                  <Sparkles className="w-3.5 h-3.5 text-slate-300 shrink-0" aria-hidden="true" />
+                  <span>Plan Pro</span>
                 </>
               )}
             </button>
@@ -498,30 +480,31 @@ export function App() {
               title={
                 lastSync
                   ? `Última sincronización: ${new Date(lastSync.ran_at).toLocaleString('es-PE')}. Clic para actualizar.`
-                  : 'Sincronizar marcadores ahora'
+                  : 'Actualizar marcadores'
               }
-              className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 sm:px-2.5 py-1.5 rounded-xl bg-white/[0.04] text-slate-300 border border-white/[0.09] hover:border-white/20 hover:text-white disabled:opacity-60 transition-colors whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 text-xs font-medium px-2 sm:px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-slate-300 border border-white/[0.08] hover:border-white/[0.16] hover:text-white disabled:opacity-60 transition-colors whitespace-nowrap"
             >
               <RefreshCw
-                className={`w-3.5 h-3.5 text-emerald-400 shrink-0 ${syncing ? 'animate-spin' : ''}`}
+                className={`w-3.5 h-3.5 text-slate-400 shrink-0 ${syncing ? 'animate-spin' : ''}`}
+                aria-hidden="true"
               />
               <span className="hidden lg:inline tabular-nums">
                 {syncing
-                  ? 'Sincronizando...'
+                  ? 'Actualizando...'
                   : lastSync
                     ? `${new Date(lastSync.ran_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`
-                    : 'Sync'}
+                    : 'Actualizar'}
               </span>
             </button>
           </div>
         </div>
 
-        {/* Row 2: Dedicated Desktop Navigation Rail (zero logo/button collisions at all widths) */}
-        <div className="hidden md:block border-t border-white/[0.06] bg-[#040812]/80">
+        {/* Row 2: Dedicated Desktop Navigation Rail */}
+        <div className="hidden md:block border-t border-white/[0.06] bg-[#0b0d11]">
           <div className="max-w-7xl mx-auto px-5 h-11 flex items-center justify-between gap-4">
             <nav
               aria-label="Principal"
-              className="flex items-center gap-1.5 overflow-x-auto no-scrollbar sb-scroll-fade-x"
+              className="flex items-center gap-1 overflow-x-auto no-scrollbar sb-scroll-fade-x"
             >
               {navItems.map((item) => {
                 const Icon = item.icon;
@@ -532,10 +515,10 @@ export function App() {
                     type="button"
                     aria-current={active ? 'page' : undefined}
                     onClick={() => switchMainTab(item.key)}
-                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
                       active
-                        ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 shadow-[0_4px_14px_rgba(16,185,129,0.28)]'
-                        : 'text-slate-300 hover:text-white hover:bg-white/[0.06]'
+                        ? 'cv-tab-active'
+                        : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.05]'
                     }`}
                   >
                     <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
@@ -545,14 +528,8 @@ export function App() {
               })}
             </nav>
 
-            <div className="hidden lg:flex items-center gap-2 text-[11px] font-semibold text-slate-400 shrink-0">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.03] border border-white/[0.07]">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Picks ≥ 68%</span>
-                <span className={proSub ? 'text-emerald-300 font-bold' : 'text-amber-300 font-bold'}>
-                  {proSub ? 'Desbloqueados' : 'PRO'}
-                </span>
-              </span>
+            <div className="hidden lg:flex items-center gap-2 text-xs text-slate-400 shrink-0">
+              <span>Estadísticas oficiales · Datos en vivo</span>
             </div>
           </div>
         </div>
@@ -589,8 +566,8 @@ export function App() {
             CourtVision — {activeViewLabel}
           </h1>
           {fromCache && (
-            <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300">
-              <WifiOff className="w-3.5 h-3.5 shrink-0" />
+            <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.1] text-xs text-slate-300">
+              <WifiOff className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
               Mostrando datos guardados en caché local (modo sin conexión).
             </div>
           )}
@@ -672,6 +649,10 @@ export function App() {
               )}
             </>
           )}
+          <footer className="mt-10 pt-5 border-t border-white/[0.06] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-400 pb-4">
+            <span>CourtVision · Estadísticas y análisis de baloncesto</span>
+            <span>Información estadística de carácter informativo y analítico.</span>
+          </footer>
         </main>
       </div>
 
@@ -690,8 +671,8 @@ export function App() {
                 type="button"
                 aria-current={active ? 'page' : undefined}
                 onClick={() => switchMainTab(item.key)}
-                className={`flex flex-col items-center justify-center py-2.5 gap-1 text-[10px] font-bold transition-colors ${
-                  active ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'
+                className={`flex flex-col items-center justify-center py-2.5 gap-1 text-[11px] font-semibold transition-colors ${
+                  active ? 'text-white' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <Icon className="w-5 h-5" aria-hidden="true" />

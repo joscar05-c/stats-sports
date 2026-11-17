@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, ShieldCheck, Users, Sparkles } from 'lucide-react';
+import { CalendarDays, Search, ShieldCheck, Users } from 'lucide-react';
 import { fetchPlayers, fetchTeams } from '../services/basketballApi';
 import type { League, Player, Team } from '../types/database';
 
@@ -76,10 +76,10 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
           <button
             key={tab.key}
             onClick={() => setSubTab(tab.key)}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
+            className={`px-3.5 py-2 rounded-lg text-xs font-semibold border transition-colors ${
               subTab === tab.key
-                ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 border-emerald-300 shadow-[0_4px_14px_rgba(16,185,129,0.25)]'
-                : 'bg-white/[0.04] text-slate-300 border-white/[0.08] hover:border-emerald-400/40'
+                ? 'cv-tab-active'
+                : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
             }`}
           >
             {tab.label}
@@ -95,7 +95,7 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
           >
             <div className="relative flex-1">
               <Search
-                className="w-4 h-4 text-emerald-400/80 absolute left-3 top-3"
+                className="w-4 h-4 text-slate-400 absolute left-3 top-3"
                 aria-hidden="true"
               />
               <label htmlFor="explore-search" className="visually-hidden">
@@ -114,7 +114,7 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
                     ? 'Buscar jugador o equipo (ej. Jokic, Lakers)...'
                     : 'Buscar franquicia...'
                 }
-                className="w-full bg-slate-950/80 border border-white/[0.1] rounded-xl pl-9 pr-3 py-2 text-base sm:text-sm text-white placeholder:text-slate-500 focus:border-emerald-400"
+                className="w-full bg-[#12151c] border border-white/[0.1] rounded-lg pl-9 pr-3 py-2 text-base sm:text-sm text-white placeholder:text-slate-500"
               />
             </div>
 
@@ -124,7 +124,7 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
                   aria-label="Filtrar por equipo"
                   value={teamFilter}
                   onChange={(e) => setTeamFilter(e.target.value)}
-                  className="bg-slate-950/80 border border-white/[0.1] rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-emerald-400"
+                  className="bg-[#12151c] border border-white/[0.1] rounded-lg px-3 py-2 text-xs text-slate-200"
                 >
                   <option value="all">Todos los equipos</option>
                   {teams.map((t) => (
@@ -138,7 +138,7 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
                   aria-label="Filtrar por posición"
                   value={posFilter}
                   onChange={(e) => setPosFilter(e.target.value)}
-                  className="bg-slate-950/80 border border-white/[0.1] rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-emerald-400"
+                  className="bg-[#12151c] border border-white/[0.1] rounded-lg px-3 py-2 text-xs text-slate-200"
                 >
                   <option value="all">Posición</option>
                   <option value="G">Guard (G)</option>
@@ -152,43 +152,37 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
       )}
 
       {subTab === 'local' ? (
-        <div className="sb-card rounded-2xl border-emerald-500/30 p-5 space-y-4">
-          <div className="inline-flex items-center gap-2 text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/35">
-            <Sparkles className="w-3.5 h-3.5" />
-            Arquitectura Híbrida Lista en Supabase
+        <div className="sb-card rounded-xl p-5 space-y-4">
+          <div className="inline-flex items-center gap-2 text-xs font-semibold px-2.5 py-1 rounded-md bg-white/[0.06] text-slate-200 border border-white/[0.1]">
+            <CalendarDays className="w-3.5 h-3.5 text-slate-300" aria-hidden="true" />
+            Torneos locales y universitarios
           </div>
-          <h3 className="text-lg font-black text-white">
-            Torneos Locales, Universitarios y Ligas de Barrio
+          <h3 className="text-lg font-bold text-white">
+            Gestión de ligas locales y amateur
           </h3>
-          <p className="text-sm text-slate-300 leading-relaxed">
-            La base de datos en Supabase ya cuenta con soporte nativo para ligas{' '}
-            <code className="px-1.5 py-0.5 rounded bg-slate-800 text-orange-300 text-xs">
-              source_type = 'manual'
-            </code>
-            , políticas RLS por organizador (<code className="text-xs text-sky-300">owner_id</code>)
-            y Supabase Realtime activado en <code className="text-xs text-sky-300">games</code> y{' '}
-            <code className="text-xs text-sky-300">player_game_stats</code>.
+          <p className="text-sm text-slate-300 leading-relaxed max-w-2xl">
+            Además de seguir la temporada NBA en tiempo real, la plataforma está preparada para
+            incorporar torneos locales, universitarios y ligas independientes con registro de
+            equipos, calendario y planillas de partido.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div className="rounded-xl bg-slate-950/60 border border-slate-800 p-3.5 space-y-1">
-              <div className="font-bold text-white flex items-center gap-1.5">
-                <Users className="w-4 h-4 text-orange-400" />
-                Planillero Móvil al Borde de Cancha
+            <div className="rounded-lg bg-[#0e1117] border border-white/[0.08] p-3.5 space-y-1">
+              <div className="font-semibold text-white flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-slate-300" aria-hidden="true" />
+                Planilla de partido en cancha
               </div>
               <p className="text-slate-400">
-                Siguiente módulo: pantalla con botones grandes (+1, +2, +3, REB, AST, FALTA) para
-                registrar partidos en vivo desde cualquier celular.
+                Registro ágil de puntos, rebotes, asistencias y faltas desde el teléfono durante el juego.
               </p>
             </div>
-            <div className="rounded-xl bg-slate-950/60 border border-slate-800 p-3.5 space-y-1">
-              <div className="font-bold text-white flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                Aislamiento Seguro por RLS
+            <div className="rounded-lg bg-[#0e1117] border border-white/[0.08] p-3.5 space-y-1">
+              <div className="font-semibold text-white flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-slate-300" aria-hidden="true" />
+                Control por organizador
               </div>
               <p className="text-slate-400">
-                Solo el dueño autenticado de cada liga manual podrá editar sus equipos y box scores;
-                las ligas pro quedan protegidas en modo lectura.
+                Cada organizador administra exclusivamente los equipos y actas de su torneo mientras las ligas oficiales permanecen en solo lectura.
               </p>
             </div>
           </div>
@@ -198,7 +192,7 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div
               key={i}
-              className="h-16 rounded-2xl bg-slate-900/60 border border-slate-800 animate-pulse"
+              className="h-16 rounded-xl sb-card animate-pulse"
             />
           ))}
         </div>
@@ -209,11 +203,11 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
               key={p.id}
               type="button"
               onClick={() => onSelectPlayer(p.id)}
-              className={`flex items-center gap-3 p-3 rounded-2xl bg-slate-900/75 border border-slate-800/80 hover:border-orange-500/50 text-left transition-colors ${
+              className={`flex items-center gap-3 p-3 rounded-xl sb-card sb-card-hover text-left ${
                 idx >= 8 ? 'sb-deferred-item' : ''
               }`}
             >
-              <div className="w-12 h-12 rounded-full bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-full bg-white/[0.06] overflow-hidden shrink-0 flex items-center justify-center">
                 {p.headshot_url ? (
                   <img
                     src={p.headshot_url}
@@ -227,7 +221,7 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="font-bold text-sm text-white truncate">{p.full_name}</div>
+                <div className="font-semibold text-sm text-white truncate">{p.full_name}</div>
                 <div className="text-xs text-slate-400">
                   {p.team?.abbreviation ?? 'FA'} · #{p.jersey_number ?? '-'} · {p.position ?? 'JUG'}
                   {p.height_display ? ` · ${p.height_display}` : ''}
@@ -243,7 +237,7 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
               key={t.id}
               type="button"
               onClick={() => onSelectTeam(t)}
-              className={`flex items-center gap-3 p-3.5 rounded-2xl bg-slate-900/75 border border-slate-800/80 hover:border-orange-500/50 text-left transition-colors ${
+              className={`flex items-center gap-3 p-3.5 rounded-xl sb-card sb-card-hover text-left ${
                 idx >= 9 ? 'sb-deferred-item' : ''
               }`}
             >
@@ -251,7 +245,7 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
                 <img src={t.logo_url} alt={t.abbreviation} className="w-10 h-10 object-contain" />
               )}
               <div className="min-w-0">
-                <div className="font-bold text-sm text-white truncate">{t.name}</div>
+                <div className="font-semibold text-sm text-white truncate">{t.name}</div>
                 <div className="text-xs text-slate-400">
                   {t.abbreviation} · {t.conference ?? 'Liga'}
                 </div>

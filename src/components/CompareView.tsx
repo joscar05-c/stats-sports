@@ -127,14 +127,14 @@ function GenericRadarChart({
 
       <polygon
         points={toPolygon(ratiosA)}
-        fill="rgba(16,185,129,0.28)"
-        stroke="#10b981"
+        fill="rgba(59,130,246,0.24)"
+        stroke="#3b82f6"
         strokeWidth="2.2"
       />
       <polygon
         points={toPolygon(ratiosB)}
-        fill="rgba(6,182,212,0.26)"
-        stroke="#06b6d4"
+        fill="rgba(203,213,225,0.18)"
+        stroke="#cbd5e1"
         strokeWidth="2.2"
       />
     </svg>
@@ -231,43 +231,43 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
 
   if (loading) {
     return (
-      <div className="h-64 rounded-2xl sb-card animate-pulse" />
+      <div className="h-64 rounded-xl sb-card animate-pulse" />
     );
   }
 
   return (
     <div className="space-y-4">
       {/* Mode Switcher */}
-      <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1">
+      <div className="inline-flex rounded-lg bg-[#12151c] border border-white/[0.08] p-1">
         <button
           type="button"
           onClick={() => setMode('players')}
-          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
             mode === 'players'
-              ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 shadow-[0_4px_14px_rgba(16,185,129,0.28)]'
+              ? 'cv-tab-active'
               : 'text-slate-400 hover:text-white'
           }`}
         >
-          <User className="w-3.5 h-3.5" />
+          <User className="w-3.5 h-3.5" aria-hidden="true" />
           Comparar Jugadores
         </button>
         <button
           type="button"
           onClick={() => setMode('teams')}
-          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
             mode === 'teams'
-              ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 shadow-[0_4px_14px_rgba(16,185,129,0.28)]'
+              ? 'cv-tab-active'
               : 'text-slate-400 hover:text-white'
           }`}
         >
-          <Shield className="w-3.5 h-3.5" />
+          <Shield className="w-3.5 h-3.5" aria-hidden="true" />
           Comparar Equipos
         </button>
       </div>
 
       {mode === 'players' ? (
         !playerA || !playerB ? (
-          <div className="sb-card rounded-2xl p-8 text-center text-sm text-slate-400">
+          <div className="sb-card rounded-xl p-8 text-center text-sm text-slate-400">
             Necesitas al menos 2 jugadores con partidos disputados para comparar.
           </div>
         ) : (
@@ -277,8 +277,8 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
               {[
                 {
                   label: 'Jugador A',
-                  color: 'border-emerald-500/40',
-                  badge: 'bg-emerald-400',
+                  color: 'border-white/[0.1]',
+                  badge: 'bg-blue-500',
                   selected: playerA,
                   search: searchA,
                   setSearch: setSearchA,
@@ -287,8 +287,8 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
                 },
                 {
                   label: 'Jugador B',
-                  color: 'border-cyan-500/40',
-                  badge: 'bg-cyan-400',
+                  color: 'border-white/[0.1]',
+                  badge: 'bg-slate-300',
                   selected: playerB,
                   search: searchB,
                   setSearch: setSearchB,
@@ -298,10 +298,10 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
               ].map((side) => (
                 <div
                   key={side.label}
-                  className={`sb-card rounded-2xl border ${side.color} p-3.5 space-y-2.5`}
+                  className={`sb-card rounded-xl border ${side.color} p-3.5 space-y-2.5`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-200">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-200">
                       <span className={`w-2.5 h-2.5 rounded-full ${side.badge}`} />
                       {side.label}
                     </span>
@@ -311,7 +311,7 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
                   </div>
 
                   <div className="relative">
-                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" aria-hidden="true" />
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" aria-hidden="true" />
                     <input
                       type="search"
                       aria-label={`Filtrar ${side.label}`}
@@ -320,7 +320,7 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
                       value={side.search}
                       onChange={(e) => side.setSearch(e.target.value)}
                       placeholder="Filtrar nombre..."
-                      className="w-full bg-slate-950/80 border border-white/[0.1] rounded-lg pl-8 pr-3 py-1.5 text-base sm:text-xs text-slate-200 placeholder:text-slate-500 focus:border-emerald-400"
+                      className="w-full bg-[#0b0d11] border border-white/[0.1] rounded-lg pl-8 pr-3 py-1.5 text-base sm:text-xs text-slate-200 placeholder:text-slate-500"
                     />
                   </div>
 
@@ -328,7 +328,7 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
                     aria-label={`Seleccionar ${side.label}`}
                     value={side.selected.player_id}
                     onChange={(e) => side.onChange(Number(e.target.value))}
-                    className="w-full bg-slate-950/90 border border-white/[0.1] rounded-xl px-3 py-2 text-sm font-bold text-white focus:border-emerald-400"
+                    className="w-full bg-[#0b0d11] border border-white/[0.1] rounded-lg px-3 py-2 text-sm font-semibold text-white"
                   >
                     {!side.list.some((p) => p.player_id === side.selected.player_id) && (
                       <option value={side.selected.player_id}>
@@ -346,17 +346,17 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
             </div>
 
             {/* Player Radar + Bars */}
-            <div className="sb-card rounded-2xl p-4 sm:p-5">
+            <div className="sb-card rounded-xl p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-200 uppercase tracking-wider">
-                  <ArrowLeftRight className="w-4 h-4 text-emerald-400" />
+                  <ArrowLeftRight className="w-4 h-4 text-slate-400" aria-hidden="true" />
                   Radar Comparativo de Jugadores
                 </div>
                 <button
                   onClick={() => downloadCompareCard(playerA, playerB)}
-                  className="inline-flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 transition-all"
+                  className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg cv-btn-primary"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download className="w-3.5 h-3.5" aria-hidden="true" />
                   Compartir PNG
                 </button>
               </div>
@@ -386,23 +386,23 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
                     return (
                       <div key={r.label}>
                         <div className="flex items-center justify-between text-xs mb-1">
-                          <span className={r.a >= r.b ? 'font-black text-orange-400' : 'text-slate-400'}>
+                          <span className={r.a >= r.b ? 'font-bold text-blue-400' : 'text-slate-400'}>
                             {r.a.toFixed(1)}
                             {s}
                           </span>
-                          <span className="font-semibold text-slate-300">{r.label}</span>
-                          <span className={r.b >= r.a ? 'font-black text-sky-400' : 'text-slate-400'}>
+                          <span className="font-medium text-slate-300">{r.label}</span>
+                          <span className={r.b >= r.a ? 'font-bold text-slate-100' : 'text-slate-400'}>
                             {r.b.toFixed(1)}
                             {s}
                           </span>
                         </div>
-                        <div className="h-2 rounded-full bg-slate-800 overflow-hidden flex">
+                        <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden flex">
                           <div
-                            className="bg-orange-500 transition-all"
+                            className="bg-blue-500 transition-all"
                             style={{ width: `${pctA}%` }}
                           />
                           <div
-                            className="bg-sky-400 transition-all"
+                            className="bg-slate-400 transition-all"
                             style={{ width: `${100 - pctA}%` }}
                           />
                         </div>
@@ -415,7 +415,7 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
           </>
         )
       ) : !teamA || !teamB ? (
-        <div className="sb-card rounded-2xl p-8 text-center text-sm text-slate-400">
+        <div className="sb-card rounded-xl p-8 text-center text-sm text-slate-400">
           No hay suficientes equipos con estadísticas para comparar.
         </div>
       ) : (
@@ -425,8 +425,8 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
             {[
               {
                 label: 'Equipo A',
-                color: 'border-emerald-500/40',
-                badge: 'bg-emerald-400',
+                color: 'border-white/[0.1]',
+                badge: 'bg-blue-500',
                 selected: teamA,
                 search: teamSearchA,
                 setSearch: setTeamSearchA,
@@ -435,8 +435,8 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
               },
               {
                 label: 'Equipo B',
-                color: 'border-cyan-500/40',
-                badge: 'bg-cyan-400',
+                color: 'border-white/[0.1]',
+                badge: 'bg-slate-300',
                 selected: teamB,
                 search: teamSearchB,
                 setSearch: setTeamSearchB,
@@ -446,26 +446,27 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
             ].map((side) => (
               <div
                 key={side.label}
-                className={`sb-card rounded-2xl border ${side.color} p-3.5 space-y-2.5`}
+                className={`sb-card rounded-xl border ${side.color} p-3.5 space-y-2.5`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-200">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-200">
                     <span className={`w-2.5 h-2.5 rounded-full ${side.badge}`} />
                     {side.label}
                   </span>
-                  <span className="text-[11px] font-bold text-slate-300 tabular-nums">
+                  <span className="text-[11px] font-semibold text-slate-300 tabular-nums">
                     {side.selected.wins}-{side.selected.losses} · Conf. {side.selected.conference ?? '-'}
                   </span>
                 </div>
 
                 <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" aria-hidden="true" />
                   <input
-                    type="text"
+                    type="search"
+                    aria-label={`Filtrar ${side.label}`}
                     value={side.search}
                     onChange={(e) => side.setSearch(e.target.value)}
                     placeholder="Filtrar equipo..."
-                    className="w-full bg-slate-950/80 border border-white/[0.1] rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
+                    className="w-full bg-[#0b0d11] border border-white/[0.1] rounded-lg pl-8 pr-3 py-1.5 text-base sm:text-xs text-slate-200 placeholder:text-slate-500"
                   />
                 </div>
 
@@ -478,9 +479,10 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
                     />
                   )}
                   <select
+                    aria-label={`Seleccionar ${side.label}`}
                     value={side.selected.team_id}
                     onChange={(e) => side.onChange(Number(e.target.value))}
-                    className="w-full bg-slate-950/90 border border-white/[0.1] rounded-xl px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-emerald-400"
+                    className="w-full bg-[#0b0d11] border border-white/[0.1] rounded-lg px-3 py-2 text-sm font-semibold text-white"
                   >
                     {!side.list.some((t) => t.team_id === side.selected.team_id) && (
                       <option value={side.selected.team_id}>
@@ -506,7 +508,7 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
                     Últ. 10: <strong className="text-slate-200">{side.selected.last_ten ?? '-'}</strong>
                   </span>
                   <span>
-                    Racha: <strong className="text-emerald-300">{side.selected.streak ?? '-'}</strong>
+                    Racha: <strong className="text-slate-200">{side.selected.streak ?? '-'}</strong>
                   </span>
                 </div>
               </div>
@@ -514,19 +516,19 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
           </div>
 
           {/* Team Radar + Collective Stats Comparison */}
-          <div className="sb-card rounded-2xl p-4 sm:p-5 space-y-5">
+          <div className="sb-card rounded-xl p-4 sm:p-5 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-200 uppercase tracking-wider">
-                <ArrowLeftRight className="w-4 h-4 text-emerald-400" />
+                <ArrowLeftRight className="w-4 h-4 text-slate-400" aria-hidden="true" />
                 Radar y Comparativa Colectiva ({teamA.team_abbreviation} vs {teamB.team_abbreviation})
               </div>
-              <div className="flex items-center gap-4 text-xs font-bold">
-                <span className="inline-flex items-center gap-1.5 text-emerald-400">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+              <div className="flex items-center gap-4 text-xs font-semibold">
+                <span className="inline-flex items-center gap-1.5 text-blue-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
                   {teamA.team_short_name}
                 </span>
-                <span className="inline-flex items-center gap-1.5 text-cyan-400">
-                  <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
+                <span className="inline-flex items-center gap-1.5 text-slate-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
                   {teamB.team_short_name}
                 </span>
               </div>
@@ -634,23 +636,23 @@ export function CompareView({ leagueId, seasonId }: CompareViewProps) {
                   return (
                     <div key={r.label}>
                       <div className="flex items-center justify-between text-xs mb-1">
-                        <span className={aBetter ? 'font-black text-orange-400' : 'text-slate-400'}>
+                        <span className={aBetter ? 'font-bold text-blue-400' : 'text-slate-400'}>
                           {r.a.toFixed(1)}
                           {s}
                         </span>
-                        <span className="font-semibold text-slate-300">{r.label}</span>
-                        <span className={bBetter ? 'font-black text-sky-400' : 'text-slate-400'}>
+                        <span className="font-medium text-slate-300">{r.label}</span>
+                        <span className={bBetter ? 'font-bold text-slate-100' : 'text-slate-400'}>
                           {r.b.toFixed(1)}
                           {s}
                         </span>
                       </div>
-                      <div className="h-2 rounded-full bg-slate-800 overflow-hidden flex">
+                      <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden flex">
                         <div
-                          className="bg-orange-500 transition-all"
+                          className="bg-blue-500 transition-all"
                           style={{ width: `${pctA}%` }}
                         />
                         <div
-                          className="bg-sky-400 transition-all"
+                          className="bg-slate-400 transition-all"
                           style={{ width: `${100 - pctA}%` }}
                         />
                       </div>

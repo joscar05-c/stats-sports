@@ -283,21 +283,21 @@ export function ProUpgradeModal({
       onClose={onClose}
       ariaLabelledBy="pro-modal-title"
       maxWidthCss="32rem"
-      borderClass="border border-emerald-500/25"
+      borderClass="border border-white/[0.12]"
     >
       {(requestClose) => (
         <div className="flex flex-col flex-1 min-h-0">
         {/* Header */}
-        <div className="relative p-5 border-b border-white/[0.08] bg-[radial-gradient(ellipse_at_top_left,rgba(16,185,129,0.16),transparent_65%)] flex items-start justify-between gap-3">
+        <div className="relative p-5 border-b border-white/[0.08] bg-[#12151c] flex items-start justify-between gap-3">
           <div>
-            <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" aria-hidden="true" />
-              CourtVision PRO · Suscripción Mensual
+            <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              <ShieldCheck className="w-4 h-4 text-slate-300" aria-hidden="true" />
+              CourtVision Pro · Suscripción Mensual
             </div>
-            <h2 id="pro-modal-title" className="text-xl font-black text-white mt-1 tracking-tight">
+            <h2 id="pro-modal-title" className="text-xl font-bold text-white mt-1 tracking-tight">
               {subscription
-                ? 'Acceso PRO Activo'
-                : `Desbloquea Picks ${PRO_CONFIDENCE_THRESHOLD}%+ (${PRO_MONTHLY_PRICE_USD.toFixed(0)} USD / S/ ${PRO_MONTHLY_PRICE_PEN.toFixed(0)})`}
+                ? 'Plan Pro activo'
+                : `Plan Pro ($${PRO_MONTHLY_PRICE_USD.toFixed(0)} USD / S/ ${PRO_MONTHLY_PRICE_PEN.toFixed(0)})`}
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
               Acceso por 30 días vinculado a tu cuenta en Web y App Móvil.
@@ -316,13 +316,13 @@ export function ProUpgradeModal({
         <div className="flex-1 overflow-auto sb-scroller p-5 space-y-4">
           {subscription ? (
             <div className="space-y-4">
-              <div className="rounded-xl bg-emerald-500/[0.07] border border-emerald-500/35 p-4 space-y-2.5">
+              <div className="rounded-xl bg-emerald-500/[0.08] border border-emerald-500/30 p-4 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-300">
-                    <CheckCircle2 className="w-4 h-4" />
-                    Suscripción Verificada
+                    <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
+                    Suscripción verificada
                   </span>
-                  <span className="text-xs font-bold text-amber-300 tabular-nums">
+                  <span className="text-xs font-semibold text-slate-200 tabular-nums">
                     {remainingDays} días restantes
                   </span>
                 </div>
@@ -333,7 +333,7 @@ export function ProUpgradeModal({
                   </div>
                   <div>
                     <div className="text-[11px] text-slate-400">Código CVPRO</div>
-                    <div className="text-emerald-300 font-mono font-bold">
+                    <div className="text-slate-100 font-mono font-bold">
                       {subscription.accessCode}
                     </div>
                   </div>
@@ -348,33 +348,33 @@ export function ProUpgradeModal({
               </div>
 
               <div className="rounded-xl bg-white/[0.03] border border-white/[0.08] p-3.5 text-xs text-slate-300 space-y-1.5">
-                <div className="font-bold text-white inline-flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  Beneficios activos en tu cuenta:
+                <div className="font-semibold text-white inline-flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+                  Funciones activas en tu cuenta:
                 </div>
-                <div>• Todos los Props de Equipo y Jugador con confianza {PRO_CONFIDENCE_THRESHOLD}%–94%.</div>
-                <div>• Motor avanzado con ajuste por Minutos (MPG), Local/Visita y fatiga B2B.</div>
-                <div>• Simulador de cuotas, líneas O/U y calculadora de ganancia en S/ y USD.</div>
+                <div>• Todos los análisis de equipo y jugador con índice {PRO_CONFIDENCE_THRESHOLD}%–94%.</div>
+                <div>• Ajuste por minutos (MPG), rendimiento local/visita y descanso B2B.</div>
+                <div>• Simulador de líneas y calculadora comparativa en S/ y USD.</div>
               </div>
             </div>
           ) : (
             <>
               {/* Plan Summary */}
-              <div className="rounded-xl bg-gradient-to-r from-emerald-500/15 via-cyan-500/10 to-amber-500/15 border border-emerald-500/30 p-4 flex items-center justify-between gap-3">
+              <div className="rounded-xl bg-[#0e1117] border border-white/[0.1] p-4 flex items-center justify-between gap-3">
                 <div className="space-y-1">
-                  <div className="text-xs font-extrabold text-white">Pase Mensual · 30 Días</div>
-                  <div className="text-[11px] text-slate-300">
-                    Sube tu cuenta gratuita a PRO con tarjeta o Yape / Plin.
+                  <div className="text-xs font-bold text-white">Pase mensual · 30 días</div>
+                  <div className="text-xs text-slate-400">
+                    Activa el acceso completo con tarjeta o Yape / Plin.
                   </div>
                 </div>
                 <div className="text-right shrink-0 tabular-nums">
-                  <div className="text-2xl font-black text-emerald-300 leading-none">
+                  <div className="text-xl font-bold text-white leading-none">
                     ${PRO_MONTHLY_PRICE_USD.toFixed(0)}
-                    <span className="text-xs font-bold text-amber-300 ml-1.5">
+                    <span className="text-xs font-medium text-slate-300 ml-1.5">
                       / S/ {PRO_MONTHLY_PRICE_PEN.toFixed(0)}
                     </span>
                   </div>
-                  <div className="text-[10px] text-slate-400 uppercase font-semibold mt-1">
+                  <div className="text-[10px] text-slate-400 uppercase font-medium mt-1">
                     USD o PEN · 30 días
                   </div>
                 </div>
@@ -382,82 +382,82 @@ export function ProUpgradeModal({
 
               {/* Comparison */}
               <div className="grid grid-cols-2 gap-2.5 text-xs">
-                <div className="rounded-xl bg-white/[0.03] border border-white/[0.08] p-3 space-y-1">
-                  <div className="font-bold text-slate-300">Cuenta Gratis</div>
+                <div className="rounded-xl bg-white/[0.02] border border-white/[0.08] p-3 space-y-1">
+                  <div className="font-semibold text-slate-300">Cuenta gratuita</div>
                   <div className="text-[11px] text-slate-400">
-                    ✓ Marcadores, cuotas y box scores
+                    ✓ Marcadores, líneas y box scores
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    ✓ Props con confianza &lt; {PRO_CONFIDENCE_THRESHOLD}%
+                    ✓ Análisis estándar (&lt; {PRO_CONFIDENCE_THRESHOLD}%)
                   </div>
                 </div>
-                <div className="rounded-xl bg-emerald-500/[0.08] border border-emerald-500/35 p-3 space-y-1">
-                  <div className="font-bold text-emerald-300 inline-flex items-center gap-1">
-                    <Lock className="w-3 h-3 text-amber-400" />
-                    Plan PRO
+                <div className="rounded-xl bg-white/[0.04] border border-white/[0.16] p-3 space-y-1">
+                  <div className="font-semibold text-white inline-flex items-center gap-1">
+                    <Lock className="w-3 h-3 text-slate-300" aria-hidden="true" />
+                    Plan Pro
                   </div>
-                  <div className="text-[11px] text-slate-100">
-                    ✓ Picks élite {PRO_CONFIDENCE_THRESHOLD}%–94% de acierto
+                  <div className="text-[11px] text-slate-200">
+                    ✓ Análisis avanzados ({PRO_CONFIDENCE_THRESHOLD}%–94%)
                   </div>
-                  <div className="text-[11px] text-slate-100">
-                    ✓ Activo en Web y App Android
+                  <div className="text-[11px] text-slate-200">
+                    ✓ Sincronizado en Web y Android
                   </div>
                 </div>
               </div>
 
               {/* Account Required Gate */}
               {!user ? (
-                <div className="rounded-2xl bg-slate-950/90 border border-cyan-500/35 p-5 text-center space-y-3">
-                  <div className="w-11 h-11 rounded-2xl bg-cyan-500/15 border border-cyan-500/35 mx-auto flex items-center justify-center">
-                    <LogIn className="w-5 h-5 text-cyan-300" />
+                <div className="rounded-xl bg-[#0e1117] border border-white/[0.1] p-5 text-center space-y-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.12] mx-auto flex items-center justify-center">
+                    <LogIn className="w-5 h-5 text-slate-200" aria-hidden="true" />
                   </div>
                   <div className="space-y-1">
-                    <div className="text-sm font-black text-white">
-                      Paso 1: Inicia sesión o crea tu cuenta gratis
+                    <div className="text-sm font-bold text-white">
+                      Paso 1: Inicia sesión o crea tu cuenta
                     </div>
                     <p className="text-xs text-slate-400 leading-relaxed">
-                      Tu suscripción PRO queda guardada de forma segura en tu cuenta (Google o correo) para usarla en cualquier dispositivo.
+                      Tu suscripción queda vinculada de forma segura a tu cuenta (Google o correo) para usarla en cualquier dispositivo.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={onRequireAuth}
-                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-black text-sm inline-flex items-center justify-center gap-2 transition-all shadow-[0_6px_20px_rgba(16,185,129,0.28)]"
+                    className="w-full py-2.5 px-4 rounded-lg cv-btn-primary text-sm inline-flex items-center justify-center gap-2"
                   >
-                    <LogIn className="w-4 h-4" />
-                    Continuar con Google o Correo (Gratis)
+                    <LogIn className="w-4 h-4" aria-hidden="true" />
+                    Continuar con Google o correo
                   </button>
                 </div>
               ) : (
                 <>
                   {/* Signed-in user pill */}
-                  <div className="rounded-xl bg-emerald-500/[0.07] border border-emerald-500/30 px-3 py-2 flex items-center justify-between gap-2 text-xs">
-                    <span className="inline-flex items-center gap-2 text-emerald-200 min-w-0">
-                      <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div className="rounded-lg bg-white/[0.04] border border-white/[0.1] px-3 py-2 flex items-center justify-between gap-2 text-xs">
+                    <span className="inline-flex items-center gap-2 text-slate-200 min-w-0">
+                      <UserCheck className="w-4 h-4 text-slate-300 shrink-0" aria-hidden="true" />
                       <span className="truncate">
                         Cuenta: <strong className="text-white">{user.email}</strong>
                       </span>
                     </span>
-                    <span className="text-[10px] font-bold text-emerald-300 uppercase shrink-0">
-                      Listo para PRO
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase shrink-0">
+                      Vinculada
                     </span>
                   </div>
 
                   {/* Mode Switch */}
-                  <div className="flex rounded-xl bg-black/40 border border-white/[0.08] p-1 text-xs">
+                  <div className="flex rounded-lg bg-[#0b0d11] border border-white/[0.08] p-1 text-xs">
                     <button
                       type="button"
                       onClick={() => {
                         setMode('buy');
                         setFeedback(null);
                       }}
-                      className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
+                      className={`flex-1 py-1.5 rounded-md font-semibold transition-colors ${
                         mode === 'buy'
-                          ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                          ? 'cv-tab-active'
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      Pagar ($5 / S/ 19)
+                      Pagar (${PRO_MONTHLY_PRICE_USD.toFixed(0)} / S/ {PRO_MONTHLY_PRICE_PEN.toFixed(0)})
                     </button>
                     <button
                       type="button"
@@ -465,13 +465,13 @@ export function ProUpgradeModal({
                         setMode('code');
                         setFeedback(null);
                       }}
-                      className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
+                      className={`flex-1 py-1.5 rounded-md font-semibold transition-colors ${
                         mode === 'code'
-                          ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                          ? 'cv-tab-active'
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      Canjear Código CVPRO
+                      Canjear código CVPRO
                     </button>
                   </div>
 
@@ -492,29 +492,23 @@ export function ProUpgradeModal({
                                   setProvider(pv.key);
                                   setFeedback(null);
                                 }}
-                                className={`w-full text-left rounded-xl border p-2.5 transition-all ${
+                                className={`w-full text-left rounded-lg border p-2.5 transition-colors ${
                                   selected
-                                    ? 'bg-emerald-500/10 border-emerald-500/50 text-white'
-                                    : 'bg-white/[0.02] border-white/[0.08] text-slate-300 hover:border-white/20'
+                                    ? 'bg-[#181c25] border-white/[0.28] text-white'
+                                    : 'bg-white/[0.02] border-white/[0.08] text-slate-300 hover:border-white/[0.18]'
                                 }`}
                               >
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold">{pv.label}</span>
-                                    <span
-                                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
-                                        pv.key === 'yape_plin'
-                                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                                          : 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
-                                      }`}
-                                    >
+                                    <span className="text-xs font-semibold">{pv.label}</span>
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white/[0.06] text-slate-300 border border-white/[0.1]">
                                       {pv.badge}
                                     </span>
                                   </div>
                                   <span
                                     className={`w-3.5 h-3.5 rounded-full border ${
                                       selected
-                                        ? 'bg-emerald-400 border-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.6)]'
+                                        ? 'bg-white border-white'
                                         : 'border-slate-600'
                                     }`}
                                   />
@@ -532,36 +526,36 @@ export function ProUpgradeModal({
                             e.preventDefault();
                             void handleSubmitYapePlin();
                           }}
-                          className="space-y-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/30 p-3.5"
+                          className="space-y-3 rounded-xl bg-[#0e1117] border border-white/[0.1] p-3.5"
                         >
                           <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] pb-2.5">
                             <div>
-                              <div className="inline-flex items-center gap-1.5 text-xs font-extrabold text-amber-300">
-                                <Smartphone className="w-4 h-4" aria-hidden="true" />
+                              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-100">
+                                <Smartphone className="w-4 h-4 text-slate-300" aria-hidden="true" />
                                 Pago con Yape o Plin · S/ {PRO_MONTHLY_PRICE_PEN.toFixed(2)}
                               </div>
-                              <div className="text-[11px] text-slate-300 mt-0.5">
-                                Titular: <strong className="text-white">{YAPE_PLIN_CONFIG.holder}</strong>
+                              <div className="text-[11px] text-slate-400 mt-0.5">
+                                Titular: <strong className="text-slate-200">{YAPE_PLIN_CONFIG.holder}</strong>
                               </div>
                             </div>
                             <button
                               type="button"
                               onClick={handleCopyNumber}
                               aria-label={`Copiar número ${YAPE_PLIN_CONFIG.number}`}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-950/90 border border-amber-500/40 text-xs font-mono font-bold text-amber-200 hover:bg-slate-900"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#12151c] border border-white/[0.12] text-xs font-mono font-bold text-slate-100 hover:border-white/[0.25]"
                             >
                               <span>{YAPE_PLIN_CONFIG.number}</span>
                               {copiedPhone ? (
                                 <Check className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
                               ) : (
-                                <Copy className="w-3.5 h-3.5 text-amber-300" aria-hidden="true" />
+                                <Copy className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
                               )}
                             </button>
                           </div>
 
                           <div className="text-[11px] text-slate-300 space-y-1">
-                            <div>1. Yapea o Plinea <strong>S/ {PRO_MONTHLY_PRICE_PEN.toFixed(2)}</strong> al <strong>{YAPE_PLIN_CONFIG.number}</strong>.</div>
-                            <div>2. Ingresa tu <strong>N° de operación</strong>; al aprobarlo, tu cuenta <strong>{user.email}</strong> subirá a PRO.</div>
+                            <div>1. Transfiere <strong>S/ {PRO_MONTHLY_PRICE_PEN.toFixed(2)}</strong> al <strong>{YAPE_PLIN_CONFIG.number}</strong>.</div>
+                            <div>2. Ingresa tu <strong>N° de operación</strong>; al validarse, tu cuenta <strong>{user.email}</strong> quedará activa.</div>
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -582,7 +576,7 @@ export function ProUpgradeModal({
                                 value={yapeOpCode}
                                 onChange={(e) => setYapeOpCode(e.target.value)}
                                 placeholder="N° Operación (ej. 048291)"
-                                className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-base sm:text-xs text-white font-mono placeholder:text-slate-500 focus:border-emerald-400"
+                                className="w-full bg-[#12151c] border border-white/[0.12] rounded-lg px-3 py-2 text-base sm:text-xs text-white font-mono placeholder:text-slate-500"
                               />
                             </div>
                             <div className="space-y-1">
@@ -598,7 +592,7 @@ export function ProUpgradeModal({
                                 value={yapeSenderName}
                                 onChange={(e) => setYapeSenderName(e.target.value)}
                                 placeholder="Nombre del titular (opcional)"
-                                className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-base sm:text-xs text-white placeholder:text-slate-500 focus:border-emerald-400"
+                                className="w-full bg-[#12151c] border border-white/[0.12] rounded-lg px-3 py-2 text-base sm:text-xs text-white placeholder:text-slate-500"
                               />
                             </div>
                           </div>
@@ -607,16 +601,16 @@ export function ProUpgradeModal({
                             <button
                               type="submit"
                               disabled={busy}
-                              className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs inline-flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors"
+                              className="flex-1 py-2.5 px-3 rounded-lg cv-btn-primary text-xs inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
                             >
                               <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
-                              {busy ? 'Registrando...' : 'Registrar Pago en mi Cuenta'}
+                              {busy ? 'Registrando...' : 'Registrar pago en mi cuenta'}
                             </button>
                             <a
                               href={liveWhatsappUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="py-2.5 px-3 rounded-xl bg-slate-950/90 hover:bg-slate-900 border border-emerald-500/40 text-emerald-300 font-bold text-xs inline-flex items-center justify-center gap-1.5 transition-colors"
+                              className="py-2.5 px-3 rounded-lg bg-[#12151c] hover:bg-[#181c25] border border-white/[0.12] text-slate-200 font-semibold text-xs inline-flex items-center justify-center gap-1.5 transition-colors"
                             >
                               <MessageCircle className="w-4 h-4" aria-hidden="true" />
                               WhatsApp
@@ -628,29 +622,29 @@ export function ProUpgradeModal({
                           type="button"
                           disabled={busy || !checkoutUrl}
                           onClick={handleOpenCheckout}
-                          className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-black text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50 transition-all shadow-[0_6px_20px_rgba(16,185,129,0.28)]"
+                          className="w-full py-2.5 px-4 rounded-lg cv-btn-primary text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50"
                         >
-                          <CreditCard className="w-4 h-4" />
+                          <CreditCard className="w-4 h-4" aria-hidden="true" />
                           {checkoutUrl
                             ? `Pagar $${PRO_MONTHLY_PRICE_USD.toFixed(2)} USD (${
                                 PROVIDERS.find((p) => p.key === provider)?.label.split(' (')[0]
                               })`
                             : 'Configura enlace de esta pasarela'}
-                          {checkoutUrl && <ExternalLink className="w-3.5 h-3.5" />}
+                          {checkoutUrl && <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />}
                         </button>
                       )}
 
                       {awaitingConfirm && (
-                        <div className="rounded-xl bg-white/[0.04] border border-emerald-500/30 p-3 space-y-2">
+                        <div className="rounded-lg bg-white/[0.04] border border-white/[0.12] p-3 space-y-2">
                           <div className="flex items-center justify-between gap-2 text-xs text-slate-200">
                             <span className="inline-flex items-center gap-2 font-semibold">
-                              <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                              Esperando confirmación automática...
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-300" aria-hidden="true" />
+                              Esperando confirmación...
                             </span>
                             <button
                               type="button"
                               onClick={() => setAwaitingConfirm(false)}
-                              className="text-[10px] text-slate-400 hover:text-slate-200 underline"
+                              className="text-[11px] text-slate-400 hover:text-slate-200 underline"
                             >
                               Ocultar
                             </button>
@@ -659,7 +653,7 @@ export function ProUpgradeModal({
                             type="button"
                             disabled={busy}
                             onClick={handleManualCheckAfterPay}
-                            className="w-full py-1.5 px-3 rounded-lg bg-slate-950 border border-white/[0.12] hover:border-emerald-400/50 text-[11px] font-semibold text-slate-200 transition-colors"
+                            className="w-full py-1.5 px-3 rounded-lg bg-[#0b0d11] border border-white/[0.12] hover:border-white/[0.25] text-[11px] font-semibold text-slate-200 transition-colors"
                           >
                             {busy ? 'Consultando...' : 'Verificar estado en mi cuenta ahora'}
                           </button>
@@ -693,16 +687,16 @@ export function ProUpgradeModal({
                           value={codeInput}
                           onChange={(e) => setCodeInput(e.target.value)}
                           placeholder="CVPRO-XXXX-XXXX"
-                          className="w-full bg-slate-950/90 border border-white/[0.12] rounded-xl px-3 py-2 text-base sm:text-sm text-white font-mono placeholder:font-sans placeholder:text-slate-500 focus:border-emerald-400"
+                          className="w-full bg-[#0b0d11] border border-white/[0.12] rounded-lg px-3 py-2 text-base sm:text-sm text-white font-mono placeholder:font-sans placeholder:text-slate-500"
                         />
                       </div>
                       <button
                         type="submit"
                         disabled={busy}
-                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-black text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60 transition-all shadow-[0_6px_20px_rgba(16,185,129,0.28)]"
+                        className="w-full py-2.5 px-4 rounded-lg cv-btn-primary text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60"
                       >
                         <KeyRound className="w-4 h-4" aria-hidden="true" />
-                        {busy ? 'Validando código...' : 'Vincular Código a mi Cuenta'}
+                        {busy ? 'Validando código...' : 'Vincular código a mi cuenta'}
                       </button>
                     </form>
                   )}
@@ -713,12 +707,12 @@ export function ProUpgradeModal({
                 <div
                   role={feedback.tone === 'err' ? 'alert' : 'status'}
                   aria-live="polite"
-                  className={`rounded-xl border p-3 text-xs ${
+                  className={`rounded-lg border p-3 text-xs ${
                     feedback.tone === 'ok'
-                      ? 'bg-emerald-500/10 border-emerald-500/35 text-emerald-200'
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
                       : feedback.tone === 'err'
-                        ? 'bg-rose-500/10 border-rose-500/35 text-rose-200'
-                        : 'bg-amber-500/10 border-amber-500/35 text-amber-200'
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
+                        : 'bg-white/[0.04] border-white/[0.12] text-slate-200'
                   }`}
                 >
                   {feedback.text}
