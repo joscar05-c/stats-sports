@@ -81,6 +81,90 @@ LEAGUE_CATALOG: dict[str, dict[str, str]] = {
         "country": "Europa",
         "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/2.png",
     },
+    "conmebol.libertadores": {
+        "slug": "libertadores",
+        "name": "CONMEBOL Libertadores",
+        "short_name": "Libertadores",
+        "country": "Sudamérica",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/58.png",
+    },
+    "conmebol.sudamericana": {
+        "slug": "sudamericana",
+        "name": "CONMEBOL Sudamericana",
+        "short_name": "Sudamericana",
+        "country": "Sudamérica",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/1208.png",
+    },
+    "arg.1": {
+        "slug": "argentina",
+        "name": "Liga Profesional Argentina",
+        "short_name": "Argentina",
+        "country": "Argentina",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/1.png",
+    },
+    "bra.1": {
+        "slug": "brasileirao",
+        "name": "Brasileirão Série A",
+        "short_name": "Brasil",
+        "country": "Brasil",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/85.png",
+    },
+    "col.1": {
+        "slug": "colombia",
+        "name": "Liga BetPlay Dimayor",
+        "short_name": "Colombia",
+        "country": "Colombia",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/1543.png",
+    },
+    "chi.1": {
+        "slug": "chile",
+        "name": "Primera División de Chile",
+        "short_name": "Chile",
+        "country": "Chile",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/86.png",
+    },
+    "uru.1": {
+        "slug": "uruguay",
+        "name": "Liga AUF Uruguaya",
+        "short_name": "Uruguay",
+        "country": "Uruguay",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/1592.png",
+    },
+    "par.1": {
+        "slug": "paraguay",
+        "name": "Primera División de Paraguay",
+        "short_name": "Paraguay",
+        "country": "Paraguay",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/1892.png",
+    },
+    "per.1": {
+        "slug": "peru",
+        "name": "Liga 1 Perú",
+        "short_name": "Perú",
+        "country": "Perú",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/1813.png",
+    },
+    "ecu.1": {
+        "slug": "ecuador",
+        "name": "LigaPro Ecuador",
+        "short_name": "Ecuador",
+        "country": "Ecuador",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/1944.png",
+    },
+    "bol.1": {
+        "slug": "bolivia",
+        "name": "División Profesional de Bolivia",
+        "short_name": "Bolivia",
+        "country": "Bolivia",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/1949.png",
+    },
+    "ven.1": {
+        "slug": "venezuela",
+        "name": "Liga FUTVE Venezuela",
+        "short_name": "Venezuela",
+        "country": "Venezuela",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/1947.png",
+    },
 }
 
 
@@ -353,19 +437,32 @@ WIKI_UA = "CourtVisionStats/1.0 (https://github.com/joscar05-c/stats-sports)"
 FOOTBALL_DESC_RE = re.compile(
     r"football|soccer|goalkeeper|defender|midfielder|forward|winger|striker|"
     r"futbolista|portero|defensa|centrocampista|delantero|"
+    r"futebolista|futebol|goleiro|zagueiro|volante|atacante|"
     r"calciatore|portiere|difensore|attaccante|"
     r"fußballspieler|torwart|abwehrspieler|mittelfeldspieler|stürmer|"
     r"footballeur|gardien de but",
     re.I,
 )
 DEATH_DESC_RE = re.compile(r"\b(?:18|19|20)\d{2}\s*[–\-]\s*(?:18|19|20)\d{2}\b")
-BORN_YEAR_DESC_RE = re.compile(r"(?:born|n\.|nacido en|geboren)\s+(\d{4})\b", re.I)
+BORN_YEAR_DESC_RE = re.compile(r"(?:born|n\.|nacido en|nascido em|nasc\.|geboren)\s+(\d{4})\b", re.I)
 LEAGUE_SECONDARY_WIKIS: dict[str, list[str]] = {
     "esp.1": ["es"],
     "ita.1": ["it"],
     "ger.1": ["de"],
     "fra.1": ["fr"],
     "uefa.champions": ["es", "it", "de", "fr"],
+    "conmebol.libertadores": ["es", "pt"],
+    "conmebol.sudamericana": ["es", "pt"],
+    "arg.1": ["es"],
+    "bra.1": ["pt", "es"],
+    "col.1": ["es"],
+    "chi.1": ["es"],
+    "uru.1": ["es"],
+    "par.1": ["es"],
+    "per.1": ["es"],
+    "ecu.1": ["es"],
+    "bol.1": ["es"],
+    "ven.1": ["es"],
 }
 
 
@@ -684,8 +781,15 @@ def sync_league(
             team_id_map[str(r["external_id"])] = r["id"]
 
     # 3. Upsert Standings
+    children = standings_json.get("children", [])
+    has_multi_groups = len(children) > 1
     standing_payloads: list[dict[str, Any]] = []
-    for child in standings_json.get("children", []):
+    for child in children:
+        group_name = (
+            str(child.get("name") or child.get("shortName") or "").strip() or None
+            if has_multi_groups
+            else None
+        )
         for entry in (child.get("standings") or {}).get("entries", []):
             tid_ext = str((entry.get("team") or {}).get("id") or "")
             tid = team_id_map.get(tid_ext)
@@ -711,7 +815,7 @@ def sync_league(
                     "league_id": league_id,
                     "season_id": season_id,
                     "team_id": tid,
-                    "conference": None,
+                    "conference": group_name,
                     "playoff_seed": rank,
                     "played": played,
                     "wins": wins,
@@ -783,7 +887,23 @@ def sync_league(
     # 5. Determine calendar matchdays to fetch
     now_pet = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=5)
     today_date = now_pet.date()
-    min_date = dt.date(season_year, 7, 1) if backfill_season else (today_date - dt.timedelta(days=days_back))
+    is_south_america = league_code.startswith("conmebol.") or league_code in (
+        "arg.1",
+        "bra.1",
+        "col.1",
+        "chi.1",
+        "uru.1",
+        "par.1",
+        "per.1",
+        "ecu.1",
+        "bol.1",
+        "ven.1",
+    )
+    min_date = (
+        dt.date(season_year, 1 if is_south_america else 7, 1)
+        if backfill_season
+        else (today_date - dt.timedelta(days=days_back))
+    )
     max_date = today_date + dt.timedelta(days=days_ahead)
 
     cal_raw = (default_sb.get("leagues") or [{}])[0].get("calendar") or []
@@ -804,10 +924,19 @@ def sync_league(
             target_dates.append(d_str)
 
     if not target_dates:
-        start_d = dt.date(season_year, 9, 1) if backfill_season else min_date
+        is_cup_midweek = league_code in (
+            "uefa.champions",
+            "conmebol.libertadores",
+            "conmebol.sudamericana",
+        )
+        start_d = (
+            dt.date(season_year, 2 if league_code.startswith("conmebol.") else 9, 1)
+            if backfill_season
+            else min_date
+        )
         cur = start_d
         while cur <= max_date:
-            if not backfill_season or league_code != "uefa.champions" or cur.weekday() in (1, 2, 3):
+            if not backfill_season or not is_cup_midweek or cur.weekday() in (1, 2, 3):
                 target_dates.append(cur.isoformat())
             cur += dt.timedelta(days=1)
         if not target_dates:

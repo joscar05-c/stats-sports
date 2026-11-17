@@ -55,6 +55,90 @@ const LEAGUE_CATALOG: Record<
     country: "Europa",
     logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/2.png",
   },
+  "conmebol.libertadores": {
+    slug: "libertadores",
+    name: "CONMEBOL Libertadores",
+    short_name: "Libertadores",
+    country: "Sudamérica",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/58.png",
+  },
+  "conmebol.sudamericana": {
+    slug: "sudamericana",
+    name: "CONMEBOL Sudamericana",
+    short_name: "Sudamericana",
+    country: "Sudamérica",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/1208.png",
+  },
+  "arg.1": {
+    slug: "argentina",
+    name: "Liga Profesional Argentina",
+    short_name: "Argentina",
+    country: "Argentina",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/1.png",
+  },
+  "bra.1": {
+    slug: "brasileirao",
+    name: "Brasileirão Série A",
+    short_name: "Brasil",
+    country: "Brasil",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/85.png",
+  },
+  "col.1": {
+    slug: "colombia",
+    name: "Liga BetPlay Dimayor",
+    short_name: "Colombia",
+    country: "Colombia",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/1543.png",
+  },
+  "chi.1": {
+    slug: "chile",
+    name: "Primera División de Chile",
+    short_name: "Chile",
+    country: "Chile",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/86.png",
+  },
+  "uru.1": {
+    slug: "uruguay",
+    name: "Liga AUF Uruguaya",
+    short_name: "Uruguay",
+    country: "Uruguay",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/1592.png",
+  },
+  "par.1": {
+    slug: "paraguay",
+    name: "Primera División de Paraguay",
+    short_name: "Paraguay",
+    country: "Paraguay",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/1892.png",
+  },
+  "per.1": {
+    slug: "peru",
+    name: "Liga 1 Perú",
+    short_name: "Perú",
+    country: "Perú",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/1813.png",
+  },
+  "ecu.1": {
+    slug: "ecuador",
+    name: "LigaPro Ecuador",
+    short_name: "Ecuador",
+    country: "Ecuador",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/1944.png",
+  },
+  "bol.1": {
+    slug: "bolivia",
+    name: "División Profesional de Bolivia",
+    short_name: "Bolivia",
+    country: "Bolivia",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/1949.png",
+  },
+  "ven.1": {
+    slug: "venezuela",
+    name: "Liga FUTVE Venezuela",
+    short_name: "Venezuela",
+    country: "Venezuela",
+    logo_url: "https://a.espncdn.com/i/leaguelogos/soccer/500/1947.png",
+  },
 };
 
 function safeInt(val: unknown, def = 0): number {
@@ -277,9 +361,9 @@ async function buildFplPhotoResolver(
 
 const WIKI_UA = "CourtVisionStats/1.0 (https://github.com/joscar05-c/stats-sports)";
 const FOOTBALL_DESC_RE =
-  /football|soccer|goalkeeper|defender|midfielder|forward|winger|striker|futbolista|portero|defensa|centrocampista|delantero|calciatore|portiere|difensore|attaccante|fußballspieler|torwart|abwehrspieler|mittelfeldspieler|stürmer|footballeur|gardien de but/i;
+  /football|soccer|goalkeeper|defender|midfielder|forward|winger|striker|futbolista|portero|defensa|centrocampista|delantero|futebolista|futebol|goleiro|zagueiro|volante|atacante|calciatore|portiere|difensore|attaccante|fußballspieler|torwart|abwehrspieler|mittelfeldspieler|stürmer|footballeur|gardien de but/i;
 const DEATH_DESC_RE = /\b(?:18|19|20)\d{2}\s*[–\-]\s*(?:18|19|20)\d{2}\b/;
-const BORN_YEAR_DESC_RE = /(?:born|n\.|nacido en|geboren)\s+(\d{4})\b/i;
+const BORN_YEAR_DESC_RE = /(?:born|n\.|nacido en|nascido em|nasc\.|geboren)\s+(\d{4})\b/i;
 
 const LEAGUE_SECONDARY_WIKIS: Record<string, string[]> = {
   "esp.1": ["es"],
@@ -287,6 +371,18 @@ const LEAGUE_SECONDARY_WIKIS: Record<string, string[]> = {
   "ger.1": ["de"],
   "fra.1": ["fr"],
   "uefa.champions": ["es", "it", "de", "fr"],
+  "conmebol.libertadores": ["es", "pt"],
+  "conmebol.sudamericana": ["es", "pt"],
+  "arg.1": ["es"],
+  "bra.1": ["pt", "es"],
+  "col.1": ["es"],
+  "chi.1": ["es"],
+  "uru.1": ["es"],
+  "par.1": ["es"],
+  "per.1": ["es"],
+  "ecu.1": ["es"],
+  "bol.1": ["es"],
+  "ven.1": ["es"],
 };
 
 async function fetchWikiJson(url: string): Promise<any> {
@@ -724,8 +820,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // Standings upsert
+    const standingsChildren: any[] = standingsJson?.children ?? [];
+    const hasMultiGroups = standingsChildren.length > 1;
     const standingPayloads: any[] = [];
-    for (const child of standingsJson?.children ?? []) {
+    for (const child of standingsChildren) {
+      const groupName = hasMultiGroups
+        ? String(child?.name ?? child?.shortName ?? "").trim() || null
+        : null;
       for (const entry of child?.standings?.entries ?? []) {
         const tidExt = String(entry?.team?.id ?? "");
         const tid = teamIdMap[tidExt];
@@ -748,7 +849,7 @@ Deno.serve(async (req: Request) => {
           league_id: leagueId,
           season_id: seasonId,
           team_id: tid,
-          conference: null,
+          conference: groupName,
           playoff_seed: rank,
           played,
           wins,
@@ -829,8 +930,13 @@ Deno.serve(async (req: Request) => {
     // Calendar matchdays within range
     const nowPetMs = Date.now() - 5 * 3600 * 1000;
     const todayStr = new Date(nowPetMs).toISOString().slice(0, 10);
+    const isSouthAmerica =
+      leagueCode.startsWith("conmebol.") ||
+      ["arg.1", "bra.1", "col.1", "chi.1", "uru.1", "par.1", "per.1", "ecu.1", "bol.1", "ven.1"].includes(
+        leagueCode,
+      );
     const minStr = backfillSeason
-      ? `${seasonYear}-07-01`
+      ? `${seasonYear}-${isSouthAmerica ? "01" : "07"}-01`
       : new Date(nowPetMs - daysBack * 86400000).toISOString().slice(0, 10);
     const maxStr = new Date(nowPetMs + daysAhead * 86400000).toISOString().slice(0, 10);
 
@@ -847,15 +953,23 @@ Deno.serve(async (req: Request) => {
       }
     }
     if (targetDates.length === 0) {
-      // Structured calendar (e.g. UEFA Champions League): scan window dates (Tue-Thu for UCL backfill)
-      const startDateStr = backfillSeason ? `${seasonYear}-09-01` : minStr;
+      // Structured calendar (e.g. UEFA Champions League / CONMEBOL Cups): scan Tue-Thu on cup backfill
+      const isCupMidweek =
+        leagueCode === "uefa.champions" ||
+        leagueCode === "conmebol.libertadores" ||
+        leagueCode === "conmebol.sudamericana";
+      const startDateStr = backfillSeason
+        ? leagueCode.startsWith("conmebol.")
+          ? `${seasonYear}-02-01`
+          : `${seasonYear}-09-01`
+        : minStr;
       let cursor = new Date(`${startDateStr}T12:00:00Z`).getTime();
       const endMs = new Date(`${maxStr}T12:00:00Z`).getTime();
       while (cursor <= endMs) {
         const dt = new Date(cursor);
         const dow = dt.getUTCDay(); // 0=Sun..6=Sat
         const dStr = dt.toISOString().slice(0, 10);
-        if (!backfillSeason || leagueCode !== "uefa.champions" || dow === 2 || dow === 3 || dow === 4) {
+        if (!backfillSeason || !isCupMidweek || dow === 2 || dow === 3 || dow === 4) {
           targetDates.push(dStr);
         }
         cursor += 86400000;

@@ -44,6 +44,22 @@ import { TeamDetailModal } from './components/TeamDetailModal';
 import type { Game, League, Season, SyncRun, Team, TeamStanding } from './types/database';
 
 type TabKey = 'games' | 'leaders' | 'compare' | 'standings' | 'explore';
+type LeagueRegion = 'all' | 'southamerica' | 'cups' | 'europe';
+
+const CUP_LEAGUE_SLUGS = new Set(['champions-league', 'libertadores', 'sudamericana']);
+const EURO_LEAGUE_SLUGS = new Set([
+  'premier-league',
+  'laliga',
+  'serie-a',
+  'bundesliga',
+  'ligue-1',
+]);
+
+function getLeagueRegion(slug: string): Exclude<LeagueRegion, 'all'> {
+  if (CUP_LEAGUE_SLUGS.has(slug)) return 'cups';
+  if (EURO_LEAGUE_SLUGS.has(slug)) return 'europe';
+  return 'southamerica';
+}
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -54,6 +70,7 @@ export function App() {
   const [tab, setTab] = useState<TabKey>('games');
   const [leagues, setLeagues] = useState<League[]>([]);
   const [activeLeague, setActiveLeague] = useState<League | null>(null);
+  const [leagueRegion, setLeagueRegion] = useState<LeagueRegion>('all');
   const [season, setSeason] = useState<Season | null>(null);
   const [lastSync, setLastSync] = useState<SyncRun | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -206,6 +223,18 @@ export function App() {
       bundesliga: 'ger.1',
       'ligue-1': 'fra.1',
       'champions-league': 'uefa.champions',
+      libertadores: 'conmebol.libertadores',
+      sudamericana: 'conmebol.sudamericana',
+      argentina: 'arg.1',
+      brasileirao: 'bra.1',
+      colombia: 'col.1',
+      chile: 'chi.1',
+      uruguay: 'uru.1',
+      paraguay: 'par.1',
+      peru: 'per.1',
+      ecuador: 'ecu.1',
+      bolivia: 'bol.1',
+      venezuela: 'ven.1',
     };
     return map[lg.slug] ?? 'eng.1';
   };
@@ -699,40 +728,93 @@ export function App() {
             </div>
           ) : (
             <>
-              {sportLeagues.length > 1 && !activePropView && (
-                <div
-                  role="region"
-                  aria-label="Ligas disponibles"
-                  className="mb-4 flex items-center gap-1.5 overflow-x-auto no-scrollbar sb-scroll-fade-x pb-1"
-                >
-                  {sportLeagues.map((lg) => {
-                    const isSelected = activeLeague.id === lg.id;
-                    return (
-                      <button
-                        key={lg.id}
-                        type="button"
-                        aria-pressed={isSelected}
-                        onClick={() => void handleSelectLeague(lg)}
-                        className={`shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                          isSelected
-                            ? 'cv-tab-active border-transparent'
-                            : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
-                        }`}
+              {sportLeagues.length > 1 && !activePropView && (() => {
+                const showRegionTabs = activeSport === 'football' && sportLeagues.length > 6;
+                const filteredLeagues = showRegionTabs && leagueRegion !== 'all'
+                  ? sportLeagues.filter((lg) => getLeagueRegion(lg.slug) === leagueRegion)
+                  : sportLeagues;
+                const saCount = sportLeagues.filter((lg) => getLeagueRegion(lg.slug) === 'southamerica').length;
+                const cupCount = sportLeagues.filter((lg) => getLeagueRegion(lg.slug) === 'cups').length;
+                const euCount = sportLeagues.filter((lg) => getLeagueRegion(lg.slug) === 'europe').length;
+
+                return (
+                  <div className="mb-4 space-y-2">
+                    {showRegionTabs && (
+                      <div
+                        role="tablist"
+                        aria-label="Filtrar ligas por región"
+                        className="flex items-center gap-1.5 overflow-x-auto no-scrollbar sb-scroll-fade-x pb-0.5"
                       >
-                        {lg.logo_url && (
-                          <img
-                            src={lg.logo_url}
-                            alt=""
-                            aria-hidden="true"
-                            className="w-4 h-4 object-contain shrink-0"
-                          />
-                        )}
-                        <span>{lg.short_name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+                        {(
+                          [
+                            { key: 'all', label: `Todas (${sportLeagues.length})` },
+                            { key: 'southamerica', label: `Sudamérica (${saCount})` },
+                            { key: 'cups', label: `Copas Regionales (${cupCount})` },
+                            { key: 'europe', label: `Europa (${euCount})` },
+                          ] as const
+                        ).map((reg) => {
+                          const isRegActive = leagueRegion === reg.key;
+                          return (
+                            <button
+                              key={reg.key}
+                              type="button"
+                              role="tab"
+                              aria-selected={isRegActive}
+                              onClick={(e) => {
+                                setLeagueRegion(reg.key);
+                                e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                              }}
+                              className={`shrink-0 px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
+                                isRegActive
+                                  ? 'bg-white/[0.10] text-white border-white/[0.22]'
+                                  : 'bg-transparent text-slate-400 border-white/[0.06] hover:text-slate-200 hover:border-white/[0.14]'
+                              }`}
+                            >
+                              {reg.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div
+                      role="region"
+                      aria-label="Ligas disponibles"
+                      className="flex items-center gap-1.5 overflow-x-auto no-scrollbar sb-scroll-fade-x pb-1"
+                    >
+                      {filteredLeagues.map((lg) => {
+                        const isSelected = activeLeague.id === lg.id;
+                        return (
+                          <button
+                            key={lg.id}
+                            type="button"
+                            aria-pressed={isSelected}
+                            onClick={(e) => {
+                              void handleSelectLeague(lg);
+                              e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                            }}
+                            className={`shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                              isSelected
+                                ? 'cv-tab-active border-transparent'
+                                : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
+                            }`}
+                          >
+                            {lg.logo_url && (
+                              <img
+                                src={lg.logo_url}
+                                alt=""
+                                aria-hidden="true"
+                                className="w-4 h-4 object-contain shrink-0"
+                              />
+                            )}
+                            <span>{lg.short_name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {activePropView ? (
             <PropAnalysisView

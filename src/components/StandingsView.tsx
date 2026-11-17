@@ -10,6 +10,20 @@ interface StandingsViewProps {
   onSelectTeam: (team: Team, standing?: TeamStanding) => void;
 }
 
+const EURO_LEAGUE_SLUGS = new Set([
+  'premier-league',
+  'laliga',
+  'serie-a',
+  'bundesliga',
+  'ligue-1',
+]);
+
+function formatGroupLabel(raw: string): string {
+  return raw
+    .replace(/^Semifinals\s*-\s*Group\s+/i, 'Cuadrangular ')
+    .replace(/^Group\s+/i, 'Grupo ');
+}
+
 export function StandingsView({
   seasonId,
   sport = 'basketball',
@@ -18,11 +32,13 @@ export function StandingsView({
 }: StandingsViewProps) {
   const [standings, setStandings] = useState<TeamStanding[]>([]);
   const [conference, setConference] = useState<'East' | 'West'>('East');
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setSelectedGroup(null);
     fetchStandings(seasonId)
       .then((res) => {
         if (active) setStandings(res.data);
@@ -35,9 +51,41 @@ export function StandingsView({
     };
   }, [seasonId]);
 
+  const footballGroups =
+    sport === 'football'
+      ? Array.from(
+          new Set(
+            standings
+              .map((s) => s.conference)
+              .filter((g): g is string => Boolean(g)),
+          ),
+        )
+      : [];
+  const hasMultiGroups = sport === 'football' && footballGroups.length > 1;
+  const activeGroup = hasMultiGroups
+    ? selectedGroup && footballGroups.includes(selectedGroup)
+      ? selectedGroup
+      : footballGroups[0]
+    : null;
+
   const rows = standings
-    .filter((s) => (sport === 'football' ? true : !s.conference || s.conference === conference))
+    .filter((s) => {
+      if (sport !== 'football') {
+        return !s.conference || s.conference === conference;
+      }
+      if (hasMultiGroups && activeGroup) {
+        return s.conference === activeGroup;
+      }
+      return true;
+    })
     .sort((a, b) => (a.playoff_seed ?? 99) - (b.playoff_seed ?? 99));
+
+  const isUcl = leagueSlug === 'champions-league';
+  const isLibertadores = leagueSlug === 'libertadores';
+  const isSudamericana = leagueSlug === 'sudamericana';
+  const isEuroLeague = Boolean(leagueSlug && EURO_LEAGUE_SLUGS.has(leagueSlug));
+  const totalRows = rows.length;
+  const relegationStart = Math.max(2, totalRows - (totalRows >= 18 ? 2 : 1));
 
   return (
     <div className="space-y-4">
@@ -75,6 +123,37 @@ export function StandingsView({
           </div>
         )}
       </div>
+
+      {hasMultiGroups && (
+        <div
+          role="tablist"
+          aria-label="Grupos o zonas de competición"
+          className="flex items-center gap-1.5 overflow-x-auto no-scrollbar sb-scroll-fade-x pb-0.5"
+        >
+          {footballGroups.map((grp) => {
+            const isActive = activeGroup === grp;
+            return (
+              <button
+                key={grp}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={(e) => {
+                  setSelectedGroup(grp);
+                  e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                }}
+                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                  isActive
+                    ? 'cv-tab-active border-transparent'
+                    : 'bg-[#12151c] text-slate-400 border-white/[0.08] hover:text-white hover:border-white/[0.16]'
+                }`}
+              >
+                {formatGroupLabel(grp)}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {loading ? (
         <div className="h-80 rounded-xl sb-card animate-pulse" />
@@ -133,28 +212,58 @@ export function StandingsView({
               <tbody className="divide-y divide-white/[0.06]">
                 {rows.map((s, index) => {
                   const seed = s.playoff_seed ?? index + 1;
-                  const isUcl = leagueSlug === 'champions-league';
-                  const is18Team = leagueSlug === 'bundesliga' || leagueSlug === 'ligue-1';
-                  const seedZone =
-                    sport === 'football'
-                      ? isUcl
-                        ? seed <= 8
-                          ? 'bg-emerald-400/75'
-                          : seed <= 24
-                            ? 'bg-blue-400/75'
-                            : 'bg-rose-400/75'
-                        : seed <= 4
-                          ? 'bg-emerald-400/75'
-                          : seed === 5
-                            ? 'bg-blue-400/75'
-                            : seed >= (is18Team ? 16 : 18)
-                              ? 'bg-rose-400/75'
-                              : 'bg-slate-700'
-                      : seed <= 6
+                  const seedZone = (() => {
+                    if (sport !== 'football') {
+                      return seed <= 6
                         ? 'bg-emerald-400/75'
                         : seed <= 10
                           ? 'bg-blue-400/75'
                           : 'bg-slate-700';
+                    }
+                    if (isUcl) {
+                      return seed <= 8
+                        ? 'bg-emerald-400/75'
+                        : seed <= 24
+                          ? 'bg-blue-400/75'
+                          : 'bg-rose-400/75';
+                    }
+                    if (isLibertadores) {
+                      return seed <= 2
+                        ? 'bg-emerald-400/75'
+                        : seed === 3
+                          ? 'bg-blue-400/75'
+                          : 'bg-rose-400/75';
+                    }
+                    if (isSudamericana) {
+                      return seed === 1
+                        ? 'bg-emerald-400/75'
+                        : seed === 2
+                          ? 'bg-blue-400/75'
+                          : 'bg-rose-400/75';
+                    }
+                    if (hasMultiGroups) {
+                      const advanceCut = totalRows >= 12 ? 4 : 2;
+                      return seed <= advanceCut ? 'bg-emerald-400/75' : 'bg-slate-700';
+                    }
+                    if (isEuroLeague) {
+                      const is18Team = leagueSlug === 'bundesliga' || leagueSlug === 'ligue-1';
+                      return seed <= 4
+                        ? 'bg-emerald-400/75'
+                        : seed === 5
+                          ? 'bg-blue-400/75'
+                          : seed >= (is18Team ? 16 : 18)
+                            ? 'bg-rose-400/75'
+                            : 'bg-slate-700';
+                    }
+                    // South American domestic leagues (single table)
+                    return seed <= 4
+                      ? 'bg-emerald-400/75'
+                      : seed <= 6
+                        ? 'bg-blue-400/75'
+                        : totalRows >= 10 && seed >= relegationStart
+                          ? 'bg-rose-400/75'
+                          : 'bg-slate-700';
+                  })();
 
                   return (
                     <tr
@@ -264,7 +373,7 @@ export function StandingsView({
 
           <div className="px-4 py-2.5 bg-[#0e1117] border-t border-white/[0.06] flex flex-wrap items-center gap-4 text-[11px] text-slate-400">
             {sport === 'football' ? (
-              leagueSlug === 'champions-league' ? (
+              isUcl ? (
                 <>
                   <span className="inline-flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-400/75" />
@@ -279,7 +388,42 @@ export function StandingsView({
                     25-36 Eliminados
                   </span>
                 </>
-              ) : (
+              ) : isLibertadores ? (
+                <>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400/75" />
+                    1-2 Octavos de Final
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-400/75" />
+                    3 Play-off Sudamericana
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-rose-400/75" />
+                    4 Eliminado
+                  </span>
+                </>
+              ) : isSudamericana ? (
+                <>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400/75" />
+                    1 Octavos de Final directos
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-400/75" />
+                    2 Play-off de Octavos
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-rose-400/75" />
+                    3-4 Eliminados
+                  </span>
+                </>
+              ) : hasMultiGroups ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400/75" />
+                  {totalRows >= 12 ? '1-4 Clasifican a fase final' : '1-2 Clasifican / Finalistas'}
+                </span>
+              ) : isEuroLeague ? (
                 <>
                   <span className="inline-flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-400/75" />
@@ -295,6 +439,23 @@ export function StandingsView({
                       ? '16-18 Descenso / Promoción'
                       : '18-20 Descenso'}
                   </span>
+                </>
+              ) : (
+                <>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400/75" />
+                    1-4 Copa Libertadores
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-400/75" />
+                    5-6 Copa Sudamericana
+                  </span>
+                  {totalRows >= 10 && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-400/75" />
+                      {relegationStart}-{totalRows} Zona baja / Descenso
+                    </span>
+                  )}
                 </>
               )
             ) : (
