@@ -18,6 +18,7 @@ import {
   fetchGameBoxScore,
   fetchGameById,
   fetchPlayerProfileAndLogs,
+  type FootballGameBettingContext,
   type GameBettingContext,
 } from '../services/basketballApi';
 import { supabase } from '../lib/supabase';
@@ -34,12 +35,28 @@ import {
   summarizeTeamRecent,
   type PropRecommendation,
 } from '../utils/betting';
-import type { Game, Player, PlayerGameStat, PlayerSeasonAverage, TeamSeasonAverage } from '../types/database';
+import {
+  buildFootballMatchupInsight,
+  buildFootballPropsRecommendations,
+  getFootballPlayerStatValue,
+  getLiveFootballPropProgress,
+} from '../utils/footballProps';
+import type {
+  FootballPlayerSeasonAverage,
+  FootballTeamSeasonAverage,
+  Game,
+  Player,
+  PlayerGameStat,
+  PlayerSeasonAverage,
+  TeamSeasonAverage,
+} from '../types/database';
+import type { AnyBettingContext } from './PropsSidebar';
 
 interface PropAnalysisViewProps {
   game: Game;
   prop: PropRecommendation;
-  context: GameBettingContext;
+  context: AnyBettingContext;
+  sport?: 'basketball' | 'football';
   isPro: boolean;
   onBack: () => void;
   onSelectProp: (prop: PropRecommendation) => void;
@@ -60,6 +77,7 @@ export function PropAnalysisView({
   game: initialGame,
   prop,
   context,
+  sport = 'basketball',
   isPro,
   onBack,
   onSelectProp,
@@ -98,7 +116,7 @@ export function PropAnalysisView({
     }
     let active = true;
     setLoadingExtra(true);
-    fetchPlayerProfileAndLogs(prop.playerId)
+    fetchPlayerProfileAndLogs(prop.playerId, sport)
       .then((res) => {
         if (!active) return;
         setPlayerProfile(res.player);
@@ -111,7 +129,7 @@ export function PropAnalysisView({
     return () => {
       active = false;
     };
-  }, [prop.scope, prop.playerId]);
+  }, [prop.scope, prop.playerId, sport]);
 
   // Keep game score and player boxscore synced in real time without page reload
   useEffect(() => {
@@ -157,66 +175,98 @@ export function PropAnalysisView({
     () => summarizeTeamRecent(liveGame.away_team_id, context.awayRecentGames),
     [liveGame.away_team_id, context.awayRecentGames],
   );
-  const insight = useMemo(
-    () =>
-      buildMatchupBettingInsight(
+  const insight = useMemo(() => {
+    if (sport === 'football') {
+      const fbCtx = context as FootballGameBettingContext;
+      return buildFootballMatchupInsight(
         liveGame,
-        context.homeStanding,
-        context.awayStanding,
+        fbCtx.homeStanding,
+        fbCtx.awayStanding,
+        fbCtx.homeTeamAvg,
+        fbCtx.awayTeamAvg,
         homeRecent,
         awayRecent,
-        context.homeRecentGames,
-        context.awayRecentGames,
-      ),
-    [
+        fbCtx.homeRecentGames,
+        fbCtx.awayRecentGames,
+      );
+    }
+    const nbaCtx = context as GameBettingContext;
+    return buildMatchupBettingInsight(
       liveGame,
-      context.homeStanding,
-      context.awayStanding,
+      nbaCtx.homeStanding,
+      nbaCtx.awayStanding,
       homeRecent,
       awayRecent,
-      context.homeRecentGames,
-      context.awayRecentGames,
-    ],
-  );
+      nbaCtx.homeRecentGames,
+      nbaCtx.awayRecentGames,
+    );
+  }, [liveGame, context, sport, homeRecent, awayRecent]);
 
-  const allGameProps = useMemo(
-    () =>
-      buildGamePropsRecommendations({
+  const allGameProps = useMemo(() => {
+    if (sport === 'football') {
+      const fbCtx = context as FootballGameBettingContext;
+      return buildFootballPropsRecommendations({
         game: liveGame,
-        homeStanding: context.homeStanding,
-        awayStanding: context.awayStanding,
-        homeTeamAvg: context.homeTeamAvg,
-        awayTeamAvg: context.awayTeamAvg,
+        homeStanding: fbCtx.homeStanding,
+        awayStanding: fbCtx.awayStanding,
+        homeTeamAvg: fbCtx.homeTeamAvg,
+        awayTeamAvg: fbCtx.awayTeamAvg,
         homeRecent,
         awayRecent,
-        homeRecentGames: context.homeRecentGames,
-        awayRecentGames: context.awayRecentGames,
-        keyPlayers: context.keyPlayers,
-        playerRecentLogs: context.playerRecentLogs ?? [],
-      }),
-    [liveGame, context, homeRecent, awayRecent],
-  );
+        homeRecentGames: fbCtx.homeRecentGames,
+        awayRecentGames: fbCtx.awayRecentGames,
+        keyPlayers: fbCtx.keyPlayers,
+        playerRecentLogs: fbCtx.playerRecentLogs ?? [],
+      });
+    }
+    const nbaCtx = context as GameBettingContext;
+    return buildGamePropsRecommendations({
+      game: liveGame,
+      homeStanding: nbaCtx.homeStanding,
+      awayStanding: nbaCtx.awayStanding,
+      homeTeamAvg: nbaCtx.homeTeamAvg,
+      awayTeamAvg: nbaCtx.awayTeamAvg,
+      homeRecent,
+      awayRecent,
+      homeRecentGames: nbaCtx.homeRecentGames,
+      awayRecentGames: nbaCtx.awayRecentGames,
+      keyPlayers: nbaCtx.keyPlayers,
+      playerRecentLogs: nbaCtx.playerRecentLogs ?? [],
+    });
+  }, [liveGame, context, sport, homeRecent, awayRecent]);
 
   // Build deep statistical breakdown for the selected prop
   const analysis = useMemo(() => {
     const unit =
-      prop.metricKey === 'pts'
-        ? 'PTS'
-        : prop.metricKey === 'reb'
-          ? 'REB'
-          : prop.metricKey === 'ast'
-            ? 'AST'
-            : prop.metricKey === 'pra'
-              ? 'P+R+A'
-              : prop.metricKey === 'tpm'
-                ? '3PT'
-                : prop.pick === 'ML'
-                  ? '%'
-                  : prop.id.startsWith('team_3pm_')
-                    ? '3PM'
-                    : prop.id.startsWith('team_reb_')
+      prop.footballMetricKey === 'goals'
+        ? 'GOL'
+        : prop.footballMetricKey === 'assists'
+          ? 'AST'
+          : prop.footballMetricKey === 'shots'
+            ? 'REM'
+            : prop.footballMetricKey === 'sot'
+              ? 'ARCO'
+              : prop.id.startsWith('fb_total_')
+                ? 'GOL'
+                : prop.id.startsWith('fb_btts_')
+                  ? 'BTTS'
+                  : prop.metricKey === 'pts'
+                    ? 'PTS'
+                    : prop.metricKey === 'reb'
                       ? 'REB'
-                      : 'PTS';
+                      : prop.metricKey === 'ast'
+                        ? 'AST'
+                        : prop.metricKey === 'pra'
+                          ? 'P+R+A'
+                          : prop.metricKey === 'tpm'
+                            ? '3PT'
+                            : prop.pick === 'ML'
+                              ? '%'
+                              : prop.id.startsWith('team_3pm_')
+                                ? '3PM'
+                                : prop.id.startsWith('team_reb_')
+                                  ? 'REB'
+                                  : 'PTS';
 
     let seasonBaseline = 0;
     let recentBaseline = 0;
@@ -227,9 +277,89 @@ export function PropAnalysisView({
     let oppTeamObj: TeamSeasonAverage | null = null;
     let historySeries: HistoryPoint[] = [];
 
-    if (prop.scope === 'player' && prop.playerId && prop.metricKey) {
-      playerAvgObj = context.keyPlayers.find((p) => p.player_id === prop.playerId) ?? null;
-      const fallbackLogs = (context.playerRecentLogs ?? []).filter(
+    if (sport === 'football' && prop.scope === 'player' && prop.playerId && prop.footballMetricKey) {
+      const fbCtx = context as FootballGameBettingContext;
+      const fbPlayer: FootballPlayerSeasonAverage | null =
+        fbCtx.keyPlayers.find((p) => p.player_id === prop.playerId) ?? null;
+      const fallbackLogs = (fbCtx.playerRecentLogs ?? []).filter(
+        (l) => l.player_id === prop.playerId,
+      );
+      const logsToUse = fullPlayerLogs.length > 0 ? fullPlayerLogs : fallbackLogs;
+      const mKey = prop.footballMetricKey;
+      seasonBaseline =
+        mKey === 'shots'
+          ? Number(fbPlayer?.shots_pg ?? prop.lineValue)
+          : mKey === 'sot'
+            ? Number(fbPlayer?.sot_pg ?? prop.lineValue)
+            : mKey === 'goals'
+              ? Number(fbPlayer?.goals_pg ?? prop.lineValue)
+              : fbPlayer && fbPlayer.gp > 0
+                ? fbPlayer.assists / fbPlayer.gp
+                : prop.lineValue;
+      const recentVals = logsToUse.slice(0, 6).map((g) => getFootballPlayerStatValue(g, mKey));
+      recentBaseline =
+        recentVals.length > 0
+          ? recentVals.reduce((a, b) => a + b, 0) / recentVals.length
+          : seasonBaseline;
+      projectedVal = recentVals.length >= 2 ? seasonBaseline * 0.45 + recentBaseline * 0.55 : seasonBaseline;
+      const fbOpp: FootballTeamSeasonAverage | null =
+        fbPlayer?.team_id === liveGame.home_team_id ? fbCtx.awayTeamAvg : fbCtx.homeTeamAvg;
+      if (fbOpp) {
+        rivalFactorLabel = `Rival ${fbOpp.team_abbreviation}: ${Number(fbOpp.ga_pg ?? 1.2).toFixed(2)} GC/PJ`;
+        rivalFactorDetail = `${fbOpp.team_short_name} acumula ${fbOpp.clean_sheets} vallas invictas.`;
+      }
+      historySeries = [...logsToUse]
+        .slice(0, 12)
+        .reverse()
+        .map((row, idx) => {
+          const val = getFootballPlayerStatValue(row, mKey);
+          const isHome = row.game?.home_team_id === row.team_id;
+          const oppAbbr = isHome
+            ? row.game?.away_team?.abbreviation
+            : row.game?.home_team?.abbreviation;
+          const ss = row.sport_stats;
+          return {
+            id: String(row.id ?? idx),
+            dateLabel: row.game?.game_date ? row.game.game_date.slice(5) : `#${idx + 1}`,
+            matchupLabel: oppAbbr ? `${isHome ? 'vs' : '@'} ${oppAbbr}` : `${row.minutes}m`,
+            value: val,
+            secondaryText: `${ss?.goals ?? 0}G / ${ss?.assists ?? 0}A / ${ss?.shots ?? 0} REM (${ss?.shots_on_target ?? 0} arco)`,
+          };
+        });
+    } else if (sport === 'football' && (prop.id.startsWith('fb_total_') || prop.id.startsWith('fb_btts_'))) {
+      const fbCtx = context as FootballGameBettingContext;
+      const homeGf = Number(fbCtx.homeTeamAvg?.gf_pg ?? homeRecent.avgFor ?? 1.3);
+      const homeGa = Number(fbCtx.homeTeamAvg?.ga_pg ?? homeRecent.avgAgainst ?? 1.2);
+      const awayGf = Number(fbCtx.awayTeamAvg?.gf_pg ?? awayRecent.avgFor ?? 1.2);
+      const awayGa = Number(fbCtx.awayTeamAvg?.ga_pg ?? awayRecent.avgAgainst ?? 1.3);
+      seasonBaseline = insight.expectedTotalSeason ?? (homeGf + awayGa) / 2 + (awayGf + homeGa) / 2;
+      recentBaseline = insight.expectedTotalRecent ?? seasonBaseline;
+      projectedVal = prop.id.startsWith('fb_total_')
+        ? seasonBaseline * 0.55 + recentBaseline * 0.45
+        : homeRecent.avgFor > 0 && awayRecent.avgFor > 0
+          ? 1
+          : 0.4;
+      rivalFactorLabel = `${liveGame.home_team.abbreviation} ${homeGf.toFixed(2)} GF vs ${liveGame.away_team.abbreviation} ${awayGf.toFixed(2)} GF`;
+      rivalFactorDetail = `Promedios defensivos: Local ${homeGa.toFixed(2)} GC/PJ · Visita ${awayGa.toFixed(2)} GC/PJ.`;
+      const combinedGames = [...fbCtx.awayRecentGames, ...fbCtx.homeRecentGames]
+        .filter((g) => g.status === 'final')
+        .sort((a, b) => a.game_date.localeCompare(b.game_date))
+        .slice(-10);
+      historySeries = combinedGames.map((g) => ({
+        id: String(g.id),
+        dateLabel: g.game_date.slice(5),
+        matchupLabel: `${g.away_team.abbreviation}@${g.home_team.abbreviation}`,
+        value: prop.id.startsWith('fb_btts_')
+          ? g.home_score > 0 && g.away_score > 0
+            ? 1
+            : 0
+          : g.away_score + g.home_score,
+        secondaryText: `${g.away_score}-${g.home_score}`,
+      }));
+    } else if (prop.scope === 'player' && prop.playerId && prop.metricKey) {
+      const nbaCtx = context as GameBettingContext;
+      playerAvgObj = nbaCtx.keyPlayers.find((p) => p.player_id === prop.playerId) ?? null;
+      const fallbackLogs = (nbaCtx.playerRecentLogs ?? []).filter(
         (l) => l.player_id === prop.playerId,
       );
       const logsToUse = fullPlayerLogs.length > 0 ? fullPlayerLogs : fallbackLogs;
@@ -244,8 +374,8 @@ export function PropAnalysisView({
 
       oppTeamObj =
         playerAvgObj?.team_id === liveGame.home_team_id
-          ? context.awayTeamAvg
-          : context.homeTeamAvg;
+          ? nbaCtx.awayTeamAvg
+          : nbaCtx.homeTeamAvg;
 
       let proj =
         recentVals.length >= 2 ? seasonBaseline * 0.45 + recentBaseline * 0.55 : seasonBaseline;
@@ -296,17 +426,18 @@ export function PropAnalysisView({
           };
         });
     } else if (prop.id.startsWith('team_total_')) {
+      const nbaCtx = context as GameBettingContext;
       const homePpg = Number(
-        context.homeStanding?.ppg ?? context.homeTeamAvg?.ppg ?? homeRecent.avgFor ?? 0,
+        nbaCtx.homeStanding?.ppg ?? nbaCtx.homeTeamAvg?.ppg ?? homeRecent.avgFor ?? 0,
       );
       const homeOppg = Number(
-        context.homeStanding?.oppg ?? context.homeTeamAvg?.oppg ?? homeRecent.avgAgainst ?? 0,
+        nbaCtx.homeStanding?.oppg ?? nbaCtx.homeTeamAvg?.oppg ?? homeRecent.avgAgainst ?? 0,
       );
       const awayPpg = Number(
-        context.awayStanding?.ppg ?? context.awayTeamAvg?.ppg ?? awayRecent.avgFor ?? 0,
+        nbaCtx.awayStanding?.ppg ?? nbaCtx.awayTeamAvg?.ppg ?? awayRecent.avgFor ?? 0,
       );
       const awayOppg = Number(
-        context.awayStanding?.oppg ?? context.awayTeamAvg?.oppg ?? awayRecent.avgAgainst ?? 0,
+        nbaCtx.awayStanding?.oppg ?? nbaCtx.awayTeamAvg?.oppg ?? awayRecent.avgAgainst ?? 0,
       );
       seasonBaseline =
         insight.expectedTotalSeason ??
@@ -318,7 +449,7 @@ export function PropAnalysisView({
         1,
       )} puntos.`;
 
-      const combinedGames = [...context.awayRecentGames, ...context.homeRecentGames]
+      const combinedGames = [...nbaCtx.awayRecentGames, ...nbaCtx.homeRecentGames]
         .filter((g) => g.status === 'final')
         .sort((a, b) => a.game_date.localeCompare(b.game_date))
         .slice(-10);
@@ -331,11 +462,12 @@ export function PropAnalysisView({
         secondaryText: `${g.away_score}-${g.home_score} (Total ${g.away_score + g.home_score})`,
       }));
     } else if (prop.id.startsWith('team_spread_')) {
+      const nbaCtx = context as GameBettingContext;
       const chosenIsHome = prop.teamAbbr === liveGame.home_team.abbreviation;
       const projHomeMargin = insight.projectedHomeMargin ?? 0;
       projectedVal = chosenIsHome ? projHomeMargin : -projHomeMargin;
-      const mySt = chosenIsHome ? context.homeStanding : context.awayStanding;
-      const oppSt = chosenIsHome ? context.awayStanding : context.homeStanding;
+      const mySt = chosenIsHome ? nbaCtx.homeStanding : nbaCtx.awayStanding;
+      const oppSt = chosenIsHome ? nbaCtx.awayStanding : nbaCtx.homeStanding;
       seasonBaseline = Number(mySt?.diff ?? 0);
       recentBaseline = chosenIsHome ? homeRecent.avgMargin : awayRecent.avgMargin;
       rivalFactorLabel = `Diferencial rival (${oppSt?.team.abbreviation ?? ''}): ${
@@ -343,7 +475,7 @@ export function PropAnalysisView({
       }${Number(oppSt?.diff ?? 0).toFixed(1)}`;
       rivalFactorDetail = `Incluye ajuste estándar de localía NBA (+2.2 pts para ${liveGame.home_team.abbreviation}).`;
 
-      const recentList = chosenIsHome ? context.homeRecentGames : context.awayRecentGames;
+      const recentList = chosenIsHome ? nbaCtx.homeRecentGames : nbaCtx.awayRecentGames;
       const myTeamId = chosenIsHome ? liveGame.home_team_id : liveGame.away_team_id;
       historySeries = [...recentList]
         .filter((g) => g.status === 'final')
@@ -362,12 +494,13 @@ export function PropAnalysisView({
           };
         });
     } else if (prop.id.startsWith('team_ml_')) {
+      const nbaCtx = context as GameBettingContext;
       const chosenIsHome = prop.teamAbbr === liveGame.home_team.abbreviation;
       const homeWinPct = Number(
-        context.homeStanding?.win_pct ?? context.homeTeamAvg?.win_pct ?? 0.5,
+        nbaCtx.homeStanding?.win_pct ?? nbaCtx.homeTeamAvg?.win_pct ?? 0.5,
       );
       const awayWinPct = Number(
-        context.awayStanding?.win_pct ?? context.awayTeamAvg?.win_pct ?? 0.5,
+        nbaCtx.awayStanding?.win_pct ?? nbaCtx.awayTeamAvg?.win_pct ?? 0.5,
       );
       const marginProb =
         insight.projectedHomeMargin != null
@@ -394,7 +527,7 @@ export function PropAnalysisView({
         1,
       )}%) y el precio del mercado.`;
 
-      const recentList = chosenIsHome ? context.homeRecentGames : context.awayRecentGames;
+      const recentList = chosenIsHome ? nbaCtx.homeRecentGames : nbaCtx.awayRecentGames;
       const myTeamId = chosenIsHome ? liveGame.home_team_id : liveGame.away_team_id;
       historySeries = [...recentList]
         .filter((g) => g.status === 'final')
@@ -413,16 +546,17 @@ export function PropAnalysisView({
           };
         });
     } else if (prop.id.startsWith('team_pts_')) {
+      const nbaCtx = context as GameBettingContext;
       const teamId = Number(prop.id.replace('team_pts_', ''));
       const isHome = teamId === liveGame.home_team_id;
       const myPpg = Number(
-        (isHome ? context.homeStanding?.ppg : context.awayStanding?.ppg) ??
-          (isHome ? context.homeTeamAvg?.ppg : context.awayTeamAvg?.ppg) ??
+        (isHome ? nbaCtx.homeStanding?.ppg : nbaCtx.awayStanding?.ppg) ??
+          (isHome ? nbaCtx.homeTeamAvg?.ppg : nbaCtx.awayTeamAvg?.ppg) ??
           0,
       );
       const oppOppg = Number(
-        (isHome ? context.awayStanding?.oppg : context.homeStanding?.oppg) ??
-          (isHome ? context.awayTeamAvg?.oppg : context.homeTeamAvg?.oppg) ??
+        (isHome ? nbaCtx.awayStanding?.oppg : nbaCtx.homeStanding?.oppg) ??
+          (isHome ? nbaCtx.awayTeamAvg?.oppg : nbaCtx.homeTeamAvg?.oppg) ??
           0,
       );
       const myRec = isHome ? homeRecent : awayRecent;
@@ -438,7 +572,7 @@ export function PropAnalysisView({
         1,
       )} en sus últimos ${myRec.gamesCount || 1} partidos.`;
 
-      const recentList = isHome ? context.homeRecentGames : context.awayRecentGames;
+      const recentList = isHome ? nbaCtx.homeRecentGames : nbaCtx.awayRecentGames;
       historySeries = [...recentList]
         .filter((g) => g.status === 'final')
         .reverse()
@@ -455,10 +589,11 @@ export function PropAnalysisView({
           };
         });
     } else if (prop.id.startsWith('team_3pm_')) {
+      const nbaCtx = context as GameBettingContext;
       const teamId = Number(prop.id.replace('team_3pm_', ''));
       const isHome = teamId === liveGame.home_team_id;
-      const tAvg = isHome ? context.homeTeamAvg : context.awayTeamAvg;
-      const oppAvg = isHome ? context.awayTeamAvg : context.homeTeamAvg;
+      const tAvg = isHome ? nbaCtx.homeTeamAvg : nbaCtx.awayTeamAvg;
+      const oppAvg = isHome ? nbaCtx.awayTeamAvg : nbaCtx.homeTeamAvg;
       seasonBaseline = Number(tAvg?.tpm_pg ?? prop.lineValue);
       recentBaseline = seasonBaseline;
       const oppOppg = Number(oppAvg?.oppg ?? 113.5);
@@ -469,10 +604,11 @@ export function PropAnalysisView({
         tAvg?.tp_pct ?? 0,
       ).toFixed(1)}% en triples (${Number(tAvg?.tpa_pg ?? 0).toFixed(1)} intentos/PJ).`;
     } else if (prop.id.startsWith('team_reb_')) {
+      const nbaCtx = context as GameBettingContext;
       const teamId = Number(prop.id.replace('team_reb_', ''));
       const isHome = teamId === liveGame.home_team_id;
-      const tAvg = isHome ? context.homeTeamAvg : context.awayTeamAvg;
-      const oppAvg = isHome ? context.awayTeamAvg : context.homeTeamAvg;
+      const tAvg = isHome ? nbaCtx.homeTeamAvg : nbaCtx.awayTeamAvg;
+      const oppAvg = isHome ? nbaCtx.awayTeamAvg : nbaCtx.homeTeamAvg;
       seasonBaseline = Number(tAvg?.rpg ?? prop.lineValue);
       recentBaseline = seasonBaseline;
       const oppReb = Number(oppAvg?.rpg ?? seasonBaseline);
@@ -650,10 +786,13 @@ export function PropAnalysisView({
     targetPick,
   ]);
 
-  const liveStatus = useMemo(
-    () => evaluatePropStatus(prop, liveGame, boxStats),
-    [prop, liveGame, boxStats],
-  );
+  const liveStatus = useMemo(() => {
+    if (sport === 'football') {
+      const txt = getLiveFootballPropProgress(prop, liveGame, boxStats);
+      return txt ? { state: 'live' as const, label: txt, currentVal: null } : null;
+    }
+    return evaluatePropStatus(prop, liveGame, boxStats);
+  }, [sport, prop, liveGame, boxStats]);
 
   const safeStake = Number.isFinite(stakeAmount) && stakeAmount > 0 ? stakeAmount : 0;
   const payoutTotal = safeStake * prop.estimatedMultiplier;
@@ -661,11 +800,11 @@ export function PropAnalysisView({
   const currencyPrefix = stakeCurrency === 'PEN' ? 'S/' : '$';
 
   const maxChartVal = useMemo(() => {
-    if (analysis.historySeries.length === 0) return 20;
+    if (analysis.historySeries.length === 0) return sport === 'football' ? 5 : 20;
     const absVals = analysis.historySeries.map((h) => Math.abs(h.value));
     const refLine = prop.pick === 'SPREAD' ? Math.abs(customLine) : customLine;
-    return Math.max(5, Math.ceil(Math.max(...absVals, refLine) * 1.15));
-  }, [analysis.historySeries, customLine, prop.pick]);
+    return Math.max(sport === 'football' ? 2 : 5, Math.ceil(Math.max(...absVals, refLine) * 1.15));
+  }, [analysis.historySeries, customLine, prop.pick, sport]);
 
   const relatedProps = useMemo(
     () => allGameProps.filter((p) => p.id !== prop.id).slice(0, 8),

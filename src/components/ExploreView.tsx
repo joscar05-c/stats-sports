@@ -111,8 +111,12 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={
                   subTab === 'players'
-                    ? 'Buscar jugador o equipo (ej. Jokic, Lakers)...'
-                    : 'Buscar franquicia...'
+                    ? league.sport === 'football'
+                      ? 'Buscar jugador o club (ej. Haaland, Arsenal)...'
+                      : 'Buscar jugador o equipo (ej. Jokic, Lakers)...'
+                    : league.sport === 'football'
+                      ? 'Buscar club o ciudad...'
+                      : 'Buscar franquicia...'
                 }
                 className="w-full bg-[#12151c] border border-white/[0.1] rounded-lg pl-9 pr-3 py-2 text-base sm:text-sm text-white placeholder:text-slate-500"
               />
@@ -126,7 +130,9 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
                   onChange={(e) => setTeamFilter(e.target.value)}
                   className="bg-[#12151c] border border-white/[0.1] rounded-lg px-3 py-2 text-xs text-slate-200"
                 >
-                  <option value="all">Todos los equipos</option>
+                  <option value="all">
+                    {league.sport === 'football' ? 'Todos los clubes' : 'Todos los equipos'}
+                  </option>
                   {teams.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.abbreviation} — {t.short_name}
@@ -141,9 +147,20 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
                   className="bg-[#12151c] border border-white/[0.1] rounded-lg px-3 py-2 text-xs text-slate-200"
                 >
                   <option value="all">Posición</option>
-                  <option value="G">Guard (G)</option>
-                  <option value="F">Forward (F)</option>
-                  <option value="C">Center (C)</option>
+                  {league.sport === 'football' ? (
+                    <>
+                      <option value="G">Portero (POR)</option>
+                      <option value="D">Defensa (DEF)</option>
+                      <option value="M">Mediocampista (MED)</option>
+                      <option value="F">Delantero (DEL)</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="G">Guard (G)</option>
+                      <option value="F">Forward (F)</option>
+                      <option value="C">Center (C)</option>
+                    </>
+                  )}
                 </select>
               </div>
             )}

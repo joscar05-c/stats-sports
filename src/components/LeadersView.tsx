@@ -1,11 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Flame, Filter, Shield, User } from 'lucide-react';
-import { fetchSeasonAverages, fetchTeamSeasonAverages } from '../services/basketballApi';
-import type { PlayerSeasonAverage, Team, TeamSeasonAverage } from '../types/database';
+import {
+  fetchFootballSeasonAverages,
+  fetchFootballTeamSeasonAverages,
+  fetchSeasonAverages,
+  fetchTeamSeasonAverages,
+} from '../services/basketballApi';
+import type {
+  FootballPlayerSeasonAverage,
+  FootballTeamSeasonAverage,
+  PlayerSeasonAverage,
+  Team,
+  TeamSeasonAverage,
+} from '../types/database';
 
 interface LeadersViewProps {
   leagueId: number;
   seasonId: number;
+  sport?: 'basketball' | 'football';
   onSelectPlayer: (playerId: number) => void;
   onSelectTeam?: (team: Team) => void;
 }
@@ -97,17 +109,79 @@ const TEAM_CATEGORIES: Array<{
   { key: 'bench_ppg', label: 'Pts de Banca', subtitle: 'Puntos anotados por suplentes por partido' },
 ];
 
+type FootballPlayerMetricKey =
+  | 'goals'
+  | 'assists'
+  | 'shots'
+  | 'shots_on_target'
+  | 'goals_pg'
+  | 'shots_pg'
+  | 'saves'
+  | 'yellow_cards';
+
+type FootballTeamMetricKey =
+  | 'points'
+  | 'goals_for'
+  | 'goals_against'
+  | 'goal_diff'
+  | 'possession_avg'
+  | 'shots_pg'
+  | 'sot_pg'
+  | 'corners_pg'
+  | 'clean_sheets';
+
+const FOOTBALL_PLAYER_CATEGORIES: Array<{
+  key: FootballPlayerMetricKey;
+  label: string;
+  isInt?: boolean;
+}> = [
+  { key: 'goals', label: 'Goles', isInt: true },
+  { key: 'assists', label: 'Asistencias', isInt: true },
+  { key: 'shots', label: 'Remates', isInt: true },
+  { key: 'shots_on_target', label: 'Al Arco', isInt: true },
+  { key: 'goals_pg', label: 'Goles / PJ' },
+  { key: 'shots_pg', label: 'Remates / PJ' },
+  { key: 'saves', label: 'Atajadas', isInt: true },
+  { key: 'yellow_cards', label: 'Tarjetas Amarillas', isInt: true },
+];
+
+const FOOTBALL_TEAM_CATEGORIES: Array<{
+  key: FootballTeamMetricKey;
+  label: string;
+  subtitle: string;
+  suffix?: string;
+  asc?: boolean;
+  decimals?: number;
+  isInt?: boolean;
+  showSign?: boolean;
+}> = [
+  { key: 'points', label: 'Puntos', subtitle: 'Puntos acumulados en liga', isInt: true },
+  { key: 'goals_for', label: 'Goles a Favor', subtitle: 'Goles anotados en la temporada', isInt: true },
+  { key: 'goals_against', label: 'Menos Goles Rec.', subtitle: 'Mejor solidez defensiva', asc: true, isInt: true },
+  { key: 'goal_diff', label: 'Dif. de Gol', subtitle: 'Diferencia neta de goles', isInt: true, showSign: true },
+  { key: 'possession_avg', label: 'Posesión %', subtitle: 'Posesión promedio por partido', suffix: '%' },
+  { key: 'shots_pg', label: 'Remates / PJ', subtitle: 'Remates totales por encuentro' },
+  { key: 'sot_pg', label: 'Al Arco / PJ', subtitle: 'Disparos a puerta por encuentro' },
+  { key: 'corners_pg', label: 'Córners / PJ', subtitle: 'Tiros de esquina ganados por partido' },
+  { key: 'clean_sheets', label: 'Vallas Invictas', subtitle: 'Partidos sin recibir gol', isInt: true },
+];
+
 export function LeadersView({
   leagueId,
   seasonId,
+  sport = 'basketball',
   onSelectPlayer,
   onSelectTeam,
 }: LeadersViewProps) {
   const [mode, setMode] = useState<LeaderMode>('players');
   const [averages, setAverages] = useState<PlayerSeasonAverage[]>([]);
   const [teamAverages, setTeamAverages] = useState<TeamSeasonAverage[]>([]);
+  const [fbAverages, setFbAverages] = useState<FootballPlayerSeasonAverage[]>([]);
+  const [fbTeamAverages, setFbTeamAverages] = useState<FootballTeamSeasonAverage[]>([]);
   const [playerMetric, setPlayerMetric] = useState<PlayerStatMetricKey>('ppg');
   const [teamMetric, setTeamMetric] = useState<TeamStatMetricKey>('ppg');
+  const [fbPlayerMetric, setFbPlayerMetric] = useState<FootballPlayerMetricKey>('goals');
+  const [fbTeamMetric, setFbTeamMetric] = useState<FootballTeamMetricKey>('points');
   const [minGp, setMinGp] = useState<number>(3);
   const [conferenceFilter, setConferenceFilter] = useState<'ALL' | 'East' | 'West'>('ALL');
   const [loading, setLoading] = useState(true);
@@ -115,25 +189,46 @@ export function LeadersView({
   useEffect(() => {
     let active = true;
     setLoading(true);
-    Promise.all([
-      fetchSeasonAverages(leagueId, seasonId),
-      fetchTeamSeasonAverages(leagueId, seasonId),
-    ])
-      .then(([pRes, tRes]) => {
-        if (!active) return;
-        setAverages(pRes.data);
-        setTeamAverages(tRes.data);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    if (sport === 'football') {
+      Promise.all([
+        fetchFootballSeasonAverages(leagueId, seasonId),
+        fetchFootballTeamSeasonAverages(leagueId, seasonId),
+      ])
+        .then(([pRes, tRes]) => {
+          if (!active) return;
+          setFbAverages(pRes.data);
+          setFbTeamAverages(tRes.data);
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    } else {
+      Promise.all([
+        fetchSeasonAverages(leagueId, seasonId),
+        fetchTeamSeasonAverages(leagueId, seasonId),
+      ])
+        .then(([pRes, tRes]) => {
+          if (!active) return;
+          setAverages(pRes.data);
+          setTeamAverages(tRes.data);
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    }
     return () => {
       active = false;
     };
-  }, [leagueId, seasonId]);
+  }, [leagueId, seasonId, sport]);
 
-  const activePlayerCat = PLAYER_CATEGORIES.find((c) => c.key === playerMetric)!;
-  const activeTeamCat = TEAM_CATEGORIES.find((c) => c.key === teamMetric)!;
+  const activePlayerCat = PLAYER_CATEGORIES.find((c) => c.key === playerMetric) ?? PLAYER_CATEGORIES[0];
+  const activeTeamCat = TEAM_CATEGORIES.find((c) => c.key === teamMetric) ?? TEAM_CATEGORIES[0];
+  const activeFbPlayerCat =
+    FOOTBALL_PLAYER_CATEGORIES.find((c) => c.key === fbPlayerMetric) ??
+    FOOTBALL_PLAYER_CATEGORIES[0];
+  const activeFbTeamCat =
+    FOOTBALL_TEAM_CATEGORIES.find((c) => c.key === fbTeamMetric) ??
+    FOOTBALL_TEAM_CATEGORIES[0];
 
   const rankedPlayers = useMemo(() => {
     const threshold = Math.max(minGp, activePlayerCat.minGames ?? 1);
@@ -142,6 +237,13 @@ export function LeadersView({
       .sort((a, b) => Number(b[playerMetric] ?? 0) - Number(a[playerMetric] ?? 0))
       .slice(0, 20);
   }, [averages, playerMetric, minGp, activePlayerCat.minGames]);
+
+  const rankedFbPlayers = useMemo(() => {
+    return fbAverages
+      .filter((p) => p.gp >= minGp && p[fbPlayerMetric] != null)
+      .sort((a, b) => Number(b[fbPlayerMetric] ?? 0) - Number(a[fbPlayerMetric] ?? 0))
+      .slice(0, 20);
+  }, [fbAverages, fbPlayerMetric, minGp]);
 
   const rankedTeams = useMemo(() => {
     return teamAverages
@@ -156,7 +258,28 @@ export function LeadersView({
       });
   }, [teamAverages, teamMetric, conferenceFilter, activeTeamCat.asc]);
 
-  const handleClickTeam = (t: TeamSeasonAverage) => {
+  const rankedFbTeams = useMemo(() => {
+    return fbTeamAverages
+      .filter((t) => t[fbTeamMetric] != null && t.played > 0)
+      .sort((a, b) => {
+        const valA = Number(a[fbTeamMetric] ?? 0);
+        const valB = Number(b[fbTeamMetric] ?? 0);
+        return activeFbTeamCat.asc ? valA - valB : valB - valA;
+      });
+  }, [fbTeamAverages, fbTeamMetric, activeFbTeamCat.asc]);
+
+  const handleClickTeam = (t: {
+    team_id: number;
+    league_id: number;
+    team_name: string;
+    team_short_name: string;
+    team_abbreviation: string;
+    conference?: string | null;
+    division?: string | null;
+    primary_color: string | null;
+    alternate_color: string | null;
+    logo_url: string | null;
+  }) => {
     if (!onSelectTeam) return;
     onSelectTeam({
       id: t.team_id,
@@ -166,8 +289,8 @@ export function LeadersView({
       short_name: t.team_short_name,
       abbreviation: t.team_abbreviation,
       city: null,
-      conference: t.conference,
-      division: t.division,
+      conference: t.conference ?? null,
+      division: t.division ?? null,
       primary_color: t.primary_color,
       alternate_color: t.alternate_color,
       logo_url: t.logo_url,
@@ -220,7 +343,7 @@ export function LeadersView({
               <option value={8}>8+</option>
             </select>
           </label>
-        ) : (
+        ) : sport !== 'football' ? (
           <div className="inline-flex rounded-lg bg-[#12151c] border border-white/[0.08] p-1 text-xs">
             {(
               [
@@ -243,7 +366,7 @@ export function LeadersView({
               </button>
             ))}
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Category Pills */}
@@ -253,21 +376,37 @@ export function LeadersView({
           aria-label="Categorías de jugadores"
           className="flex items-center gap-2 overflow-x-auto no-scrollbar sb-scroll-fade-x pb-1"
         >
-          {PLAYER_CATEGORIES.map((cat) => (
-            <button
-              key={cat.key}
-              type="button"
-              aria-pressed={playerMetric === cat.key}
-              onClick={() => setPlayerMetric(cat.key)}
-              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                playerMetric === cat.key
-                  ? 'cv-tab-active'
-                  : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
-              }`}
-            >
-              {cat.label}
-            </button>
-          ))}
+          {sport === 'football'
+            ? FOOTBALL_PLAYER_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.key}
+                  type="button"
+                  aria-pressed={fbPlayerMetric === cat.key}
+                  onClick={() => setFbPlayerMetric(cat.key)}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                    fbPlayerMetric === cat.key
+                      ? 'cv-tab-active'
+                      : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))
+            : PLAYER_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.key}
+                  type="button"
+                  aria-pressed={playerMetric === cat.key}
+                  onClick={() => setPlayerMetric(cat.key)}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                    playerMetric === cat.key
+                      ? 'cv-tab-active'
+                      : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
         </div>
       ) : (
         <div
@@ -275,21 +414,37 @@ export function LeadersView({
           aria-label="Categorías de equipos"
           className="flex items-center gap-2 overflow-x-auto no-scrollbar sb-scroll-fade-x pb-1"
         >
-          {TEAM_CATEGORIES.map((cat) => (
-            <button
-              key={cat.key}
-              type="button"
-              aria-pressed={teamMetric === cat.key}
-              onClick={() => setTeamMetric(cat.key)}
-              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                teamMetric === cat.key
-                  ? 'cv-tab-active'
-                  : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
-              }`}
-            >
-              {cat.label}
-            </button>
-          ))}
+          {sport === 'football'
+            ? FOOTBALL_TEAM_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.key}
+                  type="button"
+                  aria-pressed={fbTeamMetric === cat.key}
+                  onClick={() => setFbTeamMetric(cat.key)}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                    fbTeamMetric === cat.key
+                      ? 'cv-tab-active'
+                      : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))
+            : TEAM_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.key}
+                  type="button"
+                  aria-pressed={teamMetric === cat.key}
+                  onClick={() => setTeamMetric(cat.key)}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                    teamMetric === cat.key
+                      ? 'cv-tab-active'
+                      : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
         </div>
       )}
 
@@ -298,11 +453,13 @@ export function LeadersView({
         <h2 className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-200">
           <Flame className="w-4 h-4 text-slate-400" aria-hidden="true" />
           {mode === 'players'
-            ? `Top 20 Jugadores — ${activePlayerCat.label}`
-            : `Ranking de Equipos — ${activeTeamCat.label}`}
+            ? `Top 20 Jugadores — ${sport === 'football' ? activeFbPlayerCat.label : activePlayerCat.label}`
+            : `Ranking de Equipos — ${sport === 'football' ? activeFbTeamCat.label : activeTeamCat.label}`}
         </h2>
         {mode === 'teams' && (
-          <span className="text-xs text-slate-400">{activeTeamCat.subtitle}</span>
+          <span className="text-xs text-slate-400">
+            {sport === 'football' ? activeFbTeamCat.subtitle : activeTeamCat.subtitle}
+          </span>
         )}
       </div>
 
@@ -316,9 +473,68 @@ export function LeadersView({
           ))}
         </div>
       ) : mode === 'players' ? (
-        rankedPlayers.length === 0 ? (
+        (sport === 'football' ? rankedFbPlayers : rankedPlayers).length === 0 ? (
           <div className="sb-card rounded-xl p-8 text-center text-sm text-slate-400">
             No hay líderes que cumplan con el mínimo de partidos seleccionado.
+          </div>
+        ) : sport === 'football' ? (
+          <div className="space-y-2">
+            {rankedFbPlayers.map((p, idx) => {
+              const rawVal = Number(p[fbPlayerMetric] ?? 0);
+              const displayVal = activeFbPlayerCat.isInt ? String(rawVal) : rawVal.toFixed(2);
+              const isTop3 = idx < 3;
+
+              return (
+                <button
+                  key={p.player_id}
+                  type="button"
+                  onClick={() => onSelectPlayer(p.player_id)}
+                  className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl sb-card sb-card-hover text-left ${
+                    idx >= 8 ? 'sb-deferred-item' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold tabular-nums shrink-0 ${
+                        idx === 0
+                          ? 'bg-slate-100 text-slate-950'
+                          : isTop3
+                            ? 'bg-white/[0.14] text-white'
+                            : 'bg-white/[0.05] text-slate-400'
+                      }`}
+                    >
+                      {idx + 1}
+                    </div>
+                    <div className="w-11 h-11 rounded-full bg-white/[0.06] overflow-hidden shrink-0">
+                      {p.headshot_url ? (
+                        <img
+                          src={p.headshot_url}
+                          alt={p.full_name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : null}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm text-slate-100 truncate">{p.full_name}</div>
+                      <div className="text-xs text-slate-400 tabular-nums">
+                        {p.team_abbreviation ?? 'EPL'} · {p.position ?? 'JUG'} · {p.gp} PJ ·{' '}
+                        <span className="text-slate-400">
+                          {p.goals} G · {p.assists} A · {p.shots} REM ({p.shots_on_target} arco)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0 tabular-nums">
+                    <div className={`text-xl font-bold ${isTop3 ? 'text-white' : 'text-slate-200'}`}>
+                      {displayVal}
+                    </div>
+                    <div className="text-[11px] font-medium text-slate-400">
+                      {activeFbPlayerCat.label}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         ) : (
           <div className="space-y-2">
@@ -391,9 +607,94 @@ export function LeadersView({
             })}
           </div>
         )
-      ) : rankedTeams.length === 0 ? (
+      ) : (sport === 'football' ? rankedFbTeams : rankedTeams).length === 0 ? (
         <div className="sb-card rounded-xl p-8 text-center text-sm text-slate-400">
           No hay estadísticas de equipos disponibles para este filtro.
+        </div>
+      ) : sport === 'football' ? (
+        <div className="space-y-2">
+          {rankedFbTeams.map((t, idx) => {
+            const rawVal = Number(t[fbTeamMetric] ?? 0);
+            const decimals = activeFbTeamCat.decimals ?? 1;
+            const prefix = activeFbTeamCat.showSign && rawVal > 0 ? '+' : '';
+            const displayVal = activeFbTeamCat.isInt
+              ? `${prefix}${rawVal}`
+              : `${prefix}${rawVal.toFixed(decimals)}${activeFbTeamCat.suffix ?? ''}`;
+            const isTop3 = idx < 3;
+
+            return (
+              <button
+                key={t.team_id}
+                type="button"
+                onClick={() => handleClickTeam(t)}
+                className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl sb-card sb-card-hover text-left ${
+                  idx >= 8 ? 'sb-deferred-item' : ''
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold tabular-nums shrink-0 ${
+                      idx === 0
+                        ? 'bg-slate-100 text-slate-950'
+                        : isTop3
+                          ? 'bg-white/[0.14] text-white'
+                          : 'bg-white/[0.05] text-slate-400'
+                    }`}
+                  >
+                    {idx + 1}
+                  </div>
+                  <div className="w-11 h-11 rounded-lg bg-white/[0.04] border border-white/[0.08] p-1.5 flex items-center justify-center shrink-0">
+                    {t.logo_url ? (
+                      <img
+                        src={t.logo_url}
+                        alt={t.team_abbreviation}
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <span className="text-xs font-bold text-slate-400">
+                        {t.team_abbreviation}
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm text-slate-100 truncate">
+                        {t.team_name}
+                      </span>
+                      <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-white/[0.06] text-slate-300 tabular-nums">
+                        {t.wins}-{t.draws}-{t.losses}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-400 tabular-nums mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span>{t.points} PTS</span>
+                      <span>·</span>
+                      <span>{t.goals_for} GF / {t.goals_against} GC</span>
+                      {t.possession_avg != null && (
+                        <>
+                          <span>·</span>
+                          <span className="text-slate-300">{Number(t.possession_avg).toFixed(1)}% Pos.</span>
+                        </>
+                      )}
+                      {t.shots_pg != null && (
+                        <>
+                          <span>·</span>
+                          <span>{Number(t.shots_pg).toFixed(1)} REM/PJ</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right shrink-0 tabular-nums">
+                  <div className={`text-xl font-bold ${isTop3 ? 'text-white' : 'text-slate-200'}`}>
+                    {displayVal}
+                  </div>
+                  <div className="text-[11px] font-medium text-slate-400">
+                    {activeFbTeamCat.label}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       ) : (
         <div className="space-y-2">

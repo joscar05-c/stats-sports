@@ -435,6 +435,7 @@ export interface PropRecommendation {
   teamAbbr: string;
   playerId?: number;
   metricKey?: PlayerChartMetric;
+  footballMetricKey?: 'goals' | 'shots' | 'sot' | 'assists';
   statSummary: string;
   marketLineText: string;
   lineValue: number;

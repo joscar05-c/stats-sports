@@ -20,11 +20,18 @@ import {
   suggestPropLine,
   type PlayerChartMetric,
 } from '../utils/betting';
-import type { Player, PlayerGameStat, PlayerSeasonAverage } from '../types/database';
+import type {
+  FootballPlayerSeasonAverage,
+  Player,
+  PlayerGameStat,
+  PlayerSeasonAverage,
+} from '../types/database';
+import { getFootballPlayerStatValue } from '../utils/footballProps';
 import { ModalDialog } from './ModalDialog';
 
 interface PlayerDetailModalProps {
   playerId: number;
+  sport?: 'basketball' | 'football';
   isPro: boolean;
   onClose: () => void;
   onOpenProModal: () => void;
@@ -32,46 +39,60 @@ interface PlayerDetailModalProps {
 
 const METRIC_ORDER: PlayerChartMetric[] = ['pts', 'reb', 'ast', 'pra', 'tpm'];
 
+type FootballMetricKey = 'goals' | 'assists' | 'shots' | 'sot';
+const FOOTBALL_METRICS: Array<{ key: FootballMetricKey; label: string; short: string }> = [
+  { key: 'shots', label: 'Remates Totales', short: 'REM' },
+  { key: 'sot', label: 'Remates al Arco', short: 'ARCO' },
+  { key: 'goals', label: 'Goles', short: 'GOL' },
+  { key: 'assists', label: 'Asistencias', short: 'AST' },
+];
+
 export function PlayerDetailModal({
   playerId,
+  sport = 'basketball',
   isPro,
   onClose,
   onOpenProModal,
 }: PlayerDetailModalProps) {
   const [player, setPlayer] = useState<Player | null>(null);
   const [average, setAverage] = useState<PlayerSeasonAverage | null>(null);
+  const [fbAverage, setFbAverage] = useState<FootballPlayerSeasonAverage | null>(null);
   const [logs, setLogs] = useState<PlayerGameStat[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Interactive chart metric + sportsbook prop line + evaluated side
   const [chartMetric, setChartMetric] = useState<PlayerChartMetric>('pts');
+  const [fbMetric, setFbMetric] = useState<FootballMetricKey>('shots');
   const [propLine, setPropLine] = useState<number>(15.5);
   const [targetSide, setTargetSide] = useState<'OVER' | 'UNDER'>('OVER');
   const [selectedBarIdx, setSelectedBarIdx] = useState<number | null>(null);
   const [propsOrder, setPropsOrder] = useState<'asc' | 'desc'>('desc');
 
   const playerProps = useMemo(() => {
+    if (sport === 'football') return [];
     const recs = buildSinglePlayerPropsRecommendations(average, logs);
     return propsOrder === 'desc' ? recs : recs.toReversed();
-  }, [average, logs, propsOrder]);
+  }, [sport, average, logs, propsOrder]);
 
   useEffect(() => {
+    if (sport === 'football') return;
     const matching = playerProps.find((p) => p.metricKey === chartMetric);
     if (matching) {
       setTargetSide(matching.pick === 'UNDER' ? 'UNDER' : 'OVER');
     } else {
       setTargetSide('OVER');
     }
-  }, [playerId, chartMetric, playerProps]);
+  }, [sport, playerId, chartMetric, playerProps]);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    fetchPlayerProfileAndLogs(playerId)
+    fetchPlayerProfileAndLogs(playerId, sport)
       .then((res) => {
         if (!active) return;
         setPlayer(res.player);
         setAverage(res.average);
+        setFbAverage(res.footballAverage);
         setLogs(res.logs);
       })
       .finally(() => {
@@ -80,14 +101,21 @@ export function PlayerDetailModal({
     return () => {
       active = false;
     };
-  }, [playerId]);
+  }, [playerId, sport]);
 
   const metricCfg = PLAYER_CHART_METRICS[chartMetric];
+  const fbMetricCfg = FOOTBALL_METRICS.find((m) => m.key === fbMetric) ?? FOOTBALL_METRICS[0];
 
   const defaultLineForMetric = useMemo(() => {
+    if (sport === 'football') {
+      if (fbMetric === 'shots') {
+        return (fbAverage?.shots_pg ?? 1.5) >= 2.2 ? 2.5 : 1.5;
+      }
+      return 0.5;
+    }
     const avgVal = metricCfg.getSeasonAvg(average, logs);
     return suggestPropLine(avgVal);
-  }, [metricCfg, average, logs]);
+  }, [sport, fbMetric, fbAverage, metricCfg, average, logs]);
 
   // Reset suggested prop line when player, data, or selected metric changes
   useEffect(() => {
@@ -101,7 +129,7 @@ export function PlayerDetailModal({
     if (chartLogs.length === 0) {
       return {
         values: [] as number[],
-        maxScale: 20,
+        maxScale: sport === 'football' ? 5 : 20,
         hitCount: 0,
         last5Hit: 0,
         last5Total: 0,
@@ -111,9 +139,13 @@ export function PlayerDetailModal({
       };
     }
     const isHit = (v: number) => (targetSide === 'OVER' ? v > propLine : v < propLine);
-    const values = chartLogs.map((g) => metricCfg.getStatValue(g));
-    const maxRaw = Math.max(...values, propLine, 4);
-    const maxScale = Math.max(5, Math.ceil(maxRaw * 1.15));
+    const values = chartLogs.map((g) =>
+      sport === 'football'
+        ? getFootballPlayerStatValue(g, fbMetric)
+        : metricCfg.getStatValue(g),
+    );
+    const maxRaw = Math.max(...values, propLine, sport === 'football' ? 2 : 4);
+    const maxScale = Math.max(sport === 'football' ? 3 : 5, Math.ceil(maxRaw * 1.15));
     const hitCount = values.filter(isHit).length;
     const recent5 = values.slice(-5);
     const last5Hit = recent5.filter(isHit).length;
@@ -128,7 +160,7 @@ export function PlayerDetailModal({
       minVal: Math.min(...values),
       maxVal: Math.max(...values),
     };
-  }, [chartLogs, metricCfg, propLine, targetSide]);
+  }, [sport, chartLogs, fbMetric, metricCfg, propLine, targetSide]);
 
   const hitRatePct =
     chartLogs.length > 0 ? Math.round((chartStats.hitCount / chartLogs.length) * 100) : 0;
@@ -235,7 +267,52 @@ export function PlayerDetailModal({
 
             {/* Body */}
             <div className="flex-1 min-h-0 overflow-auto sb-scroller p-4 sm:p-5 space-y-5">
-              {average ? (
+              {sport === 'football' ? (
+                fbAverage ? (
+                  <>
+                    <div className="grid grid-cols-4 gap-2 tabular-nums">
+                      {[
+                        { label: 'GOLES', value: String(fbAverage.goals) },
+                        { label: 'ASIST', value: String(fbAverage.assists) },
+                        { label: 'REMATES', value: String(fbAverage.shots) },
+                        { label: 'AL ARCO', value: String(fbAverage.shots_on_target) },
+                      ].map((st) => (
+                        <div
+                          key={st.label}
+                          className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-3 text-center"
+                        >
+                          <div className="text-[11px] font-semibold text-slate-400">{st.label}</div>
+                          <div className="text-xl font-bold mt-0.5 text-white">{st.value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-3.5">
+                      <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5">
+                        Resumen de Temporada ({fbAverage.gp} PJ · {fbAverage.starts} titularidades)
+                      </div>
+                      <div className="grid grid-cols-5 gap-2 text-center tabular-nums">
+                        {[
+                          { label: 'Gol/PJ', val: Number(fbAverage.goals_pg).toFixed(2) },
+                          { label: 'Rem/PJ', val: Number(fbAverage.shots_pg).toFixed(1) },
+                          { label: 'Arco/PJ', val: Number(fbAverage.sot_pg).toFixed(2) },
+                          { label: 'Atajadas', val: String(fbAverage.saves) },
+                          { label: 'TA / TR', val: `${fbAverage.yellow_cards}/${fbAverage.red_cards}` },
+                        ].map((m) => (
+                          <div key={m.label}>
+                            <div className="text-[11px] text-slate-400">{m.label}</div>
+                            <div className="text-sm font-bold text-slate-100 mt-0.5">{m.val}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-4 text-center text-xs text-slate-400">
+                    Este jugador aún no registra participaciones en la temporada actual.
+                  </div>
+                )
+              ) : average ? (
                 <>
                   {/* Main Averages Grid */}
                   <div className="grid grid-cols-4 gap-2 tabular-nums">
@@ -393,28 +470,47 @@ export function PlayerDetailModal({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-200 uppercase tracking-wider">
                       <TrendingUp className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
-                      {metricCfg.label} · Últimos {chartLogs.length} PJ
+                      {sport === 'football' ? fbMetricCfg.label : metricCfg.label} · Últimos{' '}
+                      {chartLogs.length} PJ
                     </span>
 
                     <div className="flex items-center gap-1 bg-[#12151c] p-1 rounded-lg border border-white/[0.08]">
-                      {METRIC_ORDER.map((mKey) => {
-                        const cfg = PLAYER_CHART_METRICS[mKey];
-                        const active = chartMetric === mKey;
-                        return (
-                          <button
-                            key={mKey}
-                            type="button"
-                            onClick={() => setChartMetric(mKey)}
-                            className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
-                              active
-                                ? 'cv-tab-active'
-                                : 'text-slate-400 hover:text-slate-200'
-                            }`}
-                          >
-                            {cfg.short}
-                          </button>
-                        );
-                      })}
+                      {sport === 'football'
+                        ? FOOTBALL_METRICS.map((cfg) => {
+                            const active = fbMetric === cfg.key;
+                            return (
+                              <button
+                                key={cfg.key}
+                                type="button"
+                                onClick={() => setFbMetric(cfg.key)}
+                                className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                                  active
+                                    ? 'cv-tab-active'
+                                    : 'text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                {cfg.short}
+                              </button>
+                            );
+                          })
+                        : METRIC_ORDER.map((mKey) => {
+                            const cfg = PLAYER_CHART_METRICS[mKey];
+                            const active = chartMetric === mKey;
+                            return (
+                              <button
+                                key={mKey}
+                                type="button"
+                                onClick={() => setChartMetric(mKey)}
+                                className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                                  active
+                                    ? 'cv-tab-active'
+                                    : 'text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                {cfg.short}
+                              </button>
+                            );
+                          })}
                     </div>
                   </div>
 
@@ -515,7 +611,10 @@ export function PlayerDetailModal({
                       </div>
 
                       {chartLogs.map((g, idx) => {
-                        const val = metricCfg.getStatValue(g);
+                        const val =
+                          sport === 'football'
+                            ? getFootballPlayerStatValue(g, fbMetric)
+                            : metricCfg.getStatValue(g);
                         const isHit = targetSide === 'OVER' ? val > propLine : val < propLine;
                         const pct = Math.max(8, Math.round((val / chartStats.maxScale) * 100));
                         const isHome = g.game?.home_team_id === g.team_id;
@@ -587,8 +686,9 @@ export function PlayerDetailModal({
                             : chartLogs[selectedBarIdx].game?.home_team?.abbreviation}
                         </span>
                         <span className="font-semibold">
-                          {chartLogs[selectedBarIdx].pts} PTS · {chartLogs[selectedBarIdx].reb} REB
-                          · {chartLogs[selectedBarIdx].ast} AST · {chartLogs[selectedBarIdx].tpm} 3P
+                          {sport === 'football'
+                            ? `${chartLogs[selectedBarIdx].sport_stats?.goals ?? 0}G · ${chartLogs[selectedBarIdx].sport_stats?.assists ?? 0}A · ${chartLogs[selectedBarIdx].sport_stats?.shots ?? 0} REM (${chartLogs[selectedBarIdx].sport_stats?.shots_on_target ?? 0} arco)`
+                            : `${chartLogs[selectedBarIdx].pts} PTS · ${chartLogs[selectedBarIdx].reb} REB · ${chartLogs[selectedBarIdx].ast} AST · ${chartLogs[selectedBarIdx].tpm} 3P`}
                         </span>
                       </div>
                     )}
@@ -610,45 +710,59 @@ export function PlayerDetailModal({
                   >
                     <table className="w-full text-xs tabular-nums whitespace-nowrap">
                       <thead className="bg-[#0e1117] text-slate-400">
-                        <tr>
-                          <th scope="col" className="text-left py-2 px-3">FECHA</th>
-                          <th scope="col" className="text-left py-2 px-2">RIVAL</th>
-                          <th scope="col" className="text-right py-2 px-2">MIN</th>
-                          <th
-                            scope="col"
-                            className={`text-right py-2 px-2 ${
-                              chartMetric === 'pts' ? 'text-white' : ''
-                            }`}
-                          >
-                            PTS
-                          </th>
-                          <th
-                            scope="col"
-                            className={`text-right py-2 px-2 ${
-                              chartMetric === 'reb' ? 'text-white' : ''
-                            }`}
-                          >
-                            REB
-                          </th>
-                          <th
-                            scope="col"
-                            className={`text-right py-2 px-2 ${
-                              chartMetric === 'ast' ? 'text-white' : ''
-                            }`}
-                          >
-                            AST
-                          </th>
-                          <th scope="col" className="text-right py-2 px-2">TC</th>
-                          <th
-                            scope="col"
-                            className={`text-right py-2 px-2 ${
-                              chartMetric === 'tpm' ? 'text-white' : ''
-                            }`}
-                          >
-                            3P
-                          </th>
-                          <th scope="col" className="text-center py-2 px-2">ESTADO</th>
-                        </tr>
+                        {sport === 'football' ? (
+                          <tr>
+                            <th scope="col" className="text-left py-2 px-3">FECHA</th>
+                            <th scope="col" className="text-left py-2 px-2">RIVAL</th>
+                            <th scope="col" className="text-center py-2 px-2">ROL</th>
+                            <th scope="col" className="text-right py-2 px-2">G</th>
+                            <th scope="col" className="text-right py-2 px-2">A</th>
+                            <th scope="col" className="text-right py-2 px-2">REM</th>
+                            <th scope="col" className="text-right py-2 px-2">ARCO</th>
+                            <th scope="col" className="text-right py-2 px-2">TA</th>
+                            <th scope="col" className="text-center py-2 px-2">ESTADO</th>
+                          </tr>
+                        ) : (
+                          <tr>
+                            <th scope="col" className="text-left py-2 px-3">FECHA</th>
+                            <th scope="col" className="text-left py-2 px-2">RIVAL</th>
+                            <th scope="col" className="text-right py-2 px-2">MIN</th>
+                            <th
+                              scope="col"
+                              className={`text-right py-2 px-2 ${
+                                chartMetric === 'pts' ? 'text-white' : ''
+                              }`}
+                            >
+                              PTS
+                            </th>
+                            <th
+                              scope="col"
+                              className={`text-right py-2 px-2 ${
+                                chartMetric === 'reb' ? 'text-white' : ''
+                              }`}
+                            >
+                              REB
+                            </th>
+                            <th
+                              scope="col"
+                              className={`text-right py-2 px-2 ${
+                                chartMetric === 'ast' ? 'text-white' : ''
+                              }`}
+                            >
+                              AST
+                            </th>
+                            <th scope="col" className="text-right py-2 px-2">TC</th>
+                            <th
+                              scope="col"
+                              className={`text-right py-2 px-2 ${
+                                chartMetric === 'tpm' ? 'text-white' : ''
+                              }`}
+                            >
+                              3P
+                            </th>
+                            <th scope="col" className="text-center py-2 px-2">ESTADO</th>
+                          </tr>
+                        )}
                       </thead>
                       <tbody className="divide-y divide-white/[0.06]">
                         {logs.map((row) => {
@@ -656,9 +770,54 @@ export function PlayerDetailModal({
                           const opp = isHome
                             ? row.game?.away_team?.abbreviation
                             : row.game?.home_team?.abbreviation;
-                          const metricVal = metricCfg.getStatValue(row);
+                          const metricVal =
+                            sport === 'football'
+                              ? getFootballPlayerStatValue(row, fbMetric)
+                              : metricCfg.getStatValue(row);
                           const isHit =
                             targetSide === 'OVER' ? metricVal > propLine : metricVal < propLine;
+                          if (sport === 'football') {
+                            const ss = row.sport_stats;
+                            return (
+                              <tr key={row.id} className="hover:bg-white/[0.03]">
+                                <td className="py-2 px-3 text-slate-400">
+                                  {row.game?.game_date?.slice(5) ?? '-'}
+                                </td>
+                                <td className="py-2 px-2 font-semibold text-slate-200">
+                                  {isHome ? 'vs' : '@'} {opp ?? 'EPL'}
+                                </td>
+                                <td className="text-center py-2 px-2 text-slate-400">
+                                  {row.starter ? 'TIT' : 'SUP'}
+                                </td>
+                                <td className="text-right py-2 px-2 font-bold text-white">
+                                  {ss?.goals ?? row.pts ?? 0}
+                                </td>
+                                <td className="text-right py-2 px-2 text-slate-300">
+                                  {ss?.assists ?? row.ast ?? 0}
+                                </td>
+                                <td className="text-right py-2 px-2 text-slate-200">
+                                  {ss?.shots ?? 0}
+                                </td>
+                                <td className="text-right py-2 px-2 text-slate-300">
+                                  {ss?.shots_on_target ?? 0}
+                                </td>
+                                <td className="text-right py-2 px-2 text-slate-400">
+                                  {ss?.yellow_cards ?? 0}
+                                </td>
+                                <td className="text-center py-2 px-2">
+                                  <span
+                                    className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                      isHit
+                                        ? 'bg-emerald-500/12 text-emerald-300'
+                                        : 'bg-rose-500/12 text-rose-300'
+                                    }`}
+                                  >
+                                    {isHit ? 'Cumple' : 'No cumple'}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          }
                           return (
                             <tr key={row.id} className="hover:bg-white/[0.03]">
                               <td className="py-2 px-3 text-slate-400">

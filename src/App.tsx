@@ -188,11 +188,30 @@ export function App() {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
+  const activeSport: 'basketball' | 'football' =
+    activeLeague?.sport === 'football' ? 'football' : 'basketball';
+  const sportLeagues = leagues.filter(
+    (l) => (l.sport === 'football' ? 'football' : 'basketball') === activeSport,
+  );
+  const hasBasketball = leagues.some((l) => (l.sport ?? 'basketball') === 'basketball');
+  const hasFootball = leagues.some((l) => l.sport === 'football');
+
+  const getFootballLeagueCode = (lg: League | null): string => {
+    if (!lg) return 'eng.1';
+    if (lg.slug === 'laliga') return 'esp.1';
+    return 'eng.1';
+  };
+
   const handleManualSync = async () => {
     if (syncing) return;
     setSyncing(true);
     try {
-      await triggerCloudSync(2, 3);
+      await triggerCloudSync(
+        2,
+        3,
+        activeSport,
+        getFootballLeagueCode(activeLeague),
+      );
       const updatedSync = await fetchLastSync();
       if (updatedSync) setLastSync(updatedSync);
       setSyncVersion((v) => v + 1);
@@ -278,8 +297,23 @@ export function App() {
   const handleSelectLeague = async (lg: League) => {
     setActiveLeague(lg);
     setActivePropView(null);
+    setSelectedGame(null);
+    setSelectedPlayerId(null);
+    setSelectedTeam(null);
     const sn = await fetchCurrentSeason(lg.id);
     setSeason(sn);
+  };
+
+  const handleSelectSport = (targetSport: 'basketball' | 'football') => {
+    if (targetSport === activeSport) return;
+    const match = leagues.find(
+      (l) => (l.sport === 'football' ? 'football' : 'basketball') === targetSport,
+    );
+    if (!match) return;
+    navigateWithTransition(() => {
+      setTab('games');
+      void handleSelectLeague(match);
+    }, true);
   };
 
   const handleInstallPwa = async () => {
@@ -360,13 +394,46 @@ export function App() {
               <span className="block mt-0.5 text-[11px] text-slate-400 font-medium">
                 {season
                   ? `${activeLeague?.short_name ?? 'NBA'} · Temporada ${season.name}`
-                  : 'Estadísticas y Análisis NBA'}
+                  : 'Estadísticas y Análisis Deportivo'}
               </span>
             </div>
           </button>
 
           {/* Right Controls Cluster */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {hasBasketball && hasFootball && (
+              <div
+                role="group"
+                aria-label="Seleccionar deporte"
+                className="inline-flex items-center rounded-lg bg-[#12151c] border border-white/[0.1] p-0.5"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSelectSport('basketball')}
+                  aria-pressed={activeSport === 'basketball'}
+                  className={`px-2 sm:px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors whitespace-nowrap ${
+                    activeSport === 'basketball'
+                      ? 'cv-tab-active'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  NBA
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectSport('football')}
+                  aria-pressed={activeSport === 'football'}
+                  className={`px-2 sm:px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors whitespace-nowrap ${
+                    activeSport === 'football'
+                      ? 'cv-tab-active'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Fútbol
+                </button>
+              </div>
+            )}
+
             {activeLeague && (
               <button
                 type="button"
@@ -379,17 +446,17 @@ export function App() {
               </button>
             )}
 
-            {leagues.length > 1 && (
+            {sportLeagues.length > 1 && (
               <select
                 aria-label="Seleccionar liga"
                 value={activeLeague?.id ?? ''}
                 onChange={(e) => {
-                  const found = leagues.find((l) => l.id === Number(e.target.value));
-                  if (found) handleSelectLeague(found);
+                  const found = sportLeagues.find((l) => l.id === Number(e.target.value));
+                  if (found) void handleSelectLeague(found);
                 }}
                 className="bg-[#12151c] border border-white/[0.1] rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 whitespace-nowrap"
               >
-                {leagues.map((l) => (
+                {sportLeagues.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.short_name}
                   </option>
@@ -539,6 +606,7 @@ export function App() {
       {activeLeague && (
         <PropsSidebar
           leagueId={activeLeague.id}
+          sport={activeSport}
           syncVersion={syncVersion}
           toggleSignal={sidebarToggleTick}
           isPro={Boolean(proSub)}
@@ -592,6 +660,7 @@ export function App() {
               game={activePropView.game}
               prop={activePropView.prop}
               context={activePropView.context}
+              sport={activeSport}
               isPro={Boolean(proSub)}
               onBack={() => setActivePropView(null)}
               onSelectProp={(nextProp) =>
@@ -607,6 +676,7 @@ export function App() {
                 <GamesView
                   key={`games_${activeLeague.id}_${syncVersion}`}
                   leagueId={activeLeague.id}
+                  sport={activeSport}
                   onSelectGame={(game) => setSelectedGame(game)}
                   onGamesUpdated={(updatedGames) => {
                     setSelectedGame((prev) => {
@@ -621,6 +691,7 @@ export function App() {
                   key={`leaders_${activeLeague.id}_${syncVersion}`}
                   leagueId={activeLeague.id}
                   seasonId={season.id}
+                  sport={activeSport}
                   onSelectPlayer={(pid) => setSelectedPlayerId(pid)}
                   onSelectTeam={(team) => setSelectedTeam({ team })}
                 />
@@ -630,12 +701,14 @@ export function App() {
                   key={`compare_${activeLeague.id}_${syncVersion}`}
                   leagueId={activeLeague.id}
                   seasonId={season.id}
+                  sport={activeSport}
                 />
               )}
               {tab === 'standings' && (
                 <StandingsView
                   key={`standings_${season.id}_${syncVersion}`}
                   seasonId={season.id}
+                  sport={activeSport}
                   onSelectTeam={(team, standing) => setSelectedTeam({ team, standing })}
                 />
               )}
@@ -650,7 +723,7 @@ export function App() {
             </>
           )}
           <footer className="mt-10 pt-5 border-t border-white/[0.06] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-400 pb-4">
-            <span>CourtVision · Estadísticas y análisis de baloncesto</span>
+            <span>CourtVision · Estadísticas y análisis deportivo</span>
             <span>Información estadística de carácter informativo y analítico.</span>
           </footer>
         </main>
@@ -687,6 +760,7 @@ export function App() {
       {selectedGame && (
         <GameDetailModal
           game={selectedGame}
+          sport={activeSport}
           isPro={Boolean(proSub)}
           onClose={() => setSelectedGame(null)}
           onSelectPlayer={(pid) => setSelectedPlayerId(pid)}
@@ -698,6 +772,7 @@ export function App() {
         <TeamDetailModal
           team={selectedTeam.team}
           standing={selectedTeam.standing}
+          sport={activeSport}
           onClose={() => setSelectedTeam(null)}
           onSelectPlayer={(pid) => setSelectedPlayerId(pid)}
           onSelectGame={(game) => {
@@ -710,6 +785,7 @@ export function App() {
       {selectedPlayerId != null && (
         <PlayerDetailModal
           playerId={selectedPlayerId}
+          sport={activeSport}
           isPro={Boolean(proSub)}
           onClose={() => setSelectedPlayerId(null)}
           onOpenProModal={() => setShowProModal(true)}

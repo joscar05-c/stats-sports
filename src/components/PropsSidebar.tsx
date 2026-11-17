@@ -12,9 +12,11 @@ import {
 } from 'lucide-react';
 import {
   fetchAvailableGameDates,
+  fetchFootballGameBettingContext,
   fetchGameBettingContext,
   fetchGameBoxScore,
   fetchGamesByDate,
+  type FootballGameBettingContext,
   type GameBettingContext,
 } from '../services/basketballApi';
 import { supabase } from '../lib/supabase';
@@ -27,17 +29,24 @@ import {
   type PropContextBadge,
   type PropRecommendation,
 } from '../utils/betting';
+import {
+  buildFootballPropsRecommendations,
+  getLiveFootballPropProgress,
+} from '../utils/footballProps';
 import type { Game, PlayerGameStat } from '../types/database';
 import { closeTopLayerDialog } from './ModalDialog';
+
+export type AnyBettingContext = GameBettingContext | FootballGameBettingContext;
 
 export interface SelectedPropPayload {
   game: Game;
   prop: PropRecommendation;
-  context: GameBettingContext;
+  context: AnyBettingContext;
 }
 
 interface PropsSidebarProps {
   leagueId: number;
+  sport?: 'basketball' | 'football';
   syncVersion: number;
   toggleSignal?: number;
   isPro: boolean;
@@ -73,6 +82,7 @@ function contextBadgeClass(tone: PropContextBadge['tone']): string {
 
 export function PropsSidebar({
   leagueId,
+  sport = 'basketball',
   syncVersion,
   toggleSignal = 0,
   isPro,
@@ -96,7 +106,7 @@ export function PropsSidebar({
     onDesktopExpandedChange?.(isDesktopExpanded);
   }, [isDesktopExpanded, onDesktopExpandedChange]);
 
-  const [contextsByGame, setContextsByGame] = useState<Record<number, GameBettingContext>>({});
+  const [contextsByGame, setContextsByGame] = useState<Record<number, AnyBettingContext>>({});
   const [boxScoresByGame, setBoxScoresByGame] = useState<Record<number, PlayerGameStat[]>>({});
   const [loadingCtxId, setLoadingCtxId] = useState<number | null>(null);
 
@@ -194,7 +204,12 @@ export function PropsSidebar({
         if (avail.length > 0) {
           const now = new Date();
           const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-          const best = avail.includes(todayIso) ? todayIso : avail[0];
+          const best = avail.includes(todayIso)
+            ? todayIso
+            : avail
+                .slice()
+                .reverse()
+                .find((d) => d >= todayIso) ?? avail[0];
           setSelectedDate(best);
         } else {
           setLoadingGames(false);
@@ -274,7 +289,12 @@ export function PropsSidebar({
       inFlightRef.current.add(focusedGame.id);
       setLoadingCtxId(focusedGame.id);
 
-      fetchGameBettingContext(focusedGame)
+      const fetcher =
+        sport === 'football'
+          ? fetchFootballGameBettingContext(focusedGame)
+          : fetchGameBettingContext(focusedGame);
+
+      fetcher
         .then((ctx) => {
           if (!active) return;
           setContextsByGame((prev) => ({ ...prev, [focusedGame.id]: ctx }));
@@ -306,7 +326,7 @@ export function PropsSidebar({
     return () => {
       active = false;
     };
-  }, [focusedGame, desktopOpen, desktopPinned, mobileOpen, contextsByGame, boxScoresByGame]);
+  }, [focusedGame, sport, desktopOpen, desktopPinned, mobileOpen, contextsByGame, boxScoresByGame]);
 
   const focusedContext = focusedGame ? contextsByGame[focusedGame.id] ?? null : null;
   const focusedBoxStats = focusedGame ? boxScoresByGame[focusedGame.id] ?? [] : [];
@@ -315,20 +335,37 @@ export function PropsSidebar({
     if (!focusedGame || !focusedContext) return [];
     const homeRecent = summarizeTeamRecent(focusedGame.home_team_id, focusedContext.homeRecentGames);
     const awayRecent = summarizeTeamRecent(focusedGame.away_team_id, focusedContext.awayRecentGames);
+    if (sport === 'football') {
+      const fbCtx = focusedContext as FootballGameBettingContext;
+      return buildFootballPropsRecommendations({
+        game: focusedGame,
+        homeStanding: fbCtx.homeStanding,
+        awayStanding: fbCtx.awayStanding,
+        homeTeamAvg: fbCtx.homeTeamAvg,
+        awayTeamAvg: fbCtx.awayTeamAvg,
+        homeRecent,
+        awayRecent,
+        homeRecentGames: fbCtx.homeRecentGames,
+        awayRecentGames: fbCtx.awayRecentGames,
+        keyPlayers: fbCtx.keyPlayers,
+        playerRecentLogs: fbCtx.playerRecentLogs ?? [],
+      });
+    }
+    const nbaCtx = focusedContext as GameBettingContext;
     return buildGamePropsRecommendations({
       game: focusedGame,
-      homeStanding: focusedContext.homeStanding,
-      awayStanding: focusedContext.awayStanding,
-      homeTeamAvg: focusedContext.homeTeamAvg,
-      awayTeamAvg: focusedContext.awayTeamAvg,
+      homeStanding: nbaCtx.homeStanding,
+      awayStanding: nbaCtx.awayStanding,
+      homeTeamAvg: nbaCtx.homeTeamAvg,
+      awayTeamAvg: nbaCtx.awayTeamAvg,
       homeRecent,
       awayRecent,
-      homeRecentGames: focusedContext.homeRecentGames,
-      awayRecentGames: focusedContext.awayRecentGames,
-      keyPlayers: focusedContext.keyPlayers,
-      playerRecentLogs: focusedContext.playerRecentLogs ?? [],
+      homeRecentGames: nbaCtx.homeRecentGames,
+      awayRecentGames: nbaCtx.awayRecentGames,
+      keyPlayers: nbaCtx.keyPlayers,
+      playerRecentLogs: nbaCtx.playerRecentLogs ?? [],
     });
-  }, [focusedGame, focusedContext]);
+  }, [focusedGame, focusedContext, sport]);
 
   const visibleProps = useMemo(() => {
     let list = gameProps.filter((p) => scopeFilter === 'all' || p.scope === scopeFilter);
@@ -608,7 +645,16 @@ export function PropsSidebar({
             visibleProps.map((prop) => {
               const isActive = activePropId === prop.id;
               const locked = !isPro && isHighProbabilityProp(prop.confidence);
-              const liveStatus = evaluatePropStatus(prop, focusedGame, focusedBoxStats);
+              const fbLiveText =
+                sport === 'football'
+                  ? getLiveFootballPropProgress(prop, focusedGame, focusedBoxStats)
+                  : null;
+              const liveStatus =
+                sport === 'football'
+                  ? fbLiveText
+                    ? { state: 'live' as const, label: fbLiveText }
+                    : null
+                  : evaluatePropStatus(prop, focusedGame, focusedBoxStats);
 
               const stripeColor =
                 prop.confidence >= 75

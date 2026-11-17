@@ -1,0 +1,40 @@
+name: Sync Premier League Stats
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-football.yml'
+      - 'scripts/sync_football.py'
+  schedule:
+    - cron: '30 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      backfill_season:
+        description: 'Backfill full current season (true/false)'
+        required: false
+        default: 'false'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    environment: VARIABLES DE ENTORNO
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run Premier League sync to Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.VITE_SUPABASE_URL || 'https://dowxayyvtghtjkctasfn.supabase.co' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ "${{ github.event.inputs.backfill_season }}" = "true" ]; then
+            python scripts/sync_football.py --league eng.1 --backfill-season
+          else
+            python scripts/sync_football.py --league eng.1 --days-back 6 --days-ahead 14
+          fi

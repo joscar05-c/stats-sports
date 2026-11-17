@@ -1,0 +1,839 @@
+#!/usr/bin/env python3
+"""
+Synchronize Football (Soccer) leagues (starting with English Premier League `eng.1`)
+teams, standings, rosters, matches, and player/team match stats from ESPN's public
+JSON endpoints into Supabase (PostgreSQL).
+
+Zero external pip dependencies — uses Python 3 standard library only.
+
+Usage:
+  SUPABASE_URL=https://xxx.supabase.co SUPABASE_SERVICE_ROLE_KEY=... \
+    python scripts/sync_football.py --league eng.1 --days-back 5 --days-ahead 10
+
+  # Backfill entire current season so far:
+  SUPABASE_URL=https://xxx.supabase.co SUPABASE_SERVICE_ROLE_KEY=... \
+    python scripts/sync_football.py --league eng.1 --backfill-season
+"""
+
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import datetime as dt
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any
+
+ESPN_BASE = "https://site.api.espn.com/apis"
+EXTERNAL_SOURCE = "espn"
+HEADERS = {
+    "User-Agent": "CourtVisionStats/1.0 (+https://github.com)",
+    "Accept": "application/json",
+}
+
+LEAGUE_CATALOG: dict[str, dict[str, str]] = {
+    "eng.1": {
+        "slug": "premier-league",
+        "name": "English Premier League",
+        "short_name": "Premier League",
+        "country": "Inglaterra",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/23.png",
+    },
+    "esp.1": {
+        "slug": "laliga",
+        "name": "Spanish LALIGA",
+        "short_name": "LaLiga",
+        "country": "España",
+        "logo_url": "https://a.espncdn.com/i/leaguelogos/soccer/500/15.png",
+    },
+}
+
+
+def fetch_json(url: str, retries: int = 3, timeout: int = 18) -> dict[str, Any]:
+    last_err: Exception | None = None
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(url, headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as err:
+            last_err = err
+            if attempt < retries - 1:
+                time.sleep(0.8 * (attempt + 1))
+    raise RuntimeError(f"Failed fetching {url}: {last_err}")
+
+
+def safe_int(val: Any, default: int = 0) -> int:
+    if val is None or val == "" or val == "--":
+        return default
+    try:
+        s = str(val).strip().lstrip("+")
+        return int(round(float(s)))
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_float(val: Any) -> float | None:
+    if val is None or val == "" or val == "--" or val == "-":
+        return None
+    try:
+        return float(str(val).strip().lstrip("+"))
+    except (ValueError, TypeError):
+        return None
+
+
+def parse_line_num(val: Any) -> float | None:
+    if val is None or val == "" or val == "--":
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    if s.upper() in ("PK", "EVEN"):
+        return 0.0
+    if s[0] in ("o", "u", "O", "U"):
+        s = s[1:]
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def parse_american_odds(val: Any) -> int | None:
+    if val is None or val == "" or val == "--":
+        return None
+    s = str(val).strip().upper()
+    if not s:
+        return None
+    if s == "EVEN":
+        return 100
+    try:
+        return int(round(float(s.lstrip("+"))))
+    except ValueError:
+        return None
+
+
+def normalize_color(hex_val: str | None) -> str | None:
+    if not hex_val:
+        return None
+    c = hex_val.strip().lstrip("#")
+    if len(c) in (3, 6):
+        return f"#{c.lower()}"
+    return None
+
+
+def map_match_status(status_obj: dict[str, Any]) -> tuple[str, str]:
+    st_type = status_obj.get("type") or {}
+    state = st_type.get("state") or "pre"
+    name = str(st_type.get("name") or "")
+    detail = str(st_type.get("shortDetail") or st_type.get("detail") or "")
+    if "POSTPONED" in name or "CANCELED" in name:
+        return "postponed", detail
+    if state == "in":
+        return "live", detail
+    if state == "post" or st_type.get("completed"):
+        return "final", detail
+    return "scheduled", detail
+
+
+def extract_soccer_odds(odds_list: list[dict[str, Any]] | None) -> dict[str, Any] | None:
+    entry = odds_list[0] if odds_list else None
+    if not isinstance(entry, dict):
+        return None
+    prov = entry.get("provider") or {}
+    ps = entry.get("pointSpread") or {}
+    home_ps = ps.get("home") or {}
+    away_ps = ps.get("away") or {}
+    tot = entry.get("total") or {}
+    over_tot = tot.get("over") or {}
+    under_tot = tot.get("under") or {}
+    ml = entry.get("moneyline") or {}
+    home_ml = ml.get("home") or {}
+    away_ml = ml.get("away") or {}
+    draw_ml = ml.get("draw") or {}
+    draw_odds_obj = entry.get("drawOdds") or {}
+
+    payload = {
+        "provider": prov.get("displayName") or prov.get("name") or "Sportsbook",
+        "details": entry.get("details"),
+        "home_spread": parse_line_num((home_ps.get("close") or {}).get("line")),
+        "away_spread": parse_line_num((away_ps.get("close") or {}).get("line")),
+        "open_home_spread": parse_line_num((home_ps.get("open") or {}).get("line")),
+        "home_spread_odds": parse_american_odds((home_ps.get("close") or {}).get("odds")),
+        "away_spread_odds": parse_american_odds((away_ps.get("close") or {}).get("odds")),
+        "over_under": parse_line_num((over_tot.get("close") or {}).get("line"))
+        or safe_float(entry.get("overUnder")),
+        "open_over_under": parse_line_num((over_tot.get("open") or {}).get("line")),
+        "over_odds": parse_american_odds((over_tot.get("close") or {}).get("odds")),
+        "under_odds": parse_american_odds((under_tot.get("close") or {}).get("odds")),
+        "home_moneyline": parse_american_odds((home_ml.get("close") or {}).get("odds")),
+        "away_moneyline": parse_american_odds((away_ml.get("close") or {}).get("odds")),
+        "draw_moneyline": parse_american_odds((draw_ml.get("close") or {}).get("odds"))
+        or parse_american_odds(draw_odds_obj.get("moneyLine")),
+        "open_home_moneyline": parse_american_odds((home_ml.get("open") or {}).get("odds")),
+        "open_away_moneyline": parse_american_odds((away_ml.get("open") or {}).get("odds")),
+    }
+    cleaned = {k: v for k, v in payload.items() if v is not None}
+    return cleaned or None
+
+
+def extract_team_match_stats(stat_list: list[dict[str, Any]]) -> dict[str, Any]:
+    smap = {s.get("name"): s.get("displayValue") for s in stat_list if s.get("name")}
+    return {
+        "possession_pct": safe_float(smap.get("possessionPct")),
+        "shots": safe_int(smap.get("totalShots"), 0),
+        "shots_on_target": safe_int(smap.get("shotsOnTarget"), 0),
+        "corners": safe_int(smap.get("wonCorners"), 0),
+        "fouls": safe_int(smap.get("foulsCommitted"), 0),
+        "yellow_cards": safe_int(smap.get("yellowCards"), 0),
+        "red_cards": safe_int(smap.get("redCards"), 0),
+        "offsides": safe_int(smap.get("offsides"), 0),
+        "saves": safe_int(smap.get("saves"), 0),
+        "shot_pct": safe_float(smap.get("shotPct")),
+    }
+
+
+def extract_key_events(raw_events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for ev in raw_events or []:
+        etype = str((ev.get("type") or {}).get("text") or "").strip()
+        if not etype:
+            continue
+        low = etype.lower()
+        kind: str | None = None
+        if "own goal" in low:
+            kind = "own_goal"
+        elif "penalty" in low and "scored" in low or low == "penalty - scored":
+            kind = "penalty"
+        elif "goal" in low and "missed" not in low:
+            kind = "goal"
+        elif "red card" in low:
+            kind = "red"
+        elif "yellow card" in low:
+            kind = "yellow"
+        if not kind:
+            continue
+
+        participants = ev.get("participants") or []
+        scorer = (
+            ((participants[0].get("athlete") or {}).get("displayName"))
+            if len(participants) > 0
+            else None
+        )
+        assist = (
+            ((participants[1].get("athlete") or {}).get("displayName"))
+            if len(participants) > 1
+            else None
+        )
+        out.append(
+            {
+                "kind": kind,
+                "label": etype,
+                "minute": str((ev.get("clock") or {}).get("displayValue") or ""),
+                "team_abbr": (ev.get("team") or {}).get("abbreviation"),
+                "player": scorer,
+                "assist": assist,
+            }
+        )
+    return out
+
+
+class SupabaseRest:
+    def __init__(self, url: str, service_key: str) -> None:
+        self.base = url.rstrip("/") + "/rest/v1"
+        self.key = service_key
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        body: Any = None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> Any:
+        headers = {
+            "apikey": self.key,
+            "Authorization": f"Bearer {self.key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        data = json.dumps(body).encode("utf-8") if body is not None else None
+        req = urllib.request.Request(f"{self.base}/{path}", data=data, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw = resp.read().decode("utf-8")
+                return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as err:
+            err_body = err.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"Supabase {method} {path} -> HTTP {err.code}: {err_body}") from err
+
+    def select_all(self, table: str, params: str = "") -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        offset = 0
+        limit = 1000
+        while True:
+            sep = "&" if params else ""
+            path = f"{table}?{params}{sep}limit={limit}&offset={offset}"
+            chunk = self._request("GET", path, extra_headers={"Prefer": "count=none"}) or []
+            rows.extend(chunk)
+            if len(chunk) < limit:
+                break
+            offset += limit
+        return rows
+
+    def upsert_on_conflict(
+        self, table: str, rows: list[dict[str, Any]], on_conflict: str, batch: int = 300
+    ) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for i in range(0, len(rows), batch):
+            chunk = rows[i : i + batch]
+            res = self._request(
+                "POST",
+                f"{table}?on_conflict={urllib.parse.quote(on_conflict)}",
+                body=chunk,
+                extra_headers={"Prefer": "resolution=merge-duplicates,return=representation"},
+            )
+            if isinstance(res, list):
+                out.extend(res)
+        return out
+
+
+def sync_league(
+    league_code: str,
+    days_back: int,
+    days_ahead: int,
+    backfill_season: bool,
+    sb_url: str,
+    sb_key: str,
+) -> None:
+    meta = LEAGUE_CATALOG[league_code]
+    sb = SupabaseRest(sb_url, sb_key)
+    now_iso = dt.datetime.now(dt.timezone.utc).isoformat()
+
+    # 1. Fetch teams, standings, and default scoreboard (calendar + current season)
+    teams_json = fetch_json(f"{ESPN_BASE}/site/v2/sports/soccer/{league_code}/teams")
+    standings_json = fetch_json(f"{ESPN_BASE}/v2/sports/soccer/{league_code}/standings")
+    default_sb = fetch_json(f"{ESPN_BASE}/site/v2/sports/soccer/{league_code}/scoreboard")
+
+    season_year = 2026
+    season_name = "2026-27"
+    seasons_list = standings_json.get("seasons") or []
+    if seasons_list:
+        s0 = seasons_list[0]
+        season_year = safe_int(s0.get("year"), season_year)
+        season_name = s0.get("seasonYears") or s0.get("displayName") or season_name
+
+    # Upsert League & Season
+    league_rows = sb.upsert_on_conflict(
+        "leagues",
+        [
+            {
+                "slug": meta["slug"],
+                "name": meta["name"],
+                "short_name": meta["short_name"],
+                "country": meta["country"],
+                "sport": "football",
+                "source_type": "api",
+                "external_source": EXTERNAL_SOURCE,
+                "external_id": league_code,
+                "logo_url": meta["logo_url"],
+                "is_public": True,
+            }
+        ],
+        "slug",
+    )
+    league_id = league_rows[0]["id"]
+
+    season_rows = sb.upsert_on_conflict(
+        "seasons",
+        [
+            {
+                "league_id": league_id,
+                "name": season_name,
+                "season_year": season_year,
+                "is_current": True,
+            }
+        ],
+        "league_id,season_year",
+    )
+    season_id = season_rows[0]["id"]
+
+    # 2. Upsert Teams (20 clubs)
+    existing_teams = sb.select_all(
+        "teams", f"league_id=eq.{league_id}&external_source=eq.{EXTERNAL_SOURCE}&select=id,external_id"
+    )
+    team_id_map: dict[str, int] = {
+        str(r["external_id"]): r["id"] for r in existing_teams if r.get("external_id")
+    }
+
+    raw_teams = teams_json.get("sports", [{}])[0].get("leagues", [{}])[0].get("teams", [])
+    valid_team_ids: set[str] = set()
+    new_teams: list[dict[str, Any]] = []
+    for item in raw_teams:
+        t = item.get("team") or {}
+        tid = str(t.get("id") or "")
+        if not tid:
+            continue
+        valid_team_ids.add(tid)
+        logos = t.get("logos") or []
+        logo_url = logos[0].get("href") if logos else None
+        payload = {
+            "league_id": league_id,
+            "external_source": EXTERNAL_SOURCE,
+            "external_id": tid,
+            "name": t.get("displayName") or t.get("name") or tid,
+            "short_name": t.get("shortDisplayName") or t.get("nickname") or t.get("name") or tid,
+            "abbreviation": t.get("abbreviation") or tid[:3].upper(),
+            "city": t.get("location"),
+            "primary_color": normalize_color(t.get("color")),
+            "alternate_color": normalize_color(t.get("alternateColor")),
+            "logo_url": logo_url,
+            "is_active": True,
+        }
+        existing_tid = team_id_map.get(tid)
+        if existing_tid:
+            sb._request("PATCH", f"teams?id=eq.{existing_tid}", payload, {"Prefer": "return=minimal"})
+        else:
+            new_teams.append(payload)
+
+    if new_teams:
+        inserted = sb._request("POST", "teams", new_teams) or []
+        for r in inserted:
+            team_id_map[str(r["external_id"])] = r["id"]
+
+    # 3. Upsert Standings
+    standing_payloads: list[dict[str, Any]] = []
+    for child in standings_json.get("children", []):
+        for entry in (child.get("standings") or {}).get("entries", []):
+            tid_ext = str((entry.get("team") or {}).get("id") or "")
+            tid = team_id_map.get(tid_ext)
+            if not tid:
+                continue
+            smap = {
+                s.get("name"): s.get("displayValue") if s.get("displayValue") is not None else s.get("value")
+                for s in entry.get("stats", [])
+                if s.get("name")
+            }
+            played = safe_int(smap.get("gamesPlayed"), 0)
+            wins = safe_int(smap.get("wins"), 0)
+            draws = safe_int(smap.get("ties"), 0)
+            losses = safe_int(smap.get("losses"), 0)
+            points = safe_int(smap.get("points"), 0)
+            gf = safe_int(smap.get("pointsFor"), 0)
+            ga = safe_int(smap.get("pointsAgainst"), 0)
+            gd = safe_int(smap.get("pointDifferential"), gf - ga)
+            rank = safe_int(smap.get("rank"), 0) or None
+            win_pct = round((wins + 0.5 * draws) / played, 3) if played > 0 else 0.0
+            standing_payloads.append(
+                {
+                    "league_id": league_id,
+                    "season_id": season_id,
+                    "team_id": tid,
+                    "conference": None,
+                    "playoff_seed": rank,
+                    "played": played,
+                    "wins": wins,
+                    "draws": draws,
+                    "losses": losses,
+                    "points": points,
+                    "goals_for": gf,
+                    "goals_against": ga,
+                    "goal_diff": gd,
+                    "win_pct": win_pct,
+                    "ppg": round(gf / played, 2) if played > 0 else 0.0,
+                    "oppg": round(ga / played, 2) if played > 0 else 0.0,
+                    "diff": gd,
+                    "updated_at": now_iso,
+                }
+            )
+    if standing_payloads:
+        sb.upsert_on_conflict("team_standings", standing_payloads, "season_id,team_id")
+
+    # 4. Sync Team Rosters into `players`
+    existing_players = sb.select_all(
+        "players",
+        f"league_id=eq.{league_id}&external_source=eq.{EXTERNAL_SOURCE}&select=id,external_id",
+    )
+    player_id_map: dict[str, int] = {
+        str(r["external_id"]): r["id"] for r in existing_players if r.get("external_id")
+    }
+
+    def fetch_team_roster(ext_tid: str) -> tuple[str, list[dict[str, Any]]]:
+        try:
+            rj = fetch_json(f"{ESPN_BASE}/site/v2/sports/soccer/{league_code}/teams/{ext_tid}/roster")
+            return ext_tid, rj.get("athletes") or []
+        except Exception:
+            return ext_tid, []
+
+    discovered_players: dict[str, dict[str, Any]] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        for ext_tid, athletes in ex.map(fetch_team_roster, sorted(valid_team_ids)):
+            for ath in athletes:
+                pid = str(ath.get("id") or "")
+                if not pid:
+                    continue
+                pos = (ath.get("position") or {}).get("abbreviation") or (ath.get("position") or {}).get("name")
+                discovered_players[pid] = {
+                    "external_source": EXTERNAL_SOURCE,
+                    "external_id": pid,
+                    "team_external_id": ext_tid,
+                    "first_name": ath.get("firstName"),
+                    "last_name": ath.get("lastName"),
+                    "full_name": ath.get("displayName") or ath.get("fullName") or f"Player {pid}",
+                    "jersey_number": str(ath["jersey"]) if ath.get("jersey") is not None else None,
+                    "position": pos,
+                    "height_display": ath.get("displayHeight"),
+                    "weight_display": ath.get("displayWeight"),
+                    "age": safe_int(ath.get("age"), 0) or None,
+                    "country": (ath.get("citizenshipCountry") or {}).get("abbreviation")
+                    or ath.get("citizenship"),
+                    "headshot_url": (ath.get("headshot") or {}).get("href"),
+                    "status": "active",
+                    "is_active": True,
+                }
+
+    # 5. Determine calendar matchdays to fetch
+    now_pet = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=5)
+    today_date = now_pet.date()
+    min_date = dt.date(season_year, 7, 1) if backfill_season else (today_date - dt.timedelta(days=days_back))
+    max_date = today_date + dt.timedelta(days=days_ahead)
+
+    cal_raw = (default_sb.get("leagues") or [{}])[0].get("calendar") or []
+    target_dates: list[str] = []
+    seen_cal: set[str] = set()
+    for c in cal_raw:
+        d_str = str(c)[:10]
+        if len(d_str) != 10 or d_str in seen_cal:
+            continue
+        try:
+            d_obj = dt.date.fromisoformat(d_str)
+        except ValueError:
+            continue
+        if min_date <= d_obj <= max_date:
+            seen_cal.add(d_str)
+            target_dates.append(d_str)
+
+    if not target_dates:
+        target_dates = [today_date.isoformat()]
+
+    def fetch_day_sb(d_str: str) -> tuple[str, dict[str, Any]]:
+        ymd = d_str.replace("-", "")
+        return d_str, fetch_json(f"{ESPN_BASE}/site/v2/sports/soccer/{league_code}/scoreboard?dates={ymd}")
+
+    games_by_ext: dict[str, dict[str, Any]] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        for d_str, sb_json in ex.map(fetch_day_sb, target_dates):
+            for ev in sb_json.get("events") or []:
+                ev_id = str(ev.get("id") or "")
+                if not ev_id:
+                    continue
+                comp = (ev.get("competitions") or [None])[0]
+                if not comp:
+                    continue
+                competitors = comp.get("competitors") or []
+                home = next((c for c in competitors if c.get("homeAway") == "home"), None)
+                away = next((c for c in competitors if c.get("homeAway") == "away"), None)
+                if not home or not away:
+                    continue
+                ht_ext = str((home.get("team") or {}).get("id") or "")
+                at_ext = str((away.get("team") or {}).get("id") or "")
+                if ht_ext not in valid_team_ids or at_ext not in valid_team_ids:
+                    continue
+                st_obj = comp.get("status") or ev.get("status") or {}
+                status, status_detail = map_match_status(st_obj)
+                tipoff_at = ev.get("date") or f"{d_str}T00:00:00Z"
+                # Derive local Peru (UTC-5) match date
+                try:
+                    dt_utc = dt.datetime.fromisoformat(tipoff_at.replace("Z", "+00:00"))
+                    local_date = (dt_utc - dt.timedelta(hours=5)).date().isoformat()
+                except Exception:
+                    local_date = d_str
+
+                games_by_ext[ev_id] = {
+                    "external_source": EXTERNAL_SOURCE,
+                    "external_id": ev_id,
+                    "game_date": local_date,
+                    "tipoff_at": tipoff_at,
+                    "status": status,
+                    "status_detail": status_detail,
+                    "period": safe_int(st_obj.get("period"), 0),
+                    "clock": st_obj.get("displayClock"),
+                    "home_team_ext_id": ht_ext,
+                    "away_team_ext_id": at_ext,
+                    "home_score": safe_int(home.get("score"), 0),
+                    "away_score": safe_int(away.get("score"), 0),
+                    "venue": (comp.get("venue") or {}).get("fullName"),
+                    "odds": extract_soccer_odds(comp.get("odds")),
+                    "sport_stats": None,
+                }
+
+    # 6. Fetch match summaries for final/live matches
+    games_to_summarize = [g for g in games_by_ext.values() if g["status"] in ("final", "live")]
+    stats_rows: list[dict[str, Any]] = []
+
+    def fetch_summary(g: dict[str, Any]) -> list[dict[str, Any]]:
+        eid = g["external_id"]
+        summ = fetch_json(f"{ESPN_BASE}/site/v2/sports/soccer/{league_code}/summary?event={eid}")
+        pick_odds = extract_soccer_odds(summ.get("odds") or summ.get("pickcenter"))
+        if pick_odds:
+            g["odds"] = {**(g["odds"] or {}), **pick_odds}
+
+        home_stats: dict[str, Any] = {}
+        away_stats: dict[str, Any] = {}
+        for bt in (summ.get("boxscore") or {}).get("teams") or []:
+            tid = str((bt.get("team") or {}).get("id") or "")
+            parsed = extract_team_match_stats(bt.get("statistics") or [])
+            if tid == g["home_team_ext_id"]:
+                home_stats = parsed
+            elif tid == g["away_team_ext_id"]:
+                away_stats = parsed
+
+        key_events = extract_key_events(summ.get("keyEvents") or [])
+        if home_stats or away_stats or key_events:
+            g["sport_stats"] = {
+                "home": home_stats,
+                "away": away_stats,
+                "events": key_events,
+            }
+
+        out: list[dict[str, Any]] = []
+        for ros in summ.get("rosters") or []:
+            tid = str((ros.get("team") or {}).get("id") or "")
+            if tid not in valid_team_ids:
+                continue
+            for prow in ros.get("roster") or []:
+                ath = prow.get("athlete") or {}
+                pid = str(ath.get("id") or "")
+                if not pid:
+                    continue
+                if pid not in discovered_players:
+                    discovered_players[pid] = {
+                        "external_source": EXTERNAL_SOURCE,
+                        "external_id": pid,
+                        "team_external_id": tid,
+                        "first_name": ath.get("firstName"),
+                        "last_name": ath.get("lastName"),
+                        "full_name": ath.get("displayName") or ath.get("shortName") or f"Player {pid}",
+                        "jersey_number": str(prow["jersey"]) if prow.get("jersey") is not None else None,
+                        "position": (prow.get("position") or {}).get("abbreviation"),
+                        "headshot_url": (ath.get("headshot") or {}).get("href"),
+                        "status": "active",
+                        "is_active": True,
+                    }
+
+                smap = {
+                    s.get("name"): safe_int(s.get("value"), 0)
+                    for s in prow.get("stats") or []
+                    if s.get("name")
+                }
+                appearances = smap.get("appearances", 0)
+                sub_ins = smap.get("subIns", 0)
+                is_starter = bool(prow.get("starter"))
+                dnp = appearances == 0 and sub_ins == 0 and not is_starter
+                mins = 0 if dnp else (90 if is_starter else 25)
+                out.append(
+                    {
+                        "game_external_id": eid,
+                        "team_external_id": tid,
+                        "player_external_id": pid,
+                        "minutes": mins,
+                        "starter": is_starter,
+                        "did_not_play": dnp,
+                        "dnp_reason": "Suplente sin minutos" if dnp else None,
+                        "sport_stats": {
+                            "appearances": appearances,
+                            "sub_ins": sub_ins,
+                            "goals": smap.get("totalGoals", 0),
+                            "assists": smap.get("goalAssists", 0),
+                            "shots": smap.get("totalShots", 0),
+                            "shots_on_target": smap.get("shotsOnTarget", 0),
+                            "yellow_cards": smap.get("yellowCards", 0),
+                            "red_cards": smap.get("redCards", 0),
+                            "fouls_committed": smap.get("foulsCommitted", 0),
+                            "fouls_suffered": smap.get("foulsSuffered", 0),
+                            "saves": smap.get("saves", 0),
+                            "shots_faced": smap.get("shotsFaced", 0),
+                            "goals_conceded": smap.get("goalsConceded", 0),
+                            "own_goals": smap.get("ownGoals", 0),
+                        },
+                    }
+                )
+        return out
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        for rows in ex.map(fetch_summary, games_to_summarize):
+            stats_rows.extend(rows)
+
+    # 7. Insert newly discovered players
+    new_players: list[dict[str, Any]] = []
+    for p in discovered_players.values():
+        if p["external_id"] not in player_id_map:
+            new_players.append(
+                {
+                    "league_id": league_id,
+                    "team_id": team_id_map.get(p["team_external_id"]),
+                    "external_source": EXTERNAL_SOURCE,
+                    "external_id": p["external_id"],
+                    "first_name": p.get("first_name"),
+                    "last_name": p.get("last_name"),
+                    "full_name": p["full_name"],
+                    "jersey_number": p.get("jersey_number"),
+                    "position": p.get("position"),
+                    "height_display": p.get("height_display"),
+                    "weight_display": p.get("weight_display"),
+                    "age": p.get("age"),
+                    "country": p.get("country"),
+                    "headshot_url": p.get("headshot_url"),
+                    "status": "active",
+                    "is_active": True,
+                    "updated_at": now_iso,
+                }
+            )
+    if new_players:
+        for i in range(0, len(new_players), 300):
+            inserted = sb._request("POST", "players", new_players[i : i + 300]) or []
+            for r in inserted:
+                player_id_map[str(r["external_id"])] = r["id"]
+
+    # 8. Sync games (PATCH existing, POST new)
+    existing_games = sb.select_all(
+        "games", f"league_id=eq.{league_id}&external_source=eq.{EXTERNAL_SOURCE}&select=id,external_id"
+    )
+    game_id_map: dict[str, int] = {
+        str(r["external_id"]): r["id"] for r in existing_games if r.get("external_id")
+    }
+
+    new_games: list[dict[str, Any]] = []
+    game_updates: list[tuple[int, dict[str, Any]]] = []
+    for g in games_by_ext.values():
+        ht = team_id_map.get(g["home_team_ext_id"])
+        at = team_id_map.get(g["away_team_ext_id"])
+        if not ht or not at:
+            continue
+        payload: dict[str, Any] = {
+            "league_id": league_id,
+            "season_id": season_id,
+            "external_source": EXTERNAL_SOURCE,
+            "external_id": g["external_id"],
+            "game_date": g["game_date"],
+            "tipoff_at": g["tipoff_at"],
+            "status": g["status"],
+            "status_detail": g["status_detail"],
+            "period": g["period"],
+            "clock": g["clock"],
+            "home_team_id": ht,
+            "away_team_id": at,
+            "home_score": g["home_score"],
+            "away_score": g["away_score"],
+            "venue": g["venue"],
+            "updated_at": now_iso,
+        }
+        gid = game_id_map.get(g["external_id"])
+        if gid:
+            if g["odds"] is not None:
+                payload["odds"] = g["odds"]
+            if g["sport_stats"] is not None:
+                payload["sport_stats"] = g["sport_stats"]
+            game_updates.append((gid, payload))
+        else:
+            # PostgREST bulk INSERT requires identical keys across all rows
+            payload["odds"] = g["odds"]
+            payload["sport_stats"] = g["sport_stats"]
+            new_games.append(payload)
+
+    def patch_game(item: tuple[int, dict[str, Any]]) -> None:
+        gid, pl = item
+        sb._request("PATCH", f"games?id=eq.{gid}", pl, {"Prefer": "return=minimal"})
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+        list(ex.map(patch_game, game_updates))
+
+    if new_games:
+        for i in range(0, len(new_games), 200):
+            inserted = sb._request("POST", "games", new_games[i : i + 200]) or []
+            for r in inserted:
+                game_id_map[str(r["external_id"])] = r["id"]
+
+    # 9. Upsert player match stats
+    stat_payloads: list[dict[str, Any]] = []
+    for r in stats_rows:
+        gid = game_id_map.get(r["game_external_id"])
+        tid = team_id_map.get(r["team_external_id"])
+        pid = player_id_map.get(r["player_external_id"])
+        if not gid or not tid or not pid:
+            continue
+        stat_payloads.append(
+            {
+                "league_id": league_id,
+                "game_id": gid,
+                "team_id": tid,
+                "player_id": pid,
+                "minutes": r["minutes"],
+                "pts": r["sport_stats"]["goals"],
+                "ast": r["sport_stats"]["assists"],
+                "starter": r["starter"],
+                "did_not_play": r["did_not_play"],
+                "dnp_reason": r["dnp_reason"],
+                "sport_stats": r["sport_stats"],
+                "updated_at": now_iso,
+            }
+        )
+
+    if stat_payloads:
+        sb.upsert_on_conflict("player_game_stats", stat_payloads, "game_id,player_id", batch=300)
+
+    # 10. Log sync_runs
+    msg = (
+        f"Synced {len(games_by_ext)} matches ({target_dates[0]}..{target_dates[-1]}), "
+        f"{len(stat_payloads)} player stats"
+    )
+    sb._request(
+        "POST",
+        "sync_runs",
+        [
+            {
+                "source": EXTERNAL_SOURCE,
+                "league_slug": meta["slug"],
+                "status": "success",
+                "games_synced": len(games_by_ext),
+                "stats_synced": len(stat_payloads),
+                "message": msg,
+            }
+        ],
+        {"Prefer": "return=minimal"},
+    )
+    print(f"[OK] {meta['short_name']} ({season_name}): {msg}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Sync football league stats from ESPN to Supabase")
+    parser.add_argument("--league", default="eng.1", choices=list(LEAGUE_CATALOG.keys()))
+    parser.add_argument("--days-back", type=int, default=6)
+    parser.add_argument("--days-ahead", type=int, default=12)
+    parser.add_argument("--backfill-season", action="store_true")
+    args = parser.parse_args()
+
+    sb_url = os.environ.get("SUPABASE_URL", "").strip()
+    sb_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    if not sb_url or not sb_key:
+        print("Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY env vars are required.", file=sys.stderr)
+        return 1
+
+    sync_league(
+        league_code=args.league,
+        days_back=args.days_back,
+        days_ahead=args.days_ahead,
+        backfill_season=args.backfill_season,
+        sb_url=sb_url,
+        sb_key=sb_key,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

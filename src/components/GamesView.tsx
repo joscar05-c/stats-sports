@@ -11,6 +11,7 @@ import type { Game } from '../types/database';
 
 interface GamesViewProps {
   leagueId: number;
+  sport?: 'basketball' | 'football';
   onSelectGame: (game: Game) => void;
   onGamesUpdated?: (games: Game[]) => void;
 }
@@ -43,7 +44,12 @@ function formatTipoffLocal(iso: string): string {
   }
 }
 
-export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewProps) {
+export function GamesView({
+  leagueId,
+  sport = 'basketball',
+  onSelectGame,
+  onGamesUpdated,
+}: GamesViewProps) {
   const [dates, setDates] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [games, setGames] = useState<Game[]>([]);
@@ -57,8 +63,13 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
       if (avail.length > 0) {
         const now = new Date();
         const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const best = avail.includes(todayIso) ? todayIso : avail[0];
-        setSelectedDate(best);
+        const upcomingOrToday = avail.includes(todayIso)
+          ? todayIso
+          : avail
+              .slice()
+              .reverse()
+              .find((d) => d >= todayIso) ?? avail[0];
+        setSelectedDate(upcomingOrToday);
       } else {
         setLoading(false);
       }
@@ -144,7 +155,7 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
       tick += 1;
       try {
         if (hasLiveOrStarting && tick % 3 === 0) {
-          await triggerCloudSync(0, 0).catch(() => {});
+          await triggerCloudSync(0, 0, sport).catch(() => {});
         }
         const res = await fetchGamesByDate(leagueId, selectedDate);
         if (active) {
@@ -240,7 +251,11 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
                   )}
 
                   <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-slate-400 group-hover:text-slate-100 transition-colors">
-                    {g.status === 'scheduled' ? 'Líneas y previa' : 'Box Score'}
+                    {g.status === 'scheduled'
+                      ? 'Líneas y previa'
+                      : sport === 'football'
+                        ? 'Resumen'
+                        : 'Box Score'}
                     <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
                   </span>
                 </div>
@@ -253,12 +268,14 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
                       score: g.away_score,
                       won: awayWon,
                       ml: g.odds?.away_moneyline,
+                      tag: sport === 'football' ? 'VIS' : null,
                     },
                     {
                       team: g.home_team,
                       score: g.home_score,
                       won: homeWon,
                       ml: g.odds?.home_moneyline,
+                      tag: sport === 'football' ? 'LOC' : null,
                     },
                   ].map((side) => (
                     <div key={side.team.id} className="flex items-center justify-between">
@@ -280,6 +297,11 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
                             <span className="text-xs font-normal text-slate-400">
                               ({side.team.abbreviation})
                             </span>
+                            {side.tag && (
+                              <span className="ml-1.5 text-[10px] font-semibold px-1 py-0.5 rounded bg-white/[0.04] text-slate-400">
+                                {side.tag}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -324,6 +346,14 @@ export function GamesView({ leagueId, onSelectGame, onGamesUpdated }: GamesViewP
                         {g.odds.over_under != null && (
                           <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.07]">
                             O/U <strong className="text-slate-100 font-semibold">{g.odds.over_under}</strong>
+                          </span>
+                        )}
+                        {sport === 'football' && g.odds.draw_moneyline != null && (
+                          <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.07]">
+                            Empate{' '}
+                            <strong className="text-slate-100 font-semibold">
+                              {formatDecimalOdds(g.odds.draw_moneyline)}x
+                            </strong>
                           </span>
                         )}
                         {g.odds.home_spread == null &&

@@ -15,9 +15,11 @@ import {
   Lock,
 } from 'lucide-react';
 import {
+  fetchFootballGameBettingContext,
   fetchGameBettingContext,
   fetchGameBoxScore,
   fetchGameById,
+  type FootballGameBettingContext,
   type GameBettingContext,
 } from '../services/basketballApi';
 import { supabase } from '../lib/supabase';
@@ -35,11 +37,18 @@ import {
   summarizeTeamRecent,
   type PropRecommendation,
 } from '../utils/betting';
-import type { Game, PlayerGameStat } from '../types/database';
+import {
+  buildFootballMatchupInsight,
+  buildFootballPropsRecommendations,
+  getLiveFootballPropProgress,
+} from '../utils/footballProps';
+import type { FootballPlayerSeasonAverage, Game, PlayerGameStat } from '../types/database';
+import type { AnyBettingContext } from './PropsSidebar';
 import { ModalDialog } from './ModalDialog';
 
 interface GameDetailModalProps {
   game: Game;
+  sport?: 'basketball' | 'football';
   isPro: boolean;
   onClose: () => void;
   onSelectPlayer: (playerId: number) => void;
@@ -136,6 +145,7 @@ function computeTeamGameTotals(rows: PlayerGameStat[], fallbackScore = 0): TeamG
 
 export function GameDetailModal({
   game: initialGame,
+  sport = 'basketball',
   isPro,
   onClose,
   onSelectPlayer,
@@ -147,7 +157,7 @@ export function GameDetailModal({
   );
   const [stats, setStats] = useState<PlayerGameStat[]>([]);
   const [loadingBox, setLoadingBox] = useState(initialGame.status !== 'scheduled');
-  const [betCtx, setBetCtx] = useState<GameBettingContext | null>(null);
+  const [betCtx, setBetCtx] = useState<AnyBettingContext | null>(null);
   const [loadingBet, setLoadingBet] = useState(true);
   const [activeTeamId, setActiveTeamId] = useState<number>(initialGame.away_team_id);
   const [propsScope, setPropsScope] = useState<'all' | 'team' | 'player'>('all');
@@ -179,7 +189,9 @@ export function GameDetailModal({
     }
 
     setLoadingBet(true);
-    fetchGameBettingContext(game)
+    const fetcher =
+      sport === 'football' ? fetchFootballGameBettingContext(game) : fetchGameBettingContext(game);
+    fetcher
       .then((ctx) => {
         if (active) setBetCtx(ctx);
       })
@@ -190,7 +202,7 @@ export function GameDetailModal({
     return () => {
       active = false;
     };
-  }, [game.id]);
+  }, [game.id, sport]);
 
   // Auto-refresh scoreboard & boxscore every 15s + Realtime while modal is open
   useEffect(() => {
@@ -269,30 +281,59 @@ export function GameDetailModal({
     if (!betCtx) return null;
     const homeRecent = summarizeTeamRecent(game.home_team_id, betCtx.homeRecentGames);
     const awayRecent = summarizeTeamRecent(game.away_team_id, betCtx.awayRecentGames);
+    if (sport === 'football') {
+      const fbCtx = betCtx as FootballGameBettingContext;
+      const insight = buildFootballMatchupInsight(
+        game,
+        fbCtx.homeStanding,
+        fbCtx.awayStanding,
+        fbCtx.homeTeamAvg,
+        fbCtx.awayTeamAvg,
+        homeRecent,
+        awayRecent,
+        fbCtx.homeRecentGames,
+        fbCtx.awayRecentGames,
+      );
+      const propsRecs = buildFootballPropsRecommendations({
+        game,
+        homeStanding: fbCtx.homeStanding,
+        awayStanding: fbCtx.awayStanding,
+        homeTeamAvg: fbCtx.homeTeamAvg,
+        awayTeamAvg: fbCtx.awayTeamAvg,
+        homeRecent,
+        awayRecent,
+        homeRecentGames: fbCtx.homeRecentGames,
+        awayRecentGames: fbCtx.awayRecentGames,
+        keyPlayers: fbCtx.keyPlayers,
+        playerRecentLogs: fbCtx.playerRecentLogs ?? [],
+      });
+      return { homeRecent, awayRecent, insight, propsRecs };
+    }
+    const nbaCtx = betCtx as GameBettingContext;
     const insight = buildMatchupBettingInsight(
       game,
-      betCtx.homeStanding,
-      betCtx.awayStanding,
+      nbaCtx.homeStanding,
+      nbaCtx.awayStanding,
       homeRecent,
       awayRecent,
-      betCtx.homeRecentGames,
-      betCtx.awayRecentGames,
+      nbaCtx.homeRecentGames,
+      nbaCtx.awayRecentGames,
     );
     const propsRecs = buildGamePropsRecommendations({
       game,
-      homeStanding: betCtx.homeStanding,
-      awayStanding: betCtx.awayStanding,
-      homeTeamAvg: betCtx.homeTeamAvg,
-      awayTeamAvg: betCtx.awayTeamAvg,
+      homeStanding: nbaCtx.homeStanding,
+      awayStanding: nbaCtx.awayStanding,
+      homeTeamAvg: nbaCtx.homeTeamAvg,
+      awayTeamAvg: nbaCtx.awayTeamAvg,
       homeRecent,
       awayRecent,
-      homeRecentGames: betCtx.homeRecentGames,
-      awayRecentGames: betCtx.awayRecentGames,
-      keyPlayers: betCtx.keyPlayers,
-      playerRecentLogs: betCtx.playerRecentLogs ?? [],
+      homeRecentGames: nbaCtx.homeRecentGames,
+      awayRecentGames: nbaCtx.awayRecentGames,
+      keyPlayers: nbaCtx.keyPlayers,
+      playerRecentLogs: nbaCtx.playerRecentLogs ?? [],
     });
     return { homeRecent, awayRecent, insight, propsRecs };
-  }, [game, betCtx]);
+  }, [game, betCtx, sport]);
 
   const filteredProps = useMemo(() => {
     if (!bettingAnalysis) return [];
@@ -312,6 +353,9 @@ export function GameDetailModal({
 
   const getLivePropProgress = (prop: PropRecommendation): string | null => {
     if (game.status === 'scheduled') return null;
+    if (sport === 'football') {
+      return getLiveFootballPropProgress(prop, game, stats);
+    }
     if (prop.scope === 'player' && prop.playerId && prop.metricKey) {
       const row = liveStatByPlayerId.get(prop.playerId);
       if (!row || row.did_not_play) return row?.did_not_play ? 'DNP' : null;
@@ -399,7 +443,9 @@ export function GameDetailModal({
               <span className="text-[11px] text-slate-400">
                 Visita
                 {betCtx?.awayStanding
-                  ? ` · ${betCtx.awayStanding.wins}-${betCtx.awayStanding.losses}`
+                  ? sport === 'football'
+                    ? ` · ${betCtx.awayStanding.wins}-${betCtx.awayStanding.draws ?? 0}-${betCtx.awayStanding.losses}`
+                    : ` · ${betCtx.awayStanding.wins}-${betCtx.awayStanding.losses}`
                   : ''}
               </span>
             </div>
@@ -438,14 +484,44 @@ export function GameDetailModal({
               <span className="text-[11px] text-slate-400">
                 Local
                 {betCtx?.homeStanding
-                  ? ` · ${betCtx.homeStanding.wins}-${betCtx.homeStanding.losses}`
+                  ? sport === 'football'
+                    ? ` · ${betCtx.homeStanding.wins}-${betCtx.homeStanding.draws ?? 0}-${betCtx.homeStanding.losses}`
+                    : ` · ${betCtx.homeStanding.wins}-${betCtx.homeStanding.losses}`
                   : ''}
               </span>
             </div>
           </div>
 
-          {/* Linescores by Quarter */}
-          {game.status !== 'scheduled' &&
+          {/* Football Key Events Timeline (Goals & Cards) */}
+          {sport === 'football' &&
+            game.status !== 'scheduled' &&
+            (game.sport_stats?.events?.length ?? 0) > 0 && (
+              <div className="mt-3 rounded-lg bg-[#0b0d11] border border-white/[0.08] px-3 py-2 flex flex-wrap items-center justify-center gap-1.5 text-[11px] tabular-nums">
+                {game.sport_stats!.events!.slice(0, 12).map((ev, idx) => {
+                  const icon =
+                    ev.kind === 'goal' || ev.kind === 'penalty' || ev.kind === 'own_goal'
+                      ? '⚽'
+                      : ev.kind === 'red'
+                        ? '🟥'
+                        : '🟨';
+                  return (
+                    <span
+                      key={`${ev.minute}_${idx}`}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.07] text-slate-200"
+                    >
+                      <span aria-hidden="true">{icon}</span>
+                      <span className="font-semibold text-slate-400">{ev.minute}</span>
+                      <span>{ev.player}</span>
+                      <span className="text-[10px] text-slate-400">({ev.team_abbr})</span>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+          {/* Linescores by Quarter (NBA) */}
+          {sport !== 'football' &&
+            game.status !== 'scheduled' &&
             (game.away_linescores?.length || game.home_linescores?.length) && (
               <div className="mt-3 rounded-lg bg-[#0b0d11] border border-white/[0.08] p-2.5 overflow-x-auto">
                 <table className="w-full text-xs tabular-nums">
@@ -666,6 +742,24 @@ export function GameDetailModal({
                               </div>
                             </td>
                           </tr>
+                          {sport === 'football' && odds.draw_moneyline != null && (
+                            <tr>
+                              <td className="py-2 pr-2 font-semibold text-slate-200">
+                                EMPATE <span className="text-[10px] font-normal text-slate-400">1X2</span>
+                              </td>
+                              <td className="py-2 px-2 text-center">
+                                <div className="font-bold text-white">
+                                  {formatDecimalOdds(odds.draw_moneyline)}{' '}
+                                  <span className="text-slate-400 font-normal">
+                                    ({formatAmericanOdds(odds.draw_moneyline)})
+                                  </span>
+                                </div>
+                              </td>
+                              <td colSpan={2} className="py-2 px-2 text-center text-[11px] text-slate-400">
+                                Mercado 90 minutos reglamentarios
+                              </td>
+                            </tr>
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -1071,10 +1165,27 @@ export function GameDetailModal({
                             ({p.team_abbreviation})
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-400 tabular-nums mt-0.5">
-                          <strong className="text-slate-100">{Number(p.ppg).toFixed(1)}</strong> PTS ·{' '}
-                          {Number(p.rpg).toFixed(1)} REB · {Number(p.apg).toFixed(1)} AST
-                        </div>
+                        {sport === 'football' ? (
+                          (() => {
+                            const fp = p as unknown as FootballPlayerSeasonAverage;
+                            return (
+                              <div className="text-[11px] text-slate-400 tabular-nums mt-0.5">
+                                <strong className="text-slate-100">{fp.goals}</strong> G ·{' '}
+                                {fp.assists} A · {fp.shots} REM ({fp.shots_on_target} arco)
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          (() => {
+                            const bp = p as GameBettingContext['keyPlayers'][number];
+                            return (
+                              <div className="text-[11px] text-slate-400 tabular-nums mt-0.5">
+                                <strong className="text-slate-100">{Number(bp.ppg).toFixed(1)}</strong> PTS ·{' '}
+                                {Number(bp.rpg).toFixed(1)} REB · {Number(bp.apg).toFixed(1)} AST
+                              </div>
+                            );
+                          })()
+                        )}
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" aria-hidden="true" />
                     </button>
@@ -1084,6 +1195,154 @@ export function GameDetailModal({
             )}
           </div>
         ) : section === 'teamstats' ? (
+          sport === 'football' ? (
+            <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-5 space-y-4">
+              {game.status !== 'scheduled' && game.sport_stats?.home && game.sport_stats?.away && (
+                <div className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-4 space-y-3.5 tabular-nums">
+                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-2.5">
+                    <span className="text-xs font-bold text-blue-400">{game.away_team.short_name}</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                      Estadísticas del partido
+                    </span>
+                    <span className="text-xs font-bold text-slate-200">{game.home_team.short_name}</span>
+                  </div>
+                  <div className="space-y-3">
+                    {[
+                      {
+                        label: 'Posesión (%)',
+                        a: Number(game.sport_stats.away.possession_pct ?? 50),
+                        h: Number(game.sport_stats.home.possession_pct ?? 50),
+                        suffix: '%',
+                      },
+                      {
+                        label: 'Remates Totales',
+                        a: Number(game.sport_stats.away.shots ?? 0),
+                        h: Number(game.sport_stats.home.shots ?? 0),
+                      },
+                      {
+                        label: 'Remates al Arco',
+                        a: Number(game.sport_stats.away.shots_on_target ?? 0),
+                        h: Number(game.sport_stats.home.shots_on_target ?? 0),
+                      },
+                      {
+                        label: 'Tiros de Esquina (Córners)',
+                        a: Number(game.sport_stats.away.corners ?? 0),
+                        h: Number(game.sport_stats.home.corners ?? 0),
+                      },
+                      {
+                        label: 'Atajadas',
+                        a: Number(game.sport_stats.away.saves ?? 0),
+                        h: Number(game.sport_stats.home.saves ?? 0),
+                      },
+                      {
+                        label: 'Fueras de Juego',
+                        a: Number(game.sport_stats.away.offsides ?? 0),
+                        h: Number(game.sport_stats.home.offsides ?? 0),
+                        lowerIsBetter: true,
+                      },
+                      {
+                        label: 'Faltas Cometidas',
+                        a: Number(game.sport_stats.away.fouls ?? 0),
+                        h: Number(game.sport_stats.home.fouls ?? 0),
+                        lowerIsBetter: true,
+                      },
+                      {
+                        label: 'Tarjetas Amarillas',
+                        a: Number(game.sport_stats.away.yellow_cards ?? 0),
+                        h: Number(game.sport_stats.home.yellow_cards ?? 0),
+                        lowerIsBetter: true,
+                      },
+                    ].map((r) => {
+                      const posA = Math.max(0.1, r.a);
+                      const posH = Math.max(0.1, r.h);
+                      const pctA = Math.round((posA / (posA + posH)) * 100);
+                      const aBetter = r.lowerIsBetter ? r.a <= r.h : r.a >= r.h;
+                      const hBetter = r.lowerIsBetter ? r.h <= r.a : r.h >= r.a;
+                      const s = r.suffix ?? '';
+                      return (
+                        <div key={r.label}>
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className={aBetter ? 'font-bold text-blue-400' : 'text-slate-400'}>
+                              {r.suffix ? r.a.toFixed(1) : r.a}
+                              {s}
+                            </span>
+                            <span className="font-medium text-slate-300">{r.label}</span>
+                            <span className={hBetter ? 'font-bold text-slate-100' : 'text-slate-400'}>
+                              {r.suffix ? r.h.toFixed(1) : r.h}
+                              {s}
+                            </span>
+                          </div>
+                          <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden flex">
+                            <div className="bg-blue-500 transition-all" style={{ width: `${pctA}%` }} />
+                            <div className="bg-slate-400 transition-all" style={{ width: `${100 - pctA}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {(() => {
+                const fbCtx = betCtx as FootballGameBettingContext | null;
+                if (!fbCtx?.awayTeamAvg || !fbCtx?.homeTeamAvg) return null;
+                const aT = fbCtx.awayTeamAvg;
+                const hT = fbCtx.homeTeamAvg;
+                return (
+                  <div className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-4 space-y-3.5 tabular-nums">
+                    <div className="flex items-center justify-between border-b border-white/[0.08] pb-2.5">
+                      <span className="text-xs font-bold text-blue-400">
+                        {aT.team_abbreviation} ({aT.points} PTS)
+                      </span>
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                        Promedios de temporada
+                      </span>
+                      <span className="text-xs font-bold text-slate-200">
+                        {hT.team_abbreviation} ({hT.points} PTS)
+                      </span>
+                    </div>
+                    <div className="space-y-2.5">
+                      {[
+                        { label: 'Goles a Favor / PJ', a: Number(aT.gf_pg ?? 0), h: Number(hT.gf_pg ?? 0), dec: 2 },
+                        { label: 'Goles Recibidos / PJ', a: Number(aT.ga_pg ?? 0), h: Number(hT.ga_pg ?? 0), dec: 2, lowerIsBetter: true },
+                        { label: 'Posesión Promedio', a: Number(aT.possession_avg ?? 50), h: Number(hT.possession_avg ?? 50), dec: 1, suffix: '%' },
+                        { label: 'Remates / PJ', a: Number(aT.shots_pg ?? 0), h: Number(hT.shots_pg ?? 0), dec: 1 },
+                        { label: 'Al Arco / PJ', a: Number(aT.sot_pg ?? 0), h: Number(hT.sot_pg ?? 0), dec: 1 },
+                        { label: 'Córners / PJ', a: Number(aT.corners_pg ?? 0), h: Number(hT.corners_pg ?? 0), dec: 1 },
+                        { label: 'Vallas Invictas', a: Number(aT.clean_sheets ?? 0), h: Number(hT.clean_sheets ?? 0), dec: 0 },
+                      ].map((r) => {
+                        const posA = Math.max(0.1, r.a);
+                        const posH = Math.max(0.1, r.h);
+                        const pctA = Math.round((posA / (posA + posH)) * 100);
+                        const aBetter = r.lowerIsBetter ? r.a <= r.h : r.a >= r.h;
+                        const hBetter = r.lowerIsBetter ? r.h <= r.a : r.h >= r.a;
+                        const s = r.suffix ?? '';
+                        return (
+                          <div key={r.label}>
+                            <div className="flex items-center justify-between text-xs mb-1">
+                              <span className={aBetter ? 'font-bold text-blue-400' : 'text-slate-400'}>
+                                {r.a.toFixed(r.dec)}
+                                {s}
+                              </span>
+                              <span className="font-medium text-slate-300">{r.label}</span>
+                              <span className={hBetter ? 'font-bold text-slate-100' : 'text-slate-400'}>
+                                {r.h.toFixed(r.dec)}
+                                {s}
+                              </span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden flex">
+                              <div className="bg-blue-500 transition-all" style={{ width: `${pctA}%` }} />
+                              <div className="bg-slate-400 transition-all" style={{ width: `${100 - pctA}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          ) : (
           <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-5 space-y-4">
             {/* Live or Final Game Collective Comparison */}
             {game.status !== 'scheduled' && stats.length > 0 && (
@@ -1275,17 +1534,26 @@ export function GameDetailModal({
             )}
 
             {/* Season Team Averages Comparison */}
-            {betCtx?.awayTeamAvg && betCtx?.homeTeamAvg ? (
+            {(() => {
+              const nbaCtx = betCtx as GameBettingContext | null;
+              if (!nbaCtx?.awayTeamAvg || !nbaCtx?.homeTeamAvg) {
+                return loadingBet ? (
+                  <div className="py-10 text-center text-xs text-slate-400">
+                    Cargando estadísticas comparativas de los equipos...
+                  </div>
+                ) : null;
+              }
+              return (
               <div className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-4 space-y-3.5 tabular-nums">
                 <div className="flex items-center justify-between border-b border-white/[0.08] pb-2.5">
                   <span className="text-xs font-bold text-blue-400">
-                    {game.away_team.abbreviation} ({betCtx.awayTeamAvg.wins}-{betCtx.awayTeamAvg.losses})
+                    {game.away_team.abbreviation} ({nbaCtx.awayTeamAvg.wins}-{nbaCtx.awayTeamAvg.losses})
                   </span>
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
                     Promedios de temporada por equipo
                   </span>
                   <span className="text-xs font-bold text-slate-200">
-                    {game.home_team.abbreviation} ({betCtx.homeTeamAvg.wins}-{betCtx.homeTeamAvg.losses})
+                    {game.home_team.abbreviation} ({nbaCtx.homeTeamAvg.wins}-{nbaCtx.homeTeamAvg.losses})
                   </span>
                 </div>
 
@@ -1293,62 +1561,62 @@ export function GameDetailModal({
                   {[
                     {
                       label: 'Puntos a Favor (PPG)',
-                      a: Number(betCtx.awayTeamAvg.ppg ?? 0),
-                      h: Number(betCtx.homeTeamAvg.ppg ?? 0),
+                      a: Number(nbaCtx.awayTeamAvg.ppg ?? 0),
+                      h: Number(nbaCtx.homeTeamAvg.ppg ?? 0),
                     },
                     {
                       label: 'Puntos Recibidos (OPPG)',
-                      a: Number(betCtx.awayTeamAvg.oppg ?? 0),
-                      h: Number(betCtx.homeTeamAvg.oppg ?? 0),
+                      a: Number(nbaCtx.awayTeamAvg.oppg ?? 0),
+                      h: Number(nbaCtx.homeTeamAvg.oppg ?? 0),
                       lowerIsBetter: true,
                     },
                     {
                       label: 'Rebotes por Partido (RPG)',
-                      a: Number(betCtx.awayTeamAvg.rpg ?? 0),
-                      h: Number(betCtx.homeTeamAvg.rpg ?? 0),
+                      a: Number(nbaCtx.awayTeamAvg.rpg ?? 0),
+                      h: Number(nbaCtx.homeTeamAvg.rpg ?? 0),
                     },
                     {
                       label: 'Asistencias por Partido (APG)',
-                      a: Number(betCtx.awayTeamAvg.apg ?? 0),
-                      h: Number(betCtx.homeTeamAvg.apg ?? 0),
+                      a: Number(nbaCtx.awayTeamAvg.apg ?? 0),
+                      h: Number(nbaCtx.homeTeamAvg.apg ?? 0),
                     },
                     {
                       label: 'Triples Anotados / PJ',
-                      a: Number(betCtx.awayTeamAvg.tpm_pg ?? 0),
-                      h: Number(betCtx.homeTeamAvg.tpm_pg ?? 0),
+                      a: Number(nbaCtx.awayTeamAvg.tpm_pg ?? 0),
+                      h: Number(nbaCtx.homeTeamAvg.tpm_pg ?? 0),
                     },
                     {
                       label: 'Tiros de Campo (TC%)',
-                      a: Number(betCtx.awayTeamAvg.fg_pct ?? 0),
-                      h: Number(betCtx.homeTeamAvg.fg_pct ?? 0),
+                      a: Number(nbaCtx.awayTeamAvg.fg_pct ?? 0),
+                      h: Number(nbaCtx.homeTeamAvg.fg_pct ?? 0),
                       suffix: '%',
                     },
                     {
                       label: 'Efectividad Triples (3P%)',
-                      a: Number(betCtx.awayTeamAvg.tp_pct ?? 0),
-                      h: Number(betCtx.homeTeamAvg.tp_pct ?? 0),
+                      a: Number(nbaCtx.awayTeamAvg.tp_pct ?? 0),
+                      h: Number(nbaCtx.homeTeamAvg.tp_pct ?? 0),
                       suffix: '%',
                     },
                     {
                       label: 'True Shooting (TS%)',
-                      a: Number(betCtx.awayTeamAvg.ts_pct ?? 0),
-                      h: Number(betCtx.homeTeamAvg.ts_pct ?? 0),
+                      a: Number(nbaCtx.awayTeamAvg.ts_pct ?? 0),
+                      h: Number(nbaCtx.homeTeamAvg.ts_pct ?? 0),
                       suffix: '%',
                     },
                     {
                       label: 'Robos (SPG)',
-                      a: Number(betCtx.awayTeamAvg.spg ?? 0),
-                      h: Number(betCtx.homeTeamAvg.spg ?? 0),
+                      a: Number(nbaCtx.awayTeamAvg.spg ?? 0),
+                      h: Number(nbaCtx.homeTeamAvg.spg ?? 0),
                     },
                     {
                       label: 'Tapones (BPG)',
-                      a: Number(betCtx.awayTeamAvg.bpg ?? 0),
-                      h: Number(betCtx.homeTeamAvg.bpg ?? 0),
+                      a: Number(nbaCtx.awayTeamAvg.bpg ?? 0),
+                      h: Number(nbaCtx.homeTeamAvg.bpg ?? 0),
                     },
                     {
                       label: 'Puntos de la Banca',
-                      a: Number(betCtx.awayTeamAvg.bench_ppg ?? 0),
-                      h: Number(betCtx.homeTeamAvg.bench_ppg ?? 0),
+                      a: Number(nbaCtx.awayTeamAvg.bench_ppg ?? 0),
+                      h: Number(nbaCtx.homeTeamAvg.bench_ppg ?? 0),
                     },
                   ].map((r) => {
                     const posA = Math.max(0.1, r.a);
@@ -1385,14 +1653,10 @@ export function GameDetailModal({
                   })}
                 </div>
               </div>
-            ) : (
-              loadingBet && (
-                <div className="py-10 text-center text-xs text-slate-400">
-                  Cargando estadísticas comparativas de los equipos...
-                </div>
-              )
-            )}
+              );
+            })()}
           </div>
+          )
         ) : (
           <>
             {/* Team Switcher for Box Score */}
@@ -1446,21 +1710,38 @@ export function GameDetailModal({
                     Estadísticas individuales del partido
                   </caption>
                   <thead>
-                    <tr className="text-slate-400 border-b border-white/[0.08]">
-                      <th scope="col" className="text-left py-2 px-2 sticky left-0 bg-[#12151c]">
-                        JUGADOR
-                      </th>
-                      <th scope="col" className="text-right py-2 px-2">MIN</th>
-                      <th scope="col" className="text-right py-2 px-2 text-white">PTS</th>
-                      <th scope="col" className="text-right py-2 px-2">REB</th>
-                      <th scope="col" className="text-right py-2 px-2">AST</th>
-                      <th scope="col" className="text-right py-2 px-2">TC</th>
-                      <th scope="col" className="text-right py-2 px-2">3P</th>
-                      <th scope="col" className="text-right py-2 px-2">TL</th>
-                      <th scope="col" className="text-right py-2 px-2">ROB</th>
-                      <th scope="col" className="text-right py-2 px-2">TAP</th>
-                      <th scope="col" className="text-right py-2 px-2">+/-</th>
-                    </tr>
+                    {sport === 'football' ? (
+                      <tr className="text-slate-400 border-b border-white/[0.08]">
+                        <th scope="col" className="text-left py-2 px-2 sticky left-0 bg-[#12151c]">
+                          JUGADOR
+                        </th>
+                        <th scope="col" className="text-center py-2 px-2">POS</th>
+                        <th scope="col" className="text-right py-2 px-2 text-white">G</th>
+                        <th scope="col" className="text-right py-2 px-2">A</th>
+                        <th scope="col" className="text-right py-2 px-2">REM</th>
+                        <th scope="col" className="text-right py-2 px-2">ARCO</th>
+                        <th scope="col" className="text-right py-2 px-2">FC</th>
+                        <th scope="col" className="text-right py-2 px-2">TA</th>
+                        <th scope="col" className="text-right py-2 px-2">TR</th>
+                        <th scope="col" className="text-right py-2 px-2">ATAJ</th>
+                      </tr>
+                    ) : (
+                      <tr className="text-slate-400 border-b border-white/[0.08]">
+                        <th scope="col" className="text-left py-2 px-2 sticky left-0 bg-[#12151c]">
+                          JUGADOR
+                        </th>
+                        <th scope="col" className="text-right py-2 px-2">MIN</th>
+                        <th scope="col" className="text-right py-2 px-2 text-white">PTS</th>
+                        <th scope="col" className="text-right py-2 px-2">REB</th>
+                        <th scope="col" className="text-right py-2 px-2">AST</th>
+                        <th scope="col" className="text-right py-2 px-2">TC</th>
+                        <th scope="col" className="text-right py-2 px-2">3P</th>
+                        <th scope="col" className="text-right py-2 px-2">TL</th>
+                        <th scope="col" className="text-right py-2 px-2">ROB</th>
+                        <th scope="col" className="text-right py-2 px-2">TAP</th>
+                        <th scope="col" className="text-right py-2 px-2">+/-</th>
+                      </tr>
+                    )}
                   </thead>
                   <tbody className="divide-y divide-white/[0.06]">
                     {teamStats.map((row) => (
@@ -1484,9 +1765,42 @@ export function GameDetailModal({
                           </div>
                         </th>
                         {row.did_not_play ? (
-                          <td colSpan={10} className="py-2 px-2 text-right text-slate-400 italic">
+                          <td
+                            colSpan={sport === 'football' ? 9 : 10}
+                            className="py-2 px-2 text-right text-slate-400 italic"
+                          >
                             {row.dnp_reason || 'No jugó (DNP)'}
                           </td>
+                        ) : sport === 'football' ? (
+                          <>
+                            <td className="text-center py-2 px-2 text-slate-400">
+                              {row.player?.position ?? '-'}
+                            </td>
+                            <td className="text-right py-2 px-2 font-bold text-white">
+                              {row.sport_stats?.goals ?? row.pts ?? 0}
+                            </td>
+                            <td className="text-right py-2 px-2 text-slate-200">
+                              {row.sport_stats?.assists ?? row.ast ?? 0}
+                            </td>
+                            <td className="text-right py-2 px-2 text-slate-200">
+                              {row.sport_stats?.shots ?? 0}
+                            </td>
+                            <td className="text-right py-2 px-2 text-slate-300">
+                              {row.sport_stats?.shots_on_target ?? 0}
+                            </td>
+                            <td className="text-right py-2 px-2 text-slate-400">
+                              {row.sport_stats?.fouls_committed ?? 0}
+                            </td>
+                            <td className="text-right py-2 px-2 text-amber-300">
+                              {row.sport_stats?.yellow_cards ?? 0}
+                            </td>
+                            <td className="text-right py-2 px-2 text-rose-400">
+                              {row.sport_stats?.red_cards ?? 0}
+                            </td>
+                            <td className="text-right py-2 px-2 text-slate-300">
+                              {row.sport_stats?.saves ?? 0}
+                            </td>
+                          </>
                         ) : (
                           <>
                             <td className="text-right py-2 px-2 text-slate-300">{row.minutes}</td>
@@ -1520,6 +1834,7 @@ export function GameDetailModal({
                       </tr>
                     ))}
                   </tbody>
+                  {sport !== 'football' && (
                   <tfoot>
                     <tr className="border-t border-white/[0.14] bg-[#0e1117] font-bold text-white">
                       <td className="py-2.5 px-2 sticky left-0 bg-[#0e1117]">
@@ -1545,6 +1860,7 @@ export function GameDetailModal({
                       </td>
                     </tr>
                   </tfoot>
+                  )}
                 </table>
               )}
             </div>

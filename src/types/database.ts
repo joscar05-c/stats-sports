@@ -4,6 +4,7 @@ export interface League {
   name: string;
   short_name: string;
   country: string | null;
+  sport?: 'basketball' | 'football';
   source_type: 'api' | 'manual';
   logo_url: string | null;
   is_public: boolean;
@@ -66,6 +67,12 @@ export interface TeamStanding {
   ppg: number | null;
   oppg: number | null;
   diff: number | null;
+  played?: number | null;
+  draws?: number | null;
+  points?: number | null;
+  goals_for?: number | null;
+  goals_against?: number | null;
+  goal_diff?: number | null;
   team: Team;
 }
 
@@ -83,10 +90,56 @@ export interface GameOdds {
   under_odds?: number | null;
   home_moneyline?: number | null;
   away_moneyline?: number | null;
+  draw_moneyline?: number | null;
   open_home_moneyline?: number | null;
   open_away_moneyline?: number | null;
   home_win_prob?: number | null;
   away_win_prob?: number | null;
+}
+
+export interface FootballTeamMatchStats {
+  possession_pct?: number;
+  shots?: number;
+  shots_on_target?: number;
+  corners?: number;
+  fouls?: number;
+  yellow_cards?: number;
+  red_cards?: number;
+  offsides?: number;
+  saves?: number;
+  shot_pct?: number;
+}
+
+export interface FootballKeyEvent {
+  kind: 'goal' | 'own_goal' | 'penalty' | 'yellow' | 'red';
+  label: string;
+  minute: string;
+  team_abbr: string;
+  player: string;
+  assist?: string;
+}
+
+export interface FootballMatchSportStats {
+  home?: FootballTeamMatchStats;
+  away?: FootballTeamMatchStats;
+  events?: FootballKeyEvent[];
+}
+
+export interface FootballPlayerMatchSportStats {
+  appearances?: number;
+  sub_ins?: number;
+  goals?: number;
+  assists?: number;
+  shots?: number;
+  shots_on_target?: number;
+  yellow_cards?: number;
+  red_cards?: number;
+  fouls_committed?: number;
+  fouls_suffered?: number;
+  saves?: number;
+  shots_faced?: number;
+  goals_conceded?: number;
+  own_goals?: number;
 }
 
 export interface Game {
@@ -107,6 +160,7 @@ export interface Game {
   away_linescores: number[] | null;
   venue: string | null;
   odds?: GameOdds | null;
+  sport_stats?: FootballMatchSportStats | null;
   home_team: Team;
   away_team: Team;
 }
@@ -136,6 +190,7 @@ export interface PlayerGameStat {
   starter: boolean;
   did_not_play: boolean;
   dnp_reason: string | null;
+  sport_stats?: FootballPlayerMatchSportStats | null;
   player?: Pick<Player, 'id' | 'full_name' | 'jersey_number' | 'position' | 'headshot_url'>;
   game?: Pick<Game, 'id' | 'game_date' | 'home_team_id' | 'away_team_id' | 'home_score' | 'away_score'> & {
     home_team?: Pick<Team, 'id' | 'abbreviation' | 'logo_url'>;
@@ -223,6 +278,70 @@ export interface TeamSeasonAverage {
   efg_pct: number | null;
   ts_pct: number | null;
   ast_to_tov: number | null;
+}
+
+export interface FootballPlayerSeasonAverage {
+  player_id: number;
+  league_id: number;
+  season_id: number;
+  team_id: number | null;
+  full_name: string;
+  jersey_number: string | null;
+  position: string | null;
+  headshot_url: string | null;
+  team_name: string | null;
+  team_short_name: string | null;
+  team_abbreviation: string | null;
+  team_primary_color: string | null;
+  team_logo_url: string | null;
+  gp: number;
+  starts: number;
+  goals: number;
+  assists: number;
+  shots: number;
+  shots_on_target: number;
+  yellow_cards: number;
+  red_cards: number;
+  fouls_committed: number;
+  fouls_suffered: number;
+  saves: number;
+  goals_conceded: number;
+  goals_pg: number;
+  assists_pg: number;
+  shots_pg: number;
+  sot_pg: number;
+}
+
+export interface FootballTeamSeasonAverage {
+  team_id: number;
+  league_id: number;
+  season_id: number;
+  team_name: string;
+  team_short_name: string;
+  team_abbreviation: string;
+  primary_color: string | null;
+  alternate_color: string | null;
+  logo_url: string | null;
+  rank: number | null;
+  played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  points: number;
+  goals_for: number;
+  goals_against: number;
+  goal_diff: number;
+  win_pct: number;
+  gf_pg: number;
+  ga_pg: number;
+  possession_avg: number | null;
+  shots_pg: number | null;
+  sot_pg: number | null;
+  corners_pg: number | null;
+  fouls_pg: number | null;
+  yellow_cards: number;
+  red_cards: number;
+  clean_sheets: number;
 }
 
 export interface SyncRun {
