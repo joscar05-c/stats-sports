@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Search, ShieldCheck, Users } from 'lucide-react';
 import { fetchPlayers, fetchTeams } from '../services/basketballApi';
 import type { League, Player, Team } from '../types/database';
+import { PlayerAvatar } from './PlayerAvatar';
 
 interface ExploreViewProps {
   league: League;
@@ -224,19 +225,12 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
                 idx >= 8 ? 'sb-deferred-item' : ''
               }`}
             >
-              <div className="w-12 h-12 rounded-full bg-white/[0.06] overflow-hidden shrink-0 flex items-center justify-center">
-                {p.headshot_url ? (
-                  <img
-                    src={p.headshot_url}
-                    alt={p.full_name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-xs font-bold text-slate-400">
-                    #{p.jersey_number ?? '?'}
-                  </span>
-                )}
-              </div>
+              <PlayerAvatar
+                src={p.headshot_url}
+                name={p.full_name}
+                className="w-12 h-12 rounded-full bg-white/[0.06] overflow-hidden shrink-0 flex items-center justify-center"
+                fallbackText={p.jersey_number ? `#${p.jersey_number}` : undefined}
+              />
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-sm text-white truncate">{p.full_name}</div>
                 <div className="text-xs text-slate-400">

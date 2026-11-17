@@ -13,6 +13,7 @@ import type {
   Team,
   TeamSeasonAverage,
 } from '../types/database';
+import { PlayerAvatar } from './PlayerAvatar';
 
 interface LeadersViewProps {
   leagueId: number;
@@ -505,15 +506,7 @@ export function LeadersView({
                     >
                       {idx + 1}
                     </div>
-                    <div className="w-11 h-11 rounded-full bg-white/[0.06] overflow-hidden shrink-0">
-                      {p.headshot_url ? (
-                        <img
-                          src={p.headshot_url}
-                          alt={p.full_name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : null}
-                    </div>
+                    <PlayerAvatar src={p.headshot_url} name={p.full_name} />
                     <div className="min-w-0">
                       <div className="font-semibold text-sm text-slate-100 truncate">{p.full_name}</div>
                       <div className="text-xs text-slate-400 tabular-nums">
@@ -568,15 +561,7 @@ export function LeadersView({
                       {idx + 1}
                     </div>
 
-                    <div className="w-11 h-11 rounded-full bg-white/[0.06] overflow-hidden shrink-0">
-                      {p.headshot_url ? (
-                        <img
-                          src={p.headshot_url}
-                          alt={p.full_name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : null}
-                    </div>
+                    <PlayerAvatar src={p.headshot_url} name={p.full_name} />
 
                     <div className="min-w-0">
                       <div className="font-semibold text-sm text-slate-100 truncate">{p.full_name}</div>

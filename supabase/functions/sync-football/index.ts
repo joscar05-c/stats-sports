@@ -165,6 +165,88 @@ function extractKeyEvents(rawEvents: any[]): any[] {
   return out;
 }
 
+function normalizePersonName(val?: string | null): string {
+  if (!val) return "";
+  return val
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const FPL_TO_ESPN_ABBR: Record<string, string> = {
+  MCI: "MNC",
+  MUN: "MAN",
+};
+
+async function buildFplPhotoResolver(
+  leagueCode: string,
+): Promise<(fullName: string, teamAbbr?: string | null) => string | null> {
+  if (leagueCode !== "eng.1") return () => null;
+  try {
+    const fpl = await fetchJson("https://fantasy.premierleague.com/api/bootstrap-static/");
+    const teamAbbrById: Record<number, string> = {};
+    for (const t of fpl?.teams ?? []) {
+      const abbr = String(t?.short_name ?? "").toUpperCase();
+      if (t?.id && abbr) teamAbbrById[Number(t.id)] = FPL_TO_ESPN_ABBR[abbr] ?? abbr;
+    }
+
+    const byTeamFull = new Map<string, string>();
+    const byTeamWeb = new Map<string, string>();
+    const byTeamLast = new Map<string, string[]>();
+    const byGlobalFull = new Map<string, string>();
+
+    for (const el of fpl?.elements ?? []) {
+      const code = el?.code;
+      if (!code) continue;
+      const url = `https://resources.premierleague.com/premierleague25/photos/players/110x140/${code}.png`;
+      const abbr = teamAbbrById[Number(el.team)] ?? "";
+      const full = normalizePersonName(`${el.first_name ?? ""} ${el.second_name ?? ""}`);
+      const web = normalizePersonName(el.web_name);
+      const sec = normalizePersonName(el.second_name);
+
+      if (abbr && full) byTeamFull.set(`${abbr}|${full}`, url);
+      if (abbr && web) byTeamWeb.set(`${abbr}|${web}`, url);
+      if (full && !byGlobalFull.has(full)) byGlobalFull.set(full, url);
+      if (abbr && sec) {
+        const lastTok = sec.split(" ").pop() ?? sec;
+        const key = `${abbr}|${lastTok}`;
+        const arr = byTeamLast.get(key) ?? [];
+        arr.push(url);
+        byTeamLast.set(key, arr);
+      }
+    }
+
+    return (fullName: string, teamAbbr?: string | null): string | null => {
+      const nFull = normalizePersonName(fullName);
+      if (!nFull) return null;
+      const abbr = (teamAbbr ?? "").toUpperCase();
+      if (abbr) {
+        const exact = byTeamFull.get(`${abbr}|${nFull}`) ?? byTeamWeb.get(`${abbr}|${nFull}`);
+        if (exact) return exact;
+        const toks = nFull.split(" ");
+        const lastTok = toks[toks.length - 1];
+        const firstLast = toks.length >= 2 ? `${toks[0]} ${lastTok}` : nFull;
+        const flMatch = byTeamFull.get(`${abbr}|${firstLast}`);
+        if (flMatch) return flMatch;
+        const lastCandidates = byTeamLast.get(`${abbr}|${lastTok}`) ?? [];
+        if (lastCandidates.length === 1) return lastCandidates[0];
+        // Also try prefix match inside same team (e.g. "Gabriel Martinelli" vs "Gabriel")
+        for (const [k, u] of byTeamFull.entries()) {
+          if (!k.startsWith(`${abbr}|`)) continue;
+          const kName = k.slice(abbr.length + 1);
+          if (kName.includes(nFull) || nFull.includes(kName)) return u;
+        }
+      }
+      return byGlobalFull.get(nFull) ?? null;
+    };
+  } catch {
+    return () => null;
+  }
+}
+
 async function fetchJson(url: string): Promise<any> {
   const resp = await fetch(url, {
     headers: {
@@ -326,6 +408,7 @@ Deno.serve(async (req: Request) => {
 
     const rawTeams: any[] = teamsJson?.sports?.[0]?.leagues?.[0]?.teams ?? [];
     const validTeamIds = new Set<string>();
+    const teamAbbrByExtId: Record<string, string> = {};
     const newTeams: any[] = [];
     const teamUpdates: Array<{ id: number; payload: any }> = [];
 
@@ -334,13 +417,15 @@ Deno.serve(async (req: Request) => {
       const tid = String(t.id ?? "");
       if (!tid) continue;
       validTeamIds.add(tid);
+      const abbr = t.abbreviation || tid.slice(0, 3).toUpperCase();
+      teamAbbrByExtId[tid] = abbr;
       const payload = {
         league_id: leagueId,
         external_source: EXTERNAL_SOURCE,
         external_id: tid,
         name: t.displayName || t.name || tid,
         short_name: t.shortDisplayName || t.nickname || t.name || tid,
-        abbreviation: t.abbreviation || tid.slice(0, 3).toUpperCase(),
+        abbreviation: abbr,
         city: t.location ?? null,
         primary_color: normalizeColor(t.color),
         alternate_color: normalizeColor(t.alternateColor),
@@ -409,12 +494,18 @@ Deno.serve(async (req: Request) => {
     // Players lookup
     const existingPlayers = await sb.selectAll(
       "players",
-      `league_id=eq.${leagueId}&external_source=eq.${EXTERNAL_SOURCE}&select=id,external_id`,
+      `league_id=eq.${leagueId}&external_source=eq.${EXTERNAL_SOURCE}&select=id,external_id,full_name,team_id,headshot_url`,
     );
     const playerIdMap: Record<string, number> = {};
+    const teamAbbrByDbId: Record<number, string> = {};
+    for (const [extId, dbId] of Object.entries(teamIdMap)) {
+      if (teamAbbrByExtId[extId]) teamAbbrByDbId[dbId] = teamAbbrByExtId[extId];
+    }
     for (const r of existingPlayers) {
       if (r.external_id) playerIdMap[String(r.external_id)] = r.id;
     }
+
+    const resolveFplPhoto = await buildFplPhotoResolver(leagueCode);
 
     const discoveredPlayers: Record<string, any> = {};
 
@@ -622,10 +713,12 @@ Deno.serve(async (req: Request) => {
       for (const rows of batchStats) statsRows.push(...rows);
     }
 
-    // Insert newly discovered players
+    // Insert newly discovered players & fill missing Premier League headshots
     const newPlayers: any[] = [];
     for (const p of Object.values(discoveredPlayers)) {
       if (!playerIdMap[p.external_id]) {
+        const abbr = teamAbbrByExtId[p.team_external_id] ?? null;
+        const resolvedPhoto = p.headshot_url ?? resolveFplPhoto(p.full_name, abbr);
         newPlayers.push({
           league_id: leagueId,
           team_id: teamIdMap[p.team_external_id] ?? null,
@@ -640,7 +733,7 @@ Deno.serve(async (req: Request) => {
           weight_display: p.weight_display ?? null,
           age: p.age ?? null,
           country: p.country ?? null,
-          headshot_url: p.headshot_url,
+          headshot_url: resolvedPhoto,
           status: "active",
           is_active: true,
           updated_at: nowIso,
@@ -650,6 +743,26 @@ Deno.serve(async (req: Request) => {
     for (let i = 0; i < newPlayers.length; i += 300) {
       const inserted = await sb.request("POST", "players", newPlayers.slice(i, i + 300));
       for (const r of inserted ?? []) playerIdMap[String(r.external_id)] = r.id;
+    }
+
+    const headshotPatches: Array<{ id: number; headshot_url: string }> = [];
+    for (const ep of existingPlayers) {
+      if (ep.headshot_url) continue;
+      const abbr = ep.team_id ? teamAbbrByDbId[ep.team_id] ?? null : null;
+      const photo = resolveFplPhoto(ep.full_name, abbr);
+      if (photo) headshotPatches.push({ id: ep.id, headshot_url: photo });
+    }
+    for (let i = 0; i < headshotPatches.length; i += 25) {
+      await Promise.all(
+        headshotPatches.slice(i, i + 25).map((u) =>
+          sb.request(
+            "PATCH",
+            `players?id=eq.${u.id}`,
+            { headshot_url: u.headshot_url, updated_at: nowIso },
+            { Prefer: "return=minimal" },
+          ),
+        ),
+      );
     }
 
     // Sync games
@@ -762,6 +875,7 @@ Deno.serve(async (req: Request) => {
         games_synced: Object.keys(gamesByExt).length,
         stats_synced: statPayloads.length,
         players_inserted: newPlayers.length,
+        headshots_updated: headshotPatches.length,
         synced_at: nowIso,
       }),
       { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },

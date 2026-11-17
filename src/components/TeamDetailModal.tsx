@@ -12,6 +12,7 @@ import type {
   TeamStanding,
 } from '../types/database';
 import { ModalDialog } from './ModalDialog';
+import { PlayerAvatar } from './PlayerAvatar';
 
 interface TeamDetailModalProps {
   team: Team;
@@ -278,15 +279,11 @@ export function TeamDetailModal({
                                   onClick={() => onSelectPlayer(item.p!.player_id)}
                                   className="flex items-center gap-2.5 p-2.5 rounded-lg bg-[#12151c] border border-white/[0.08] hover:border-white/[0.2] text-left transition-colors"
                                 >
-                                  <div className="w-10 h-10 rounded-full bg-white/[0.06] overflow-hidden shrink-0">
-                                    {item.p.headshot_url && (
-                                      <img
-                                        src={item.p.headshot_url}
-                                        alt={item.p.full_name}
-                                        className="w-full h-full object-cover"
-                                      />
-                                    )}
-                                  </div>
+                                  <PlayerAvatar
+                                    src={item.p.headshot_url}
+                                    name={item.p.full_name}
+                                    className="w-10 h-10 rounded-full bg-white/[0.06] overflow-hidden shrink-0 flex items-center justify-center"
+                                  />
                                   <div className="min-w-0 flex-1">
                                     <div className="text-[10px] font-semibold uppercase text-slate-400">
                                       {item.role}
@@ -478,15 +475,11 @@ export function TeamDetailModal({
                             onClick={() => onSelectPlayer(item.p!.player_id)}
                             className="flex items-center gap-2.5 p-2.5 rounded-lg bg-[#12151c] border border-white/[0.08] hover:border-white/[0.2] text-left transition-colors"
                           >
-                            <div className="w-10 h-10 rounded-full bg-white/[0.06] overflow-hidden shrink-0">
-                              {item.p.headshot_url && (
-                                <img
-                                  src={item.p.headshot_url}
-                                  alt={item.p.full_name}
-                                  className="w-full h-full object-cover"
-                                />
-                              )}
-                            </div>
+                            <PlayerAvatar
+                              src={item.p.headshot_url}
+                              name={item.p.full_name}
+                              className="w-10 h-10 rounded-full bg-white/[0.06] overflow-hidden shrink-0 flex items-center justify-center"
+                            />
                             <div className="min-w-0 flex-1">
                               <div className="text-[10px] font-semibold uppercase text-slate-400">
                                 {item.role}
@@ -518,19 +511,12 @@ export function TeamDetailModal({
                     className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-[#0e1117] border border-white/[0.08] hover:border-white/[0.2] text-left transition-colors"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-11 h-11 rounded-full bg-white/[0.06] overflow-hidden shrink-0 flex items-center justify-center">
-                        {p.headshot_url ? (
-                          <img
-                            src={p.headshot_url}
-                            alt={p.full_name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-xs font-bold text-slate-400">
-                            #{p.jersey_number ?? '?'}
-                          </span>
-                        )}
-                      </div>
+                      <PlayerAvatar
+                        src={p.headshot_url}
+                        name={p.full_name}
+                        className="w-11 h-11 rounded-full bg-white/[0.06] overflow-hidden shrink-0 flex items-center justify-center"
+                        fallbackText={p.jersey_number ? `#${p.jersey_number}` : undefined}
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="font-semibold text-sm text-white truncate">{p.full_name}</div>
                         <div className="text-xs text-slate-400">

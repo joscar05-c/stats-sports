@@ -28,6 +28,7 @@ import type {
 } from '../types/database';
 import { getFootballPlayerStatValue } from '../utils/footballProps';
 import { ModalDialog } from './ModalDialog';
+import { PlayerAvatar } from './PlayerAvatar';
 
 interface PlayerDetailModalProps {
   playerId: number;
@@ -190,19 +191,12 @@ export function PlayerDetailModal({
             <div className="shrink-0 relative p-5 border-b border-white/[0.08] bg-[#12151c]">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-4">
-                  <div className="w-20 h-20 rounded-xl bg-[#0b0d11] border border-white/[0.12] overflow-hidden shrink-0 flex items-center justify-center">
-                    {player.headshot_url ? (
-                      <img
-                        src={player.headshot_url}
-                        alt={player.full_name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-2xl font-bold text-slate-400">
-                        #{player.jersey_number ?? '?'}
-                      </span>
-                    )}
-                  </div>
+                  <PlayerAvatar
+                    src={player.headshot_url}
+                    name={player.full_name}
+                    className="w-20 h-20 rounded-xl bg-[#0b0d11] border border-white/[0.12] overflow-hidden shrink-0 flex items-center justify-center"
+                    fallbackText={player.jersey_number ? `#${player.jersey_number}` : undefined}
+                  />
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       {player.team?.abbreviation && (

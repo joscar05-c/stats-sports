@@ -24,10 +24,11 @@ import json
 import os
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any
+from typing import Any, Callable
 
 ESPN_BASE = "https://site.api.espn.com/apis"
 EXTERNAL_SOURCE = "espn"
@@ -242,6 +243,83 @@ def extract_key_events(raw_events: list[dict[str, Any]]) -> list[dict[str, Any]]
     return out
 
 
+FPL_TO_ESPN_ABBR: dict[str, str] = {"MCI": "MNC", "MUN": "MAN"}
+
+
+def normalize_person_name(val: str | None) -> str:
+    if not val:
+        return ""
+    s = unicodedata.normalize("NFD", val)
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+    s = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in s.lower())
+    return " ".join(s.split())
+
+
+def build_fpl_photo_resolver(league_code: str) -> Callable[[str, str | None], str | None]:
+    if league_code != "eng.1":
+        return lambda _name, _abbr=None: None
+    try:
+        fpl = fetch_json("https://fantasy.premierleague.com/api/bootstrap-static/")
+        team_abbr_by_id: dict[int, str] = {}
+        for t in fpl.get("teams") or []:
+            abbr = str(t.get("short_name") or "").upper()
+            if t.get("id") and abbr:
+                team_abbr_by_id[int(t["id"])] = FPL_TO_ESPN_ABBR.get(abbr, abbr)
+
+        by_team_full: dict[str, str] = {}
+        by_team_web: dict[str, str] = {}
+        by_team_last: dict[str, list[str]] = {}
+        by_global_full: dict[str, str] = {}
+
+        for el in fpl.get("elements") or []:
+            code = el.get("code")
+            if not code:
+                continue
+            url = f"https://resources.premierleague.com/premierleague25/photos/players/110x140/{code}.png"
+            abbr = team_abbr_by_id.get(int(el.get("team") or 0), "")
+            full = normalize_person_name(f"{el.get('first_name') or ''} {el.get('second_name') or ''}")
+            web = normalize_person_name(el.get("web_name"))
+            sec = normalize_person_name(el.get("second_name"))
+            if abbr and full:
+                by_team_full[f"{abbr}|{full}"] = url
+            if abbr and web:
+                by_team_web[f"{abbr}|{web}"] = url
+            if full and full not in by_global_full:
+                by_global_full[full] = url
+            if abbr and sec:
+                last_tok = sec.split()[-1]
+                by_team_last.setdefault(f"{abbr}|{last_tok}", []).append(url)
+
+        def resolver(full_name: str, team_abbr: str | None = None) -> str | None:
+            n_full = normalize_person_name(full_name)
+            if not n_full:
+                return None
+            abbr = (team_abbr or "").upper()
+            if abbr:
+                exact = by_team_full.get(f"{abbr}|{n_full}") or by_team_web.get(f"{abbr}|{n_full}")
+                if exact:
+                    return exact
+                toks = n_full.split()
+                last_tok = toks[-1]
+                first_last = f"{toks[0]} {last_tok}" if len(toks) >= 2 else n_full
+                if f"{abbr}|{first_last}" in by_team_full:
+                    return by_team_full[f"{abbr}|{first_last}"]
+                last_cands = by_team_last.get(f"{abbr}|{last_tok}", [])
+                if len(last_cands) == 1:
+                    return last_cands[0]
+                prefix = f"{abbr}|"
+                for k, u in by_team_full.items():
+                    if k.startswith(prefix):
+                        k_name = k[len(prefix) :]
+                        if k_name in n_full or n_full in k_name:
+                            return u
+            return by_global_full.get(n_full)
+
+        return resolver
+    except Exception:
+        return lambda _name, _abbr=None: None
+
+
 class SupabaseRest:
     def __init__(self, url: str, service_key: str) -> None:
         self.base = url.rstrip("/") + "/rest/v1"
@@ -373,6 +451,7 @@ def sync_league(
 
     raw_teams = teams_json.get("sports", [{}])[0].get("leagues", [{}])[0].get("teams", [])
     valid_team_ids: set[str] = set()
+    team_abbr_by_ext: dict[str, str] = {}
     new_teams: list[dict[str, Any]] = []
     for item in raw_teams:
         t = item.get("team") or {}
@@ -380,6 +459,8 @@ def sync_league(
         if not tid:
             continue
         valid_team_ids.add(tid)
+        abbr = t.get("abbreviation") or tid[:3].upper()
+        team_abbr_by_ext[tid] = abbr
         logos = t.get("logos") or []
         logo_url = logos[0].get("href") if logos else None
         payload = {
@@ -388,7 +469,7 @@ def sync_league(
             "external_id": tid,
             "name": t.get("displayName") or t.get("name") or tid,
             "short_name": t.get("shortDisplayName") or t.get("nickname") or t.get("name") or tid,
-            "abbreviation": t.get("abbreviation") or tid[:3].upper(),
+            "abbreviation": abbr,
             "city": t.get("location"),
             "primary_color": normalize_color(t.get("color")),
             "alternate_color": normalize_color(t.get("alternateColor")),
@@ -457,11 +538,17 @@ def sync_league(
     # 4. Sync Team Rosters into `players`
     existing_players = sb.select_all(
         "players",
-        f"league_id=eq.{league_id}&external_source=eq.{EXTERNAL_SOURCE}&select=id,external_id",
+        f"league_id=eq.{league_id}&external_source=eq.{EXTERNAL_SOURCE}&select=id,external_id,full_name,team_id,headshot_url",
     )
     player_id_map: dict[str, int] = {
         str(r["external_id"]): r["id"] for r in existing_players if r.get("external_id")
     }
+    team_abbr_by_db_id: dict[int, str] = {
+        db_id: team_abbr_by_ext[ext_id]
+        for ext_id, db_id in team_id_map.items()
+        if ext_id in team_abbr_by_ext
+    }
+    resolve_fpl_photo = build_fpl_photo_resolver(league_code)
 
     def fetch_team_roster(ext_tid: str) -> tuple[str, list[dict[str, Any]]]:
         try:
@@ -688,7 +775,8 @@ def sync_league(
                     "weight_display": p.get("weight_display"),
                     "age": p.get("age"),
                     "country": p.get("country"),
-                    "headshot_url": p.get("headshot_url"),
+                    "headshot_url": p.get("headshot_url")
+                    or resolve_fpl_photo(p["full_name"], team_abbr_by_ext.get(p["team_external_id"])),
                     "status": "active",
                     "is_active": True,
                     "updated_at": now_iso,
@@ -699,6 +787,21 @@ def sync_league(
             inserted = sb._request("POST", "players", new_players[i : i + 300]) or []
             for r in inserted:
                 player_id_map[str(r["external_id"])] = r["id"]
+
+    headshot_patches: list[tuple[int, str]] = []
+    for ep in existing_players:
+        if ep.get("headshot_url"):
+            continue
+        abbr = team_abbr_by_db_id.get(ep.get("team_id") or -1)
+        photo = resolve_fpl_photo(ep.get("full_name") or "", abbr)
+        if photo:
+            headshot_patches.append((ep["id"], photo))
+    if headshot_patches:
+        def patch_photo(item: tuple[int, str]) -> None:
+            pid, url = item
+            sb._request("PATCH", f"players?id=eq.{pid}", {"headshot_url": url, "updated_at": now_iso}, {"Prefer": "return=minimal"})
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+            list(ex.map(patch_photo, headshot_patches))
 
     # 8. Sync games (PATCH existing, POST new)
     existing_games = sb.select_all(
