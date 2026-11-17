@@ -150,12 +150,40 @@ export function summarizeTeamRecent(teamId: number, recentGames: Game[]): TeamRe
   };
 }
 
+export function parseIsoDateUtcMs(isoDate: string): number | null {
+  const parts = isoDate.split('-').map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return null;
+  return Date.UTC(parts[0], parts[1] - 1, parts[2]);
+}
+
+/**
+ * Compute calendar rest days between targetGameDate and the team's previous played game.
+ * Returns 0 for Back-to-Back (played yesterday), 1 for 1 full day off, etc.
+ */
+export function computeTeamRestDays(targetGameDate: string, recentGames: Game[]): number | null {
+  const targetMs = parseIsoDateUtcMs(targetGameDate);
+  if (targetMs == null || recentGames.length === 0) return null;
+
+  const prevFinals = recentGames
+    .filter((g) => g.status === 'final' && g.game_date < targetGameDate)
+    .sort((a, b) => b.game_date.localeCompare(a.game_date));
+
+  if (prevFinals.length === 0) return null;
+  const prevMs = parseIsoDateUtcMs(prevFinals[0].game_date);
+  if (prevMs == null) return null;
+
+  const diffDays = Math.round((targetMs - prevMs) / (24 * 60 * 60 * 1000));
+  return Math.max(0, diffDays - 1);
+}
+
 export interface MatchupBettingInsight {
   expectedTotalSeason: number | null;
   expectedTotalRecent: number | null;
   totalEdge: number | null;
   projectedHomeMargin: number | null;
   spreadEdgeHome: number | null;
+  homeRestDays: number | null;
+  awayRestDays: number | null;
   movements: string[];
   signals: Array<{ title: string; detail: string; tone: 'over' | 'under' | 'neutral' | 'home' | 'away' }>;
 }
@@ -166,10 +194,16 @@ export function buildMatchupBettingInsight(
   awayStanding: TeamStanding | null,
   homeRecent: TeamRecentSummary,
   awayRecent: TeamRecentSummary,
+  homeRecentGames?: Game[],
+  awayRecentGames?: Game[],
 ): MatchupBettingInsight {
   const odds = game.odds;
+  const homeRestDays = homeRecentGames ? computeTeamRestDays(game.game_date, homeRecentGames) : null;
+  const awayRestDays = awayRecentGames ? computeTeamRestDays(game.game_date, awayRecentGames) : null;
+  const totalRestAdjust = (homeRestDays === 0 ? -1.8 : 0) + (awayRestDays === 0 ? -1.8 : 0);
+  const marginRestAdjust = (homeRestDays === 0 ? -1.5 : 0) + (awayRestDays === 0 ? 1.5 : 0);
 
-  // Expected game total using offensive & defensive season averages
+  // Expected game total using offensive & defensive season averages + B2B pace adjustment
   let expectedTotalSeason: number | null = null;
   if (
     homeStanding?.ppg != null &&
@@ -179,14 +213,14 @@ export function buildMatchupBettingInsight(
   ) {
     const homeProj = (Number(homeStanding.ppg) + Number(awayStanding.oppg)) / 2;
     const awayProj = (Number(awayStanding.ppg) + Number(homeStanding.oppg)) / 2;
-    expectedTotalSeason = Number((homeProj + awayProj).toFixed(1));
+    expectedTotalSeason = Number((homeProj + awayProj + totalRestAdjust).toFixed(1));
   }
 
   let expectedTotalRecent: number | null = null;
   if (homeRecent.gamesCount > 0 && awayRecent.gamesCount > 0) {
     const homeProj = (homeRecent.avgFor + awayRecent.avgAgainst) / 2;
     const awayProj = (awayRecent.avgFor + homeRecent.avgAgainst) / 2;
-    expectedTotalRecent = Number((homeProj + awayProj).toFixed(1));
+    expectedTotalRecent = Number((homeProj + awayProj + totalRestAdjust).toFixed(1));
   }
 
   const refTotal = expectedTotalRecent ?? expectedTotalSeason;
@@ -195,12 +229,16 @@ export function buildMatchupBettingInsight(
       ? Number((refTotal - odds.over_under).toFixed(1))
       : null;
 
-  // Projected home margin using season differential (+2.2 pts standard NBA home court)
+  // Projected home margin using season differential (+2.2 pts NBA home court) + B2B rest differential
   let projectedHomeMargin: number | null = null;
   if (homeStanding?.diff != null && awayStanding?.diff != null) {
-    projectedHomeMargin = Number(((Number(homeStanding.diff) - Number(awayStanding.diff)) / 2 + 2.2).toFixed(1));
+    projectedHomeMargin = Number(
+      ((Number(homeStanding.diff) - Number(awayStanding.diff)) / 2 + 2.2 + marginRestAdjust).toFixed(1),
+    );
   } else if (homeRecent.gamesCount > 0 && awayRecent.gamesCount > 0) {
-    projectedHomeMargin = Number(((homeRecent.avgMargin - awayRecent.avgMargin) / 2 + 2.2).toFixed(1));
+    projectedHomeMargin = Number(
+      ((homeRecent.avgMargin - awayRecent.avgMargin) / 2 + 2.2 + marginRestAdjust).toFixed(1),
+    );
   }
 
   const spreadEdgeHome =
@@ -273,12 +311,26 @@ export function buildMatchupBettingInsight(
     }
   }
 
+  if (homeRestDays === 0 || awayRestDays === 0) {
+    const b2bTeams = [
+      awayRestDays === 0 ? game.away_team.abbreviation : null,
+      homeRestDays === 0 ? game.home_team.abbreviation : null,
+    ].filter(Boolean);
+    signals.push({
+      title: `Factor Fatiga Back-to-Back (${b2bTeams.join(' y ')})`,
+      detail: `${b2bTeams.join(' y ')} jugó ayer (0 días de descanso); el modelo ajusta rotación, ritmo y anotación esperados.`,
+      tone: homeRestDays === 0 && awayRestDays !== 0 ? 'away' : awayRestDays === 0 && homeRestDays !== 0 ? 'home' : 'neutral',
+    });
+  }
+
   return {
     expectedTotalSeason,
     expectedTotalRecent,
     totalEdge,
     projectedHomeMargin,
     spreadEdgeHome,
+    homeRestDays,
+    awayRestDays,
     movements,
     signals,
   };
@@ -370,6 +422,11 @@ export function getConfidenceTier(confidence: number): 'Baja' | 'Media' | 'Alta'
   return 'Baja';
 }
 
+export interface PropContextBadge {
+  label: string;
+  tone: 'emerald' | 'amber' | 'rose' | 'cyan' | 'slate';
+}
+
 export interface PropRecommendation {
   id: string;
   scope: 'team' | 'player';
@@ -386,6 +443,29 @@ export interface PropRecommendation {
   rationale: string;
   confidence: number;
   confidenceTier: 'Baja' | 'Media' | 'Alta' | 'Muy Alta';
+  estimatedOddsAmerican: number;
+  estimatedMultiplier: number;
+  contextBadges: PropContextBadge[];
+  mpgInfo?: { seasonMpg: number; recentMpg: number; delta: number };
+  splitInfo?: { isHome: boolean; venueAvg: number; venueGp: number };
+  restInfo?: { teamRestDays: number | null; oppRestDays: number | null };
+}
+
+export function computePropOddsFromConfidence(
+  confidence: number,
+  bookAmericanOdds?: number | null,
+): { american: number; decimal: number } {
+  if (bookAmericanOdds != null && Number.isFinite(bookAmericanOdds) && bookAmericanOdds !== 0) {
+    const dec = americanToDecimalNum(bookAmericanOdds);
+    return {
+      american: Math.round(bookAmericanOdds),
+      decimal: Number((dec ?? 1.91).toFixed(2)),
+    };
+  }
+  if (confidence >= 76) return { american: -118, decimal: 1.85 };
+  if (confidence >= 68) return { american: -115, decimal: 1.87 };
+  if (confidence >= 58) return { american: -112, decimal: 1.89 };
+  return { american: -110, decimal: 1.91 };
 }
 
 function snapHalf(val: number): number {
@@ -406,6 +486,11 @@ function evaluatePlayerPropMarket(
   logs: PlayerGameStat[],
   metricKey: PlayerChartMetric,
   oppTeamAvg?: TeamSeasonAverage | null,
+  ctx?: {
+    isHome?: boolean;
+    teamRestDays?: number | null;
+    oppRestDays?: number | null;
+  },
 ): PropRecommendation | null {
   const cfg = PLAYER_CHART_METRICS[metricKey];
   const meta = MARKET_NAMES[metricKey];
@@ -420,8 +505,93 @@ function evaluatePlayerPropMarket(
   const underHits = values.filter((v) => v < lineValue).length;
 
   let proj = values.length >= 2 ? seasonAvg * 0.45 + recentAvg * 0.55 : seasonAvg;
-  let defNote = '';
+  const contextBadges: PropContextBadge[] = [];
+  const rationaleParts: string[] = [];
 
+  // 1. Recent Minutes (MPG) Trend Adjustment
+  const rawSeasonMpg = Number(player.mpg ?? 0);
+  const seasonMpg =
+    rawSeasonMpg > 0
+      ? rawSeasonMpg
+      : logs.length > 0
+        ? logs.reduce((s, r) => s + Number(r.minutes ?? 0), 0) / logs.length
+        : 0;
+  const recentMpgSlice = recentSlice.slice(0, 5);
+  const recentMpg =
+    recentMpgSlice.length > 0
+      ? recentMpgSlice.reduce((s, r) => s + Number(r.minutes ?? 0), 0) / recentMpgSlice.length
+      : seasonMpg;
+  const mpgDelta = Number((recentMpg - seasonMpg).toFixed(1));
+  let mpgInfo: PropRecommendation['mpgInfo'];
+
+  if (seasonMpg > 0 && recentMpg > 0) {
+    mpgInfo = {
+      seasonMpg: Number(seasonMpg.toFixed(1)),
+      recentMpg: Number(recentMpg.toFixed(1)),
+      delta: mpgDelta,
+    };
+    if (seasonMpg >= 10) {
+      const mpgFactor = Math.max(0.86, Math.min(1.14, 1 + (mpgDelta / Math.max(18, seasonMpg)) * 0.65));
+      proj *= mpgFactor;
+    }
+    if (mpgDelta >= 2.0) {
+      contextBadges.push({ label: `MPG ↑ ${recentMpg.toFixed(1)}m (+${mpgDelta.toFixed(1)})`, tone: 'emerald' });
+      rationaleParts.push(`Minutos en alza (${recentMpg.toFixed(1)} min recientes vs ${seasonMpg.toFixed(1)} temp).`);
+    } else if (mpgDelta <= -2.2) {
+      contextBadges.push({ label: `MPG ↓ ${recentMpg.toFixed(1)}m (${mpgDelta.toFixed(1)})`, tone: 'amber' });
+      rationaleParts.push(`Minutos a la baja (${recentMpg.toFixed(1)} min recientes).`);
+    } else {
+      contextBadges.push({ label: `MPG ${recentMpg.toFixed(1)}m`, tone: 'slate' });
+    }
+  }
+
+  // 2. Home vs Away Split Adjustment
+  let splitInfo: PropRecommendation['splitInfo'];
+  if (ctx?.isHome != null) {
+    const venueLogs = logs.filter(
+      (g) => g.game?.home_team_id != null && g.team_id != null && (g.game.home_team_id === g.team_id) === ctx.isHome,
+    );
+    if (venueLogs.length >= 2) {
+      const venueAvg = venueLogs.reduce((s, g) => s + cfg.getStatValue(g), 0) / venueLogs.length;
+      proj = proj * 0.85 + venueAvg * 0.15;
+      proj *= ctx.isHome ? 1.012 : 0.992;
+      splitInfo = {
+        isHome: ctx.isHome,
+        venueAvg: Number(venueAvg.toFixed(1)),
+        venueGp: venueLogs.length,
+      };
+      contextBadges.push({
+        label: `${ctx.isHome ? 'Local' : 'Visita'}: ${venueAvg.toFixed(1)} ${meta.unit}`,
+        tone: 'cyan',
+      });
+    } else {
+      proj *= ctx.isHome ? 1.012 : 0.992;
+      contextBadges.push({ label: ctx.isHome ? 'Local' : 'Visita', tone: 'slate' });
+    }
+  }
+
+  // 3. Fatigue / Back-to-Back (B2B) & Rest Days Adjustment
+  if (ctx?.teamRestDays === 0) {
+    if (metricKey === 'pts' || metricKey === 'pra' || metricKey === 'tpm') {
+      proj *= 0.968;
+    }
+    contextBadges.push({ label: 'Fatiga B2B (0d desc.)', tone: 'rose' });
+    rationaleParts.push('Equipo llega en Back-to-Back (0 días de descanso).');
+  } else if (ctx?.teamRestDays != null && ctx.teamRestDays >= 2) {
+    proj *= 1.012;
+    contextBadges.push({ label: `Descanso ${ctx.teamRestDays}d`, tone: 'emerald' });
+  } else if (ctx?.teamRestDays === 1) {
+    contextBadges.push({ label: '1d descanso', tone: 'slate' });
+  }
+
+  if (ctx?.oppRestDays === 0) {
+    proj *= 1.018;
+    contextBadges.push({ label: 'Rival en B2B', tone: 'emerald' });
+    rationaleParts.push('Rival juega en Back-to-Back.');
+  }
+
+  // 4. Opponent Defense / Rebounding Matchup Adjustment
+  let defNote = '';
   if (oppTeamAvg?.oppg != null && (metricKey === 'pts' || metricKey === 'pra')) {
     const oppDef = Number(oppTeamAvg.oppg);
     const factor = (oppDef - 113.5) / 113.5;
@@ -444,18 +614,28 @@ function evaluatePlayerPropMarket(
   const relevantHits = pick === 'OVER' ? overHits : underHits;
   const hitRate = values.length > 0 ? relevantHits / values.length : 0.54;
   const relEdge = Math.abs(edge) / Math.max(2, lineValue);
+  const mpgBonus =
+    pick === 'OVER' && mpgDelta >= 2.0 ? 2 : pick === 'UNDER' && mpgDelta <= -2.2 ? 2 : 0;
 
   const rawConf =
     50 +
     Math.min(22, relEdge * 125) +
     (hitRate - 0.5) * 34 +
-    (values.length >= 4 ? 4 : 1);
+    (values.length >= 4 ? 4 : 1) +
+    mpgBonus;
   const confidence = clampConfidence(rawConf);
+  const oddsPair = computePropOddsFromConfidence(confidence);
 
   const statSummary =
     values.length > 0
       ? `Temp: ${seasonAvg.toFixed(1)} ${meta.unit} · Últ. ${values.length} PJ: ${recentAvg.toFixed(1)} (${pick === 'OVER' ? 'superó' : 'quedó bajo'} en ${relevantHits}/${values.length})`
       : `Prom. temporada: ${seasonAvg.toFixed(1)} ${meta.unit} (${player.gp} PJ)`;
+
+  const extraRationale = rationaleParts.length > 0 ? ` ${rationaleParts.join(' ')}` : '';
+  const restInfo =
+    ctx?.teamRestDays !== undefined || ctx?.oppRestDays !== undefined
+      ? { teamRestDays: ctx?.teamRestDays ?? null, oppRestDays: ctx?.oppRestDays ?? null }
+      : undefined;
 
   return {
     id: `player_${player.player_id}_${metricKey}`,
@@ -466,13 +646,19 @@ function evaluatePlayerPropMarket(
     playerId: player.player_id,
     metricKey,
     statSummary,
-    marketLineText: `Línea Prop: ${lineValue.toFixed(1)} ${meta.unit}`,
+    marketLineText: `Línea Prop: ${lineValue.toFixed(1)} ${meta.unit} · Cuota ${oddsPair.decimal.toFixed(2)}x`,
     lineValue,
     pick,
     pickLabel: `${pick} ${lineValue.toFixed(1)} ${meta.unit}`,
-    rationale: `Proyección de ${proj.toFixed(1)} ${meta.unit} frente a la línea ${lineValue.toFixed(1)} (${edge >= 0 ? '+' : ''}${edge.toFixed(1)} de ventaja).${defNote}`,
+    rationale: `Proyección de ${proj.toFixed(1)} ${meta.unit} frente a la línea ${lineValue.toFixed(1)} (${edge >= 0 ? '+' : ''}${edge.toFixed(1)} de ventaja).${defNote}${extraRationale}`,
     confidence,
     confidenceTier: getConfidenceTier(confidence),
+    estimatedOddsAmerican: oddsPair.american,
+    estimatedMultiplier: oddsPair.decimal,
+    contextBadges,
+    mpgInfo,
+    splitInfo,
+    restInfo,
   };
 }
 
@@ -480,6 +666,11 @@ export function buildSinglePlayerPropsRecommendations(
   average: PlayerSeasonAverage | null,
   logs: PlayerGameStat[],
   oppTeamAvg?: TeamSeasonAverage | null,
+  ctx?: {
+    isHome?: boolean;
+    teamRestDays?: number | null;
+    oppRestDays?: number | null;
+  },
 ): PropRecommendation[] {
   if (!average && logs.length === 0) return [];
   const syntheticAvg: PlayerSeasonAverage = average ?? {
@@ -520,10 +711,10 @@ export function buildSinglePlayerPropsRecommendations(
   const metrics: PlayerChartMetric[] = ['pts', 'reb', 'ast', 'pra', 'tpm'];
   const recs: PropRecommendation[] = [];
   for (const m of metrics) {
-    const rec = evaluatePlayerPropMarket(syntheticAvg, logs, m, oppTeamAvg);
+    const rec = evaluatePlayerPropMarket(syntheticAvg, logs, m, oppTeamAvg, ctx);
     if (rec) recs.push(rec);
   }
-  return recs.sort((a, b) => a.confidence - b.confidence);
+  return recs.sort((a, b) => b.confidence - a.confidence);
 }
 
 export function buildGamePropsRecommendations(params: {
@@ -534,6 +725,8 @@ export function buildGamePropsRecommendations(params: {
   awayTeamAvg: TeamSeasonAverage | null;
   homeRecent: TeamRecentSummary;
   awayRecent: TeamRecentSummary;
+  homeRecentGames?: Game[];
+  awayRecentGames?: Game[];
   keyPlayers: PlayerSeasonAverage[];
   playerRecentLogs: PlayerGameStat[];
 }): PropRecommendation[] {
@@ -545,6 +738,8 @@ export function buildGamePropsRecommendations(params: {
     awayTeamAvg,
     homeRecent,
     awayRecent,
+    homeRecentGames,
+    awayRecentGames,
     keyPlayers,
     playerRecentLogs,
   } = params;
@@ -556,7 +751,26 @@ export function buildGamePropsRecommendations(params: {
     awayStanding,
     homeRecent,
     awayRecent,
+    homeRecentGames,
+    awayRecentGames,
   );
+  const homeRestDays = insight.homeRestDays;
+  const awayRestDays = insight.awayRestDays;
+  const totalRestAdjust = (homeRestDays === 0 ? -1.8 : 0) + (awayRestDays === 0 ? -1.8 : 0);
+
+  const buildTeamRestBadges = (
+    teamRest: number | null,
+    oppRest: number | null,
+    venueLabel?: string,
+  ): PropContextBadge[] => {
+    const badges: PropContextBadge[] = [];
+    if (venueLabel) badges.push({ label: venueLabel, tone: 'cyan' });
+    if (teamRest === 0) badges.push({ label: 'Fatiga B2B (0d)', tone: 'rose' });
+    else if (teamRest != null && teamRest >= 2) badges.push({ label: `Descanso ${teamRest}d`, tone: 'emerald' });
+    else if (teamRest === 1) badges.push({ label: '1d descanso', tone: 'slate' });
+    if (oppRest === 0) badges.push({ label: 'Rival en B2B', tone: 'emerald' });
+    return badges;
+  };
 
   const recs: PropRecommendation[] = [];
 
@@ -568,7 +782,7 @@ export function buildGamePropsRecommendations(params: {
   // 1. Total del Partido (Over / Under)
   const fallbackSeasonTotal =
     homePpg > 0 && awayPpg > 0 && homeOppg > 0 && awayOppg > 0
-      ? (homePpg + awayOppg) / 2 + (awayPpg + homeOppg) / 2
+      ? (homePpg + awayOppg) / 2 + (awayPpg + homeOppg) / 2 + totalRestAdjust
       : null;
   const seasonTotal = insight.expectedTotalSeason ?? fallbackSeasonTotal;
   const recentTotal = insight.expectedTotalRecent;
@@ -587,12 +801,18 @@ export function buildGamePropsRecommendations(params: {
     const overRate = recentOverTracked > 0 ? recentOverTotal / recentOverTracked : 0.5;
     const alignedTrend = pick === 'OVER' ? overRate : 1 - overRate;
     const conf = clampConfidence(52 + Math.min(28, Math.abs(edge) * 3.8) + (alignedTrend - 0.5) * 20);
-    const quoteInfo =
-      pick === 'OVER' && odds?.over_odds != null
-        ? ` · Cuota ${formatDecimalOdds(odds.over_odds)}`
-        : pick === 'UNDER' && odds?.under_odds != null
-          ? ` · Cuota ${formatDecimalOdds(odds.under_odds)}`
-          : '';
+    const bookTotalOdds = pick === 'OVER' ? odds?.over_odds : odds?.under_odds;
+    const oddsPair = computePropOddsFromConfidence(conf, bookTotalOdds);
+
+    const totalBadges: PropContextBadge[] = [];
+    if (awayRestDays === 0) totalBadges.push({ label: `${game.away_team.abbreviation} en B2B`, tone: 'rose' });
+    if (homeRestDays === 0) totalBadges.push({ label: `${game.home_team.abbreviation} en B2B`, tone: 'rose' });
+    if (awayRestDays != null && awayRestDays >= 2 && homeRestDays != null && homeRestDays >= 2) {
+      totalBadges.push({ label: 'Ambos descansados', tone: 'emerald' });
+    }
+    if (recentOverTracked > 0) {
+      totalBadges.push({ label: `Over rec. ${recentOverTotal}/${recentOverTracked}`, tone: 'cyan' });
+    }
 
     recs.push({
       id: `team_total_${game.id}`,
@@ -603,7 +823,7 @@ export function buildGamePropsRecommendations(params: {
       statSummary: `Ritmo proyectado: ${blendedTotal.toFixed(1)} pts (${awayPpg.toFixed(1)} vs ${homePpg.toFixed(1)} PPG)${
         recentOverTracked > 0 ? ` · Over reciente: ${recentOverTotal}/${recentOverTracked}` : ''
       }`,
-      marketLineText: `${hasBookOu ? 'Línea Casa' : 'Línea Proyectada'}: ${marketOu.toFixed(1)} pts${quoteInfo}`,
+      marketLineText: `${hasBookOu ? 'Línea Casa' : 'Línea Proyectada'}: ${marketOu.toFixed(1)} pts · Cuota ${oddsPair.decimal.toFixed(2)}x`,
       lineValue: marketOu,
       pick,
       pickLabel: `${pick} ${marketOu.toFixed(1)} PTS`,
@@ -612,6 +832,10 @@ export function buildGamePropsRecommendations(params: {
       } de la línea del mercado (${marketOu.toFixed(1)}).`,
       confidence: conf,
       confidenceTier: getConfidenceTier(conf),
+      estimatedOddsAmerican: oddsPair.american,
+      estimatedMultiplier: oddsPair.decimal,
+      contextBadges: totalBadges,
+      restInfo: { teamRestDays: homeRestDays, oppRestDays: awayRestDays },
     });
   }
 
@@ -630,6 +854,9 @@ export function buildGamePropsRecommendations(params: {
     const atsRate = chosenRecent.atsTracked > 0 ? chosenRecent.atsWins / chosenRecent.atsTracked : 0.5;
     const chosenOdds = favorHome ? odds?.home_spread_odds : odds?.away_spread_odds;
     const conf = clampConfidence(52 + Math.min(26, Math.abs(edgeHome) * 3.5) + (atsRate - 0.5) * 18);
+    const oddsPair = computePropOddsFromConfidence(conf, chosenOdds);
+    const teamRest = favorHome ? homeRestDays : awayRestDays;
+    const oppRest = favorHome ? awayRestDays : homeRestDays;
 
     recs.push({
       id: `team_spread_${game.id}`,
@@ -644,15 +871,17 @@ export function buildGamePropsRecommendations(params: {
           ? ` · ${chosenTeam.abbreviation} cubrió ATS ${chosenRecent.atsWins}/${chosenRecent.atsTracked}`
           : ''
       }`,
-      marketLineText: `${hasBookSpread ? 'Línea Casa' : 'Línea Estimada'}: ${chosenTeam.abbreviation} ${formatSpreadCompact(chosenSpread)}${
-        chosenOdds != null ? ` · Cuota ${formatDecimalOdds(chosenOdds)}` : ''
-      }`,
+      marketLineText: `${hasBookSpread ? 'Línea Casa' : 'Línea Estimada'}: ${chosenTeam.abbreviation} ${formatSpreadCompact(chosenSpread)} · Cuota ${oddsPair.decimal.toFixed(2)}x`,
       lineValue: chosenSpread,
       pick: 'SPREAD',
       pickLabel: `${chosenTeam.abbreviation} ${formatSpreadCompact(chosenSpread)}`,
-      rationale: `Por diferencial neto y factor localía, ${chosenTeam.short_name} ofrece ${Math.abs(edgeHome).toFixed(1)} pts de colchón estadístico frente al hándicap.`,
+      rationale: `Por diferencial neto, localía y descanso, ${chosenTeam.short_name} ofrece ${Math.abs(edgeHome).toFixed(1)} pts de colchón estadístico frente al hándicap.`,
       confidence: conf,
       confidenceTier: getConfidenceTier(conf),
+      estimatedOddsAmerican: oddsPair.american,
+      estimatedMultiplier: oddsPair.decimal,
+      contextBadges: buildTeamRestBadges(teamRest, oppRest, favorHome ? 'Local' : 'Visita'),
+      restInfo: { teamRestDays: teamRest, oppRestDays: oppRest },
     });
   }
 
@@ -678,6 +907,9 @@ export function buildGamePropsRecommendations(params: {
     const chosenMlOdds = pickHome ? odds?.home_moneyline : odds?.away_moneyline;
     const valueDiff = chosenImplied != null ? chosenProb - chosenImplied : chosenProb - 50;
     const conf = clampConfidence(52 + (chosenProb - 50) * 0.85 + Math.max(-4, valueDiff * 0.45));
+    const oddsPair = computePropOddsFromConfidence(conf, chosenMlOdds);
+    const teamRest = pickHome ? homeRestDays : awayRestDays;
+    const oppRest = pickHome ? awayRestDays : homeRestDays;
 
     recs.push({
       id: `team_ml_${game.id}`,
@@ -692,8 +924,8 @@ export function buildGamePropsRecommendations(params: {
       })`,
       marketLineText:
         chosenMlOdds != null
-          ? `Cuota Casa ML: ${formatDecimalOdds(chosenMlOdds)} (${formatAmericanOdds(chosenMlOdds)} · Implícita ${chosenImplied?.toFixed(0)}%)`
-          : `Favorito estadístico (${chosenProb.toFixed(0)}% prob.)`,
+          ? `Cuota Casa ML: ${oddsPair.decimal.toFixed(2)}x (${formatAmericanOdds(chosenMlOdds)} · Implícita ${chosenImplied?.toFixed(0)}%)`
+          : `Favorito estadístico (${chosenProb.toFixed(0)}% prob.) · Est. ${oddsPair.decimal.toFixed(2)}x`,
       lineValue: chosenProb,
       pick: 'ML',
       pickLabel: `GANA ${chosenTeam.abbreviation}`,
@@ -704,6 +936,10 @@ export function buildGamePropsRecommendations(params: {
       }.`,
       confidence: conf,
       confidenceTier: getConfidenceTier(conf),
+      estimatedOddsAmerican: oddsPair.american,
+      estimatedMultiplier: oddsPair.decimal,
+      contextBadges: buildTeamRestBadges(teamRest, oppRest, pickHome ? 'Localía' : 'Visita'),
+      restInfo: { teamRestDays: teamRest, oppRestDays: oppRest },
     });
   }
 
@@ -714,6 +950,7 @@ export function buildGamePropsRecommendations(params: {
   const teamSides = [
     {
       role: 'Visita',
+      isHome: false,
       team: game.away_team,
       teamAvg: awayTeamAvg,
       oppAvg: homeTeamAvg,
@@ -721,6 +958,8 @@ export function buildGamePropsRecommendations(params: {
       oppOppg: homeOppg,
       recent: awayRecent,
       oppRecent: homeRecent,
+      teamRest: awayRestDays,
+      oppRest: homeRestDays,
       impliedTeamLine:
         bookOu != null && bookHomeSpread != null
           ? snapHalf((bookOu + bookHomeSpread) / 2)
@@ -730,6 +969,7 @@ export function buildGamePropsRecommendations(params: {
     },
     {
       role: 'Local',
+      isHome: true,
       team: game.home_team,
       teamAvg: homeTeamAvg,
       oppAvg: awayTeamAvg,
@@ -737,6 +977,8 @@ export function buildGamePropsRecommendations(params: {
       oppOppg: awayOppg,
       recent: homeRecent,
       oppRecent: awayRecent,
+      teamRest: homeRestDays,
+      oppRest: awayRestDays,
       impliedTeamLine:
         bookOu != null && bookHomeSpread != null
           ? snapHalf((bookOu - bookHomeSpread) / 2)
@@ -753,10 +995,12 @@ export function buildGamePropsRecommendations(params: {
       s.recent.gamesCount > 0 && s.oppRecent.gamesCount > 0
         ? (s.recent.avgFor + s.oppRecent.avgAgainst) / 2
         : seasonProj;
-    const proj = seasonProj * 0.55 + recentProj * 0.45;
+    const b2bTeamAdj = (s.teamRest === 0 ? -1.8 : 0) + (s.oppRest === 0 ? 1.2 : 0);
+    const proj = seasonProj * 0.55 + recentProj * 0.45 + b2bTeamAdj;
     const edge = proj - s.impliedTeamLine;
     const pick: 'OVER' | 'UNDER' = edge >= 0 ? 'OVER' : 'UNDER';
     const conf = clampConfidence(52 + Math.min(26, Math.abs(edge) * 5.2));
+    const ptsOdds = computePropOddsFromConfidence(conf);
 
     recs.push({
       id: `team_pts_${s.team.id}`,
@@ -765,7 +1009,7 @@ export function buildGamePropsRecommendations(params: {
       subjectName: `${s.team.short_name}`,
       teamAbbr: s.team.abbreviation,
       statSummary: `Anota ${s.myPpg.toFixed(1)} PPG (Últ. ${s.recent.gamesCount || 1}: ${recentProj.toFixed(1)}) · Rival recibe ${s.oppOppg.toFixed(1)}`,
-      marketLineText: `Línea Equipo: ${s.impliedTeamLine.toFixed(1)} pts`,
+      marketLineText: `Línea Equipo: ${s.impliedTeamLine.toFixed(1)} pts · Cuota ${ptsOdds.decimal.toFixed(2)}x`,
       lineValue: s.impliedTeamLine,
       pick,
       pickLabel: `${pick} ${s.impliedTeamLine.toFixed(1)} PTS (${s.team.abbreviation})`,
@@ -774,6 +1018,10 @@ export function buildGamePropsRecommendations(params: {
       }${edge.toFixed(1)} vs línea).`,
       confidence: conf,
       confidenceTier: getConfidenceTier(conf),
+      estimatedOddsAmerican: ptsOdds.american,
+      estimatedMultiplier: ptsOdds.decimal,
+      contextBadges: buildTeamRestBadges(s.teamRest, s.oppRest, s.role),
+      restInfo: { teamRestDays: s.teamRest, oppRestDays: s.oppRest },
     });
 
     // Triples de equipo & Rebotes de equipo
@@ -781,10 +1029,12 @@ export function buildGamePropsRecommendations(params: {
       const tpmAvg = Number(s.teamAvg.tpm_pg);
       const line3p = suggestPropLine(tpmAvg);
       const defAdjust = s.oppOppg > 113.5 ? (s.oppOppg - 113.5) * 0.14 : (s.oppOppg - 113.5) * 0.1;
-      const proj3p = tpmAvg + defAdjust;
+      const b2b3pAdj = s.teamRest === 0 ? -0.4 : 0;
+      const proj3p = tpmAvg + defAdjust + b2b3pAdj;
       const edge3p = proj3p - line3p;
       const pick3p: 'OVER' | 'UNDER' = edge3p >= 0 ? 'OVER' : 'UNDER';
       const conf3p = clampConfidence(52 + Math.min(24, Math.abs(edge3p) * 16));
+      const tpmOdds = computePropOddsFromConfidence(conf3p);
 
       recs.push({
         id: `team_3pm_${s.team.id}`,
@@ -793,13 +1043,17 @@ export function buildGamePropsRecommendations(params: {
         subjectName: `${s.team.short_name}`,
         teamAbbr: s.team.abbreviation,
         statSummary: `Promedia ${tpmAvg.toFixed(1)} triples/PJ (${Number(s.teamAvg.tp_pct ?? 0).toFixed(1)}% 3P)`,
-        marketLineText: `Línea Triples: ${line3p.toFixed(1)} 3PM`,
+        marketLineText: `Línea Triples: ${line3p.toFixed(1)} 3PM · Cuota ${tpmOdds.decimal.toFixed(2)}x`,
         lineValue: line3p,
         pick: pick3p,
         pickLabel: `${pick3p} ${line3p.toFixed(1)} 3PM (${s.team.abbreviation})`,
         rationale: `Eficiencia exterior de ${s.team.abbreviation} frente a defensa rival (${s.oppOppg.toFixed(1)} OPPG) proyecta ${proj3p.toFixed(1)} triples.`,
         confidence: conf3p,
         confidenceTier: getConfidenceTier(conf3p),
+        estimatedOddsAmerican: tpmOdds.american,
+        estimatedMultiplier: tpmOdds.decimal,
+        contextBadges: buildTeamRestBadges(s.teamRest, s.oppRest, s.role),
+        restInfo: { teamRestDays: s.teamRest, oppRestDays: s.oppRest },
       });
     }
 
@@ -813,6 +1067,7 @@ export function buildGamePropsRecommendations(params: {
       const edgeReb = projReb - lineReb;
       const pickReb: 'OVER' | 'UNDER' = edgeReb >= 0 ? 'OVER' : 'UNDER';
       const confReb = clampConfidence(52 + Math.min(22, Math.abs(edgeReb) * 11));
+      const rebOdds = computePropOddsFromConfidence(confReb);
 
       recs.push({
         id: `team_reb_${s.team.id}`,
@@ -821,18 +1076,22 @@ export function buildGamePropsRecommendations(params: {
         subjectName: `${s.team.short_name}`,
         teamAbbr: s.team.abbreviation,
         statSummary: `Captura ${rebAvg.toFixed(1)} RPG (${Number(s.teamAvg.oreb_pg).toFixed(1)} ofensivos) vs ${oppReb.toFixed(1)} del rival`,
-        marketLineText: `Línea Rebotes: ${lineReb.toFixed(1)} REB`,
+        marketLineText: `Línea Rebotes: ${lineReb.toFixed(1)} REB · Cuota ${rebOdds.decimal.toFixed(2)}x`,
         lineValue: lineReb,
         pick: pickReb,
         pickLabel: `${pickReb} ${lineReb.toFixed(1)} REB (${s.team.abbreviation})`,
         rationale: `Proyección de ${projReb.toFixed(1)} rebotes considerando el % de tiro rival y control del tablero.`,
         confidence: confReb,
         confidenceTier: getConfidenceTier(confReb),
+        estimatedOddsAmerican: rebOdds.american,
+        estimatedMultiplier: rebOdds.decimal,
+        contextBadges: buildTeamRestBadges(s.teamRest, s.oppRest, s.role),
+        restInfo: { teamRestDays: s.teamRest, oppRestDays: s.oppRest },
       });
     }
   }
 
-  // 5. Player Props (PTS, REB, AST, PRA, 3PT)
+  // 5. Player Props (PTS, REB, AST, PRA, 3PT) with MPG, Home/Away Split & B2B context
   const logsByPlayer = new Map<number, PlayerGameStat[]>();
   for (const log of playerRecentLogs) {
     const arr = logsByPlayer.get(log.player_id) ?? [];
@@ -843,22 +1102,132 @@ export function buildGamePropsRecommendations(params: {
   const playerPropsPool: PropRecommendation[] = [];
   for (const p of keyPlayers) {
     const pLogs = logsByPlayer.get(p.player_id) ?? [];
-    const oppTeamAvg = p.team_id === game.home_team_id ? awayTeamAvg : homeTeamAvg;
+    const isHomePlayer = p.team_id === game.home_team_id;
+    const oppTeamAvg = isHomePlayer ? awayTeamAvg : homeTeamAvg;
+    const playerCtx = {
+      isHome: isHomePlayer,
+      teamRestDays: isHomePlayer ? homeRestDays : awayRestDays,
+      oppRestDays: isHomePlayer ? awayRestDays : homeRestDays,
+    };
     const candidateMetrics: PlayerChartMetric[] = ['pts', 'reb', 'ast', 'pra', 'tpm'];
     const pRecs: PropRecommendation[] = [];
     for (const mk of candidateMetrics) {
-      const evaluated = evaluatePlayerPropMarket(p, pLogs, mk, oppTeamAvg);
+      const evaluated = evaluatePlayerPropMarket(p, pLogs, mk, oppTeamAvg, playerCtx);
       if (evaluated) pRecs.push(evaluated);
     }
-    // Keep up to top 2 distinct props per key player so we have diverse coverage & confidence levels
     pRecs.sort((a, b) => b.confidence - a.confidence);
     playerPropsPool.push(...pRecs.slice(0, 2));
   }
 
-  // Take top 12 player props overall
   playerPropsPool.sort((a, b) => b.confidence - a.confidence);
   recs.push(...playerPropsPool.slice(0, 12));
 
-  // Default order: MENOR A MAYOR CONFIANZA (per user request)
-  return recs.sort((a, b) => a.confidence - b.confidence);
+  // Default order: MAYOR A MENOR CONFIANZA (highest probability picks first)
+  return recs.sort((a, b) => b.confidence - a.confidence);
+}
+
+export interface PropLiveStatus {
+  label: string;
+  state: 'won' | 'lost' | 'push' | 'live' | 'dnp' | 'pending';
+}
+
+/**
+ * Evaluate live or final outcome of any team or player prop against current game/boxscore data.
+ */
+export function evaluatePropStatus(
+  prop: PropRecommendation,
+  game: Game,
+  boxStats: PlayerGameStat[] = [],
+): PropLiveStatus | null {
+  if (game.status === 'scheduled' || game.status === 'postponed') return null;
+
+  const isFinal = game.status === 'final';
+  const gradeOverUnder = (
+    val: number,
+    line: number,
+    pick: 'OVER' | 'UNDER',
+    unit: string,
+  ): PropLiveStatus => {
+    if (isFinal) {
+      if (val === line) return { label: `EMPATE (${val} ${unit})`, state: 'push' };
+      const won = pick === 'OVER' ? val > line : val < line;
+      return { label: `${won ? 'GANÓ' : 'PERDIÓ'} · ${val}`, state: won ? 'won' : 'lost' };
+    }
+    if (pick === 'OVER' && val > line) {
+      return { label: `CUMPLIÓ · ${val}`, state: 'won' };
+    }
+    return { label: `EN VIVO · ${val}/${line}`, state: 'live' };
+  };
+
+  if (prop.scope === 'player' && prop.playerId && prop.metricKey) {
+    const row = boxStats.find((s) => s.player_id === prop.playerId);
+    if (!row) return isFinal ? null : { label: 'EN VIVO', state: 'live' };
+    if (row.did_not_play) return { label: 'DNP', state: 'dnp' };
+    const val = PLAYER_CHART_METRICS[prop.metricKey].getStatValue(row);
+    const pick = prop.pick === 'UNDER' ? 'UNDER' : 'OVER';
+    return gradeOverUnder(val, prop.lineValue, pick, prop.metricKey.toUpperCase());
+  }
+
+  if (prop.id.startsWith('team_total_')) {
+    const total = game.away_score + game.home_score;
+    return gradeOverUnder(total, prop.lineValue, prop.pick === 'UNDER' ? 'UNDER' : 'OVER', 'PTS');
+  }
+
+  if (prop.id === `team_pts_${game.away_team_id}`) {
+    return gradeOverUnder(
+      game.away_score,
+      prop.lineValue,
+      prop.pick === 'UNDER' ? 'UNDER' : 'OVER',
+      'PTS',
+    );
+  }
+
+  if (prop.id === `team_pts_${game.home_team_id}`) {
+    return gradeOverUnder(
+      game.home_score,
+      prop.lineValue,
+      prop.pick === 'UNDER' ? 'UNDER' : 'OVER',
+      'PTS',
+    );
+  }
+
+  if (prop.id.startsWith('team_spread_')) {
+    const isHome = prop.teamAbbr === game.home_team.abbreviation;
+    const diff = isHome ? game.home_score - game.away_score : game.away_score - game.home_score;
+    const adjusted = diff + prop.lineValue;
+    if (!isFinal) {
+      return { label: `EN VIVO · ${diff >= 0 ? '+' : ''}${diff}`, state: 'live' };
+    }
+    if (adjusted === 0) return { label: 'EMPATE ATS', state: 'push' };
+    return {
+      label: `${adjusted > 0 ? 'CUBRIÓ' : 'NO CUBRIÓ'} (${diff >= 0 ? '+' : ''}${diff})`,
+      state: adjusted > 0 ? 'won' : 'lost',
+    };
+  }
+
+  if (prop.id.startsWith('team_ml_')) {
+    const isHome = prop.teamAbbr === game.home_team.abbreviation;
+    const myScore = isHome ? game.home_score : game.away_score;
+    const opScore = isHome ? game.away_score : game.home_score;
+    if (!isFinal) {
+      return { label: `EN VIVO · ${myScore}-${opScore}`, state: 'live' };
+    }
+    const won = myScore > opScore;
+    return {
+      label: `${won ? 'GANÓ' : 'PERDIÓ'} · ${myScore}-${opScore}`,
+      state: won ? 'won' : 'lost',
+    };
+  }
+
+  if (prop.id.startsWith('team_3pm_') || prop.id.startsWith('team_reb_')) {
+    const teamId = Number(prop.id.replace(/^team_(3pm|reb)_/, ''));
+    const teamRows = boxStats.filter((r) => r.team_id === teamId);
+    if (teamRows.length === 0) return isFinal ? null : { label: 'EN VIVO', state: 'live' };
+    const val = prop.id.startsWith('team_3pm_')
+      ? teamRows.reduce((s, r) => s + r.tpm, 0)
+      : teamRows.reduce((s, r) => s + r.reb, 0);
+    return gradeOverUnder(val, prop.lineValue, prop.pick === 'UNDER' ? 'UNDER' : 'OVER', '');
+  }
+
+  return null;
 }

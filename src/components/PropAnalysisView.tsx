@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
+  Calculator,
   CheckCircle2,
+  Clock,
   ExternalLink,
   Lock,
+  MapPin,
   Minus,
   Plus,
   RotateCcw,
   ShieldAlert,
   SlidersHorizontal,
+  Timer,
 } from 'lucide-react';
 import {
   fetchGameBoxScore,
@@ -21,6 +25,8 @@ import {
   americanToImpliedProb,
   buildGamePropsRecommendations,
   buildMatchupBettingInsight,
+  evaluatePropStatus,
+  formatAmericanOdds,
   getConfidenceTier,
   isHighProbabilityProp,
   PLAYER_CHART_METRICS,
@@ -68,9 +74,11 @@ export function PropAnalysisView({
   const [fullPlayerLogs, setFullPlayerLogs] = useState<PlayerGameStat[]>([]);
   const [loadingExtra, setLoadingExtra] = useState(false);
 
-  // Interactive sportsbook line simulator
+  // Interactive sportsbook line simulator & payout calculator
   const [customLine, setCustomLine] = useState<number>(prop.lineValue);
   const [targetPick, setTargetPick] = useState<'OVER' | 'UNDER' | 'SPREAD' | 'ML'>(prop.pick);
+  const [stakeCurrency, setStakeCurrency] = useState<'PEN' | 'USD'>('PEN');
+  const [stakeAmount, setStakeAmount] = useState<number>(20);
 
   useEffect(() => {
     setLiveGame(initialGame);
@@ -157,8 +165,18 @@ export function PropAnalysisView({
         context.awayStanding,
         homeRecent,
         awayRecent,
+        context.homeRecentGames,
+        context.awayRecentGames,
       ),
-    [liveGame, context.homeStanding, context.awayStanding, homeRecent, awayRecent],
+    [
+      liveGame,
+      context.homeStanding,
+      context.awayStanding,
+      homeRecent,
+      awayRecent,
+      context.homeRecentGames,
+      context.awayRecentGames,
+    ],
   );
 
   const allGameProps = useMemo(
@@ -171,6 +189,8 @@ export function PropAnalysisView({
         awayTeamAvg: context.awayTeamAvg,
         homeRecent,
         awayRecent,
+        homeRecentGames: context.homeRecentGames,
+        awayRecentGames: context.awayRecentGames,
         keyPlayers: context.keyPlayers,
         playerRecentLogs: context.playerRecentLogs ?? [],
       }),
@@ -630,21 +650,22 @@ export function PropAnalysisView({
     targetPick,
   ]);
 
-  // Live current value if game is live/final
-  const liveCurrentValue = useMemo(() => {
-    if (liveGame.status === 'scheduled') return null;
-    if (prop.scope === 'player' && prop.playerId && prop.metricKey) {
-      const row = boxStats.find((s) => s.player_id === prop.playerId);
-      if (!row || row.did_not_play) return null;
-      return `${PLAYER_CHART_METRICS[prop.metricKey].getStatValue(row)} ${analysis.unit}`;
-    }
-    if (prop.id.startsWith('team_total_')) {
-      return `${liveGame.away_score + liveGame.home_score} pts`;
-    }
-    if (prop.id === `team_pts_${liveGame.away_team_id}`) return `${liveGame.away_score} pts`;
-    if (prop.id === `team_pts_${liveGame.home_team_id}`) return `${liveGame.home_score} pts`;
-    return null;
-  }, [liveGame, prop, boxStats, analysis.unit]);
+  const liveStatus = useMemo(
+    () => evaluatePropStatus(prop, liveGame, boxStats),
+    [prop, liveGame, boxStats],
+  );
+
+  const teamAccentColor =
+    prop.teamAbbr === liveGame.home_team.abbreviation
+      ? liveGame.home_team.primary_color || '#10b981'
+      : prop.teamAbbr === liveGame.away_team.abbreviation
+        ? liveGame.away_team.primary_color || '#06b6d4'
+        : liveGame.home_team.primary_color || '#10b981';
+
+  const safeStake = Number.isFinite(stakeAmount) && stakeAmount > 0 ? stakeAmount : 0;
+  const payoutTotal = safeStake * prop.estimatedMultiplier;
+  const payoutNet = safeStake * (prop.estimatedMultiplier - 1);
+  const currencyPrefix = stakeCurrency === 'PEN' ? 'S/' : '$';
 
   const maxChartVal = useMemo(() => {
     if (analysis.historySeries.length === 0) return 20;
@@ -665,9 +686,9 @@ export function PropAnalysisView({
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 text-xs font-semibold text-slate-200 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.1] hover:border-emerald-400/50 text-xs font-bold text-slate-200 transition-colors"
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
+          <ArrowLeft className="w-3.5 h-3.5 text-emerald-400" />
           Volver a Partidos
         </button>
 
@@ -675,13 +696,13 @@ export function PropAnalysisView({
           <button
             type="button"
             onClick={() => onOpenGameModal(liveGame)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 text-xs font-medium text-slate-300 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.1] hover:border-cyan-400/50 text-xs font-semibold text-slate-200 transition-colors"
           >
             <span>
               {liveGame.away_team.abbreviation} @ {liveGame.home_team.abbreviation}
             </span>
             {liveGame.status !== 'scheduled' && (
-              <span className="font-bold text-slate-100 tabular-nums">
+              <span className="font-black text-emerald-300 tabular-nums">
                 {liveGame.away_score}-{liveGame.home_score}
               </span>
             )}
@@ -691,12 +712,21 @@ export function PropAnalysisView({
       </div>
 
       {/* Main Prop Hero & Accessibility Diagnosis */}
-      <section className="rounded-2xl bg-slate-900/80 border border-slate-800/90 p-4 sm:p-5 space-y-5">
+      <section
+        className="sb-card rounded-2xl p-4 sm:p-5 space-y-5 overflow-hidden"
+        style={{
+          backgroundImage: `linear-gradient(135deg, ${teamAccentColor}24 0%, rgba(10,16,30,0.92) 48%, rgba(6,10,20,0.98) 100%)`,
+          borderColor: `${teamAccentColor}55`,
+        }}
+      >
         {/* Identity Header */}
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-800/80 pb-4">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/[0.08] pb-4">
           <div className="flex items-center gap-3.5 min-w-0">
             {prop.scope === 'player' ? (
-              <div className="w-14 h-14 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shrink-0 flex items-center justify-center">
+              <div
+                className="w-14 h-14 rounded-2xl bg-slate-950/90 border overflow-hidden shrink-0 flex items-center justify-center"
+                style={{ borderColor: `${teamAccentColor}66` }}
+              >
                 {analysis.playerAvgObj?.headshot_url || playerProfile?.headshot_url ? (
                   <img
                     src={analysis.playerAvgObj?.headshot_url ?? playerProfile?.headshot_url ?? ''}
@@ -704,7 +734,7 @@ export function PropAnalysisView({
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <span className="text-sm font-bold text-slate-400">{prop.teamAbbr}</span>
+                  <span className="text-sm font-black text-slate-300">{prop.teamAbbr}</span>
                 )}
               </div>
             ) : (
@@ -713,14 +743,14 @@ export function PropAnalysisView({
                   <img
                     src={liveGame.away_team.logo_url}
                     alt={liveGame.away_team.abbreviation}
-                    className="w-11 h-11 object-contain"
+                    className="w-11 h-11 object-contain drop-shadow"
                   />
                 )}
                 {liveGame.home_team.logo_url && (
                   <img
                     src={liveGame.home_team.logo_url}
                     alt={liveGame.home_team.abbreviation}
-                    className="w-11 h-11 object-contain"
+                    className="w-11 h-11 object-contain drop-shadow"
                   />
                 )}
               </div>
@@ -728,29 +758,32 @@ export function PropAnalysisView({
 
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">
                   {prop.scope === 'team' ? 'Mercado de Equipo' : 'Prop de Jugador'} ·{' '}
                   {prop.marketLabel}
                 </span>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/35 tabular-nums">
+                  Cuota {prop.estimatedMultiplier.toFixed(2)}x ({formatAmericanOdds(prop.estimatedOddsAmerican)})
+                </span>
                 {liveGame.status === 'live' && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                     En vivo · {liveGame.status_detail}
                   </span>
                 )}
               </div>
-              <h1 className="text-xl sm:text-2xl font-bold text-white truncate mt-0.5">
+              <h1 className="text-xl sm:text-2xl font-black text-white truncate mt-0.5">
                 {prop.subjectName}
               </h1>
-              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 mt-0.5">
+              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300 mt-0.5">
                 <span>
                   {liveGame.away_team.short_name} vs {liveGame.home_team.short_name}
                 </span>
-                {prop.playerId && (
+                {!isLocked && prop.playerId && (
                   <button
                     type="button"
                     onClick={() => onOpenPlayerModal(prop.playerId!)}
-                    className="text-slate-300 hover:text-white underline underline-offset-2"
+                    className="text-cyan-300 hover:text-cyan-200 underline underline-offset-2 font-semibold"
                   >
                     Ver ficha completa
                   </button>
@@ -761,66 +794,73 @@ export function PropAnalysisView({
 
           {/* Right Verdict Pill */}
           <div className="flex flex-col items-start sm:items-end gap-1.5 shrink-0">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700/90 tabular-nums">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/50 border border-white/[0.12] tabular-nums">
               {isLocked ? (
                 <>
-                  <Lock className="w-4 h-4 text-slate-300 shrink-0" />
-                  <span className="text-sm font-bold text-slate-100">Exclusivo PRO</span>
-                  <span className="text-xs font-semibold text-slate-400">
+                  <Lock className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span className="text-sm font-black text-amber-200">Exclusivo PRO</span>
+                  <span className="text-xs font-bold text-slate-300">
                     · {prop.confidence}% ({prop.confidenceTier})
                   </span>
                 </>
               ) : (
                 <>
                   {analysis.accessibilityLevel === 'high' ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400/90 shrink-0" />
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
-                    <ShieldAlert className="w-4 h-4 text-slate-300 shrink-0" />
+                    <ShieldAlert className="w-4 h-4 text-amber-300 shrink-0" />
                   )}
-                  <span className="text-sm font-bold text-slate-100">{analysis.accessibilityTitle}</span>
-                  <span className="text-xs font-semibold text-slate-400">
+                  <span className="text-sm font-black text-white">{analysis.accessibilityTitle}</span>
+                  <span className="text-xs font-bold text-emerald-300">
                     · {analysis.dynamicConf}% ({getConfidenceTier(analysis.dynamicConf)})
                   </span>
                 </>
               )}
             </div>
-            {!isLocked && liveCurrentValue && (
-              <span className="text-xs text-slate-300 tabular-nums">
-                En el partido ahora: <strong className="text-white">{liveCurrentValue}</strong>
+            {!isLocked && liveStatus && (
+              <span
+                className={`text-[11px] font-black px-2.5 py-0.5 rounded-full border tabular-nums ${
+                  liveStatus.state === 'won'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : liveStatus.state === 'lost'
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                      : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                }`}
+              >
+                {liveStatus.label}
               </span>
             )}
           </div>
         </div>
 
         {isLocked ? (
-          <div className="rounded-2xl bg-slate-950/90 border border-slate-700/80 p-6 sm:p-8 text-center space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-700 mx-auto flex items-center justify-center">
-              <Lock className="w-5 h-5 text-slate-200" />
+          <div className="rounded-2xl bg-black/45 border border-amber-500/30 p-6 sm:p-8 text-center space-y-4">
+            <div className="w-12 h-12 rounded-2xl sb-pro-pill mx-auto flex items-center justify-center">
+              <Lock className="w-5 h-5 text-amber-300" />
             </div>
             <div className="space-y-1.5 max-w-md mx-auto">
-              <h2 className="text-lg font-bold text-white">
-                Prop de Alta Probabilidad ({prop.confidence}% · {prop.confidenceTier})
+              <h2 className="text-lg font-black text-white">
+                Pick de Alta Probabilidad ({prop.confidence}% · {prop.confidenceTier})
               </h2>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Los pronósticos con confianza de {PRO_CONFIDENCE_THRESHOLD}% a 94% están reservados para
-                suscriptores de <strong className="text-slate-200">CourtVision PRO ($5 USD/mes)</strong>.
-                Desbloquea al instante el pick exacto, la línea del mercado, el rango accesible y el
-                gráfico histórico.
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Los pronósticos con confianza de {PRO_CONFIDENCE_THRESHOLD}% a 94% están reservados para{' '}
+                <strong className="text-amber-300">CourtVision PRO ($5 USD o S/ 19 / mes)</strong>.
+                Desbloquea el pick exacto, simulador de ganancias, tendencia de minutos y factor B2B.
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
               <button
                 type="button"
                 onClick={onOpenProModal}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-white text-slate-950 font-bold text-xs sm:text-sm transition-colors"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-black text-xs sm:text-sm transition-all shadow-[0_6px_22px_rgba(16,185,129,0.28)]"
               >
                 <Lock className="w-4 h-4" />
-                Desbloquear todos los Props PRO ($5/mes)
+                Desbloquear Props PRO ($5 / S/ 19)
               </button>
               <button
                 type="button"
                 onClick={onBack}
-                className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300 transition-colors"
+                className="px-4 py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.1] text-xs font-semibold text-slate-300 transition-colors"
               >
                 Volver a partidos gratis
               </button>
@@ -831,14 +871,14 @@ export function PropAnalysisView({
         {/* 4 Key Cards: Line Simulator + Projection + Pick + Accessibility Limit */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 tabular-nums">
           {/* Card 1: Market Line Simulator */}
-          <div className="rounded-xl bg-slate-950/75 border border-slate-800 p-3.5 space-y-2">
+          <div className="rounded-xl bg-black/40 border border-white/[0.09] p-3.5 space-y-2">
             <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
               <span>Línea de Mercado</span>
               {Math.abs(customLine - prop.lineValue) > 0.01 && (
                 <button
                   type="button"
                   onClick={() => setCustomLine(prop.lineValue)}
-                  className="inline-flex items-center gap-1 text-[10px] text-slate-300 hover:text-white"
+                  className="inline-flex items-center gap-1 text-[10px] text-emerald-300 hover:text-emerald-200"
                 >
                   <RotateCcw className="w-3 h-3" />
                   Base
@@ -846,19 +886,19 @@ export function PropAnalysisView({
               )}
             </div>
             <div className="flex items-center justify-between gap-2">
-              <div className="text-xl font-bold text-white">
+              <div className="text-xl font-black text-white">
                 {prop.pick === 'SPREAD' && customLine > 0
                   ? `+${customLine.toFixed(1)}`
                   : customLine.toFixed(1)}{' '}
                 <span className="text-xs font-medium text-slate-400">{analysis.unit}</span>
               </div>
-              <div className="inline-flex items-center rounded-lg border border-slate-700 bg-slate-900">
+              <div className="inline-flex items-center rounded-lg border border-white/[0.12] bg-slate-950/90">
                 <button
                   type="button"
                   onClick={() =>
                     setCustomLine((c) => Number((prop.pick === 'SPREAD' ? c - 0.5 : Math.max(0.5, c - 0.5)).toFixed(1)))
                   }
-                  className="p-1.5 text-slate-300 hover:bg-slate-800"
+                  className="p-1.5 text-slate-300 hover:bg-white/[0.08]"
                   aria-label="Reducir línea"
                 >
                   <Minus className="w-3.5 h-3.5" />
@@ -866,22 +906,22 @@ export function PropAnalysisView({
                 <button
                   type="button"
                   onClick={() => setCustomLine((c) => Number((c + 0.5).toFixed(1)))}
-                  className="p-1.5 text-slate-300 hover:bg-slate-800 border-l border-slate-700"
+                  className="p-1.5 text-slate-300 hover:bg-white/[0.08] border-l border-white/[0.12]"
                   aria-label="Subir línea"
                 >
                   <Plus className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
-            <div className="text-[11px] text-slate-400 truncate">{prop.marketLineText}</div>
+            <div className="text-[11px] text-amber-300/90 truncate">{prop.marketLineText}</div>
           </div>
 
           {/* Card 2: Model Projection */}
-          <div className="rounded-xl bg-slate-950/75 border border-slate-800 p-3.5 space-y-1.5">
+          <div className="rounded-xl bg-black/40 border border-white/[0.09] p-3.5 space-y-1.5">
             <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-              Proyección Estadística
+              Proyección Modelo
             </div>
-            <div className="text-xl font-bold text-white">
+            <div className="text-xl font-black text-emerald-300">
               {prop.pick === 'SPREAD' && analysis.projectedVal > 0
                 ? `+${analysis.projectedVal.toFixed(1)}`
                 : analysis.projectedVal.toFixed(1)}{' '}
@@ -890,24 +930,24 @@ export function PropAnalysisView({
             <div className="text-[11px] text-slate-400">
               {prop.pick === 'SPREAD'
                 ? `Colchón: ${(analysis.projectedVal + customLine >= 0 ? '+' : '')}${(analysis.projectedVal + customLine).toFixed(1)} pts`
-                : `Diferencia vs línea: ${analysis.projectedVal - customLine >= 0 ? '+' : ''}${(analysis.projectedVal - customLine).toFixed(1)} ${analysis.unit}`}
+                : `Margen vs línea: ${analysis.projectedVal - customLine >= 0 ? '+' : ''}${(analysis.projectedVal - customLine).toFixed(1)} ${analysis.unit}`}
             </div>
           </div>
 
-          {/* Card 3: Recommended Side (with Over/Under switch if applicable) */}
-          <div className="rounded-xl bg-slate-950/75 border border-slate-800 p-3.5 space-y-1.5">
+          {/* Card 3: Recommended Side */}
+          <div className="rounded-xl bg-black/40 border border-white/[0.09] p-3.5 space-y-1.5">
             <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
               <span>Opción Evaluada</span>
               {(prop.pick === 'OVER' || prop.pick === 'UNDER') && (
-                <div className="inline-flex rounded-md bg-slate-900 border border-slate-700 p-0.5 text-[10px]">
+                <div className="inline-flex rounded-md bg-slate-950 border border-white/[0.12] p-0.5 text-[10px]">
                   {(['OVER', 'UNDER'] as const).map((side) => (
                     <button
                       key={side}
                       type="button"
                       onClick={() => setTargetPick(side)}
-                      className={`px-1.5 py-0.5 rounded font-semibold transition-colors ${
+                      className={`px-1.5 py-0.5 rounded font-bold transition-colors ${
                         targetPick === side
-                          ? 'bg-slate-200 text-slate-950'
+                          ? 'bg-emerald-500 text-slate-950'
                           : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
@@ -917,7 +957,7 @@ export function PropAnalysisView({
                 </div>
               )}
             </div>
-            <div className="text-xl font-bold text-white">
+            <div className="text-xl font-black text-white">
               {prop.pick === 'SPREAD'
                 ? `${prop.teamAbbr} ${customLine > 0 ? `+${customLine.toFixed(1)}` : customLine.toFixed(1)}`
                 : prop.pick === 'ML'
@@ -925,16 +965,16 @@ export function PropAnalysisView({
                   : `${analysis.effectivePick} ${customLine.toFixed(1)}`}
             </div>
             <div className="text-[11px] text-slate-400">
-              Confianza calculada: <strong className="text-slate-200">{analysis.dynamicConf}%</strong>
+              Confianza calculada: <strong className="text-emerald-300">{analysis.dynamicConf}%</strong>
             </div>
           </div>
 
           {/* Card 4: Accessibility Threshold */}
-          <div className="rounded-xl bg-slate-950/75 border border-slate-800 p-3.5 space-y-1.5">
+          <div className="rounded-xl bg-black/40 border border-white/[0.09] p-3.5 space-y-1.5">
             <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
               Rango Accesible
             </div>
-            <div className="text-sm font-bold text-slate-100 pt-1">
+            <div className="text-sm font-extrabold text-cyan-200 pt-1">
               {analysis.accessibleLimitText}
             </div>
             <div className="text-[11px] text-slate-400 leading-snug">
@@ -943,35 +983,191 @@ export function PropAnalysisView({
           </div>
         </div>
 
-        {/* Accessibility Explanation Banner (Neutral) */}
-        <div className="rounded-xl bg-slate-950/80 border border-slate-800 px-4 py-3 flex items-start gap-3">
-          <SlidersHorizontal className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+        {/* Sportsbook Payout Simulator (PEN & USD) */}
+        <div className="rounded-xl bg-emerald-500/[0.07] border border-emerald-500/30 p-3.5 sm:p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3 tabular-nums">
           <div className="space-y-1">
-            <div className="text-xs font-bold text-slate-200">
+            <div className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-300 uppercase tracking-wide">
+              <Calculator className="w-3.5 h-3.5" />
+              Calculadora Rápida de Pago
+            </div>
+            <div className="text-[11px] text-slate-300">
+              Cuota estimada:{' '}
+              <strong className="text-amber-300">{prop.estimatedMultiplier.toFixed(2)}x</strong> (
+              {formatAmericanOdds(prop.estimatedOddsAmerican)}) · Elige monto en soles o dólares:
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg bg-slate-950/90 border border-white/[0.12] p-0.5 text-[11px] font-bold">
+              {(['PEN', 'USD'] as const).map((cur) => (
+                <button
+                  key={cur}
+                  type="button"
+                  onClick={() => setStakeCurrency(cur)}
+                  className={`px-2 py-1 rounded-md transition-colors ${
+                    stakeCurrency === cur
+                      ? 'bg-emerald-500 text-slate-950'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {cur === 'PEN' ? 'S/ PEN' : '$ USD'}
+                </button>
+              ))}
+            </div>
+
+            <div className="inline-flex items-center gap-1">
+              {[10, 20, 50, 100].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setStakeAmount(preset)}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                    stakeAmount === preset
+                      ? 'bg-amber-400/20 border-amber-400 text-amber-200'
+                      : 'bg-slate-950/80 border-white/[0.1] text-slate-300 hover:border-white/25'
+                  }`}
+                >
+                  {currencyPrefix} {preset}
+                </button>
+              ))}
+            </div>
+
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={stakeAmount}
+              onChange={(e) => setStakeAmount(Math.max(0, Number(e.target.value)))}
+              aria-label="Monto de apuesta"
+              className="w-20 bg-slate-950/90 border border-white/[0.15] rounded-lg px-2.5 py-1 text-xs font-bold text-white text-right focus:outline-none focus:border-emerald-400"
+            />
+
+            <div className="px-3 py-1.5 rounded-xl bg-slate-950/90 border border-emerald-400/40 text-right">
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">
+                Retorno · Ganancia
+              </div>
+              <div className="text-xs sm:text-sm font-black text-emerald-300">
+                {currencyPrefix} {payoutTotal.toFixed(2)}{' '}
+                <span className="text-[11px] text-amber-300 font-bold">
+                  (+{currencyPrefix} {payoutNet.toFixed(2)})
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Motor Avanzado: MPG, Home/Away Split & B2B Rest */}
+        {(prop.mpgInfo || prop.splitInfo || prop.restInfo) && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 tabular-nums">
+            {prop.mpgInfo && (
+              <div className="rounded-xl bg-black/35 border border-white/[0.08] p-3 flex items-start gap-2.5">
+                <Clock className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Tendencia de Minutos (MPG)
+                  </div>
+                  <div className="text-xs font-extrabold text-white mt-0.5">
+                    Reciente {prop.mpgInfo.recentMpg}m vs Temp {prop.mpgInfo.seasonMpg}m{' '}
+                    <span
+                      className={
+                        prop.mpgInfo.delta >= 1.5
+                          ? 'text-emerald-400'
+                          : prop.mpgInfo.delta <= -1.5
+                            ? 'text-amber-300'
+                            : 'text-slate-400'
+                      }
+                    >
+                      ({prop.mpgInfo.delta >= 0 ? '+' : ''}
+                      {prop.mpgInfo.delta}m)
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {prop.splitInfo && (
+              <div className="rounded-xl bg-black/35 border border-white/[0.08] p-3 flex items-start gap-2.5">
+                <MapPin className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Split {prop.splitInfo.isHome ? 'En Casa (Local)' : 'De Visita'}
+                  </div>
+                  <div className="text-xs font-extrabold text-white mt-0.5">
+                    Promedio {prop.splitInfo.venueAvg} {analysis.unit} ({prop.splitInfo.venueGp} PJ{' '}
+                    {prop.splitInfo.isHome ? 'locales' : 'fuera'})
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {prop.restInfo && (
+              <div className="rounded-xl bg-black/35 border border-white/[0.08] p-3 flex items-start gap-2.5">
+                <Timer className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Descanso &amp; Back-to-Back (B2B)
+                  </div>
+                  <div className="text-xs font-extrabold text-white mt-0.5">
+                    Equipo:{' '}
+                    <span
+                      className={
+                        prop.restInfo.teamRestDays === 0 ? 'text-rose-400' : 'text-emerald-300'
+                      }
+                    >
+                      {prop.restInfo.teamRestDays == null
+                        ? 'N/D'
+                        : prop.restInfo.teamRestDays === 0
+                          ? 'B2B (0 días)'
+                          : `${prop.restInfo.teamRestDays}d desc.`}
+                    </span>
+                    {' · Rival: '}
+                    <span
+                      className={
+                        prop.restInfo.oppRestDays === 0 ? 'text-emerald-300' : 'text-slate-200'
+                      }
+                    >
+                      {prop.restInfo.oppRestDays == null
+                        ? 'N/D'
+                        : prop.restInfo.oppRestDays === 0
+                          ? 'B2B (0 días)'
+                          : `${prop.restInfo.oppRestDays}d`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Accessibility Explanation Banner */}
+        <div className="rounded-xl bg-black/45 border border-white/[0.08] px-4 py-3 flex items-start gap-3">
+          <SlidersHorizontal className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+          <div className="space-y-1">
+            <div className="text-xs font-bold text-white">
               Evaluación de accesibilidad: {analysis.accessibilityTitle}
             </div>
             <p className="text-xs text-slate-300 leading-relaxed">{analysis.accessibilityText}</p>
           </div>
         </div>
 
-        {/* 3 Analytical Pillars (Neutral Grid) */}
+        {/* 3 Analytical Pillars */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 tabular-nums">
-          <div className="rounded-xl bg-slate-950/60 border border-slate-800/80 p-3.5 space-y-1.5">
+          <div className="rounded-xl bg-black/35 border border-white/[0.08] p-3.5 space-y-1.5">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               1. Respaldo Estadístico
             </div>
-            <div className="text-sm font-bold text-slate-100">
+            <div className="text-sm font-bold text-white">
               Temp: {analysis.seasonBaseline.toFixed(1)} {analysis.unit} · Reciente:{' '}
               {analysis.recentBaseline.toFixed(1)} {analysis.unit}
             </div>
             <p className="text-xs text-slate-400">{prop.statSummary}</p>
           </div>
 
-          <div className="rounded-xl bg-slate-950/60 border border-slate-800/80 p-3.5 space-y-1.5">
+          <div className="rounded-xl bg-black/35 border border-white/[0.08] p-3.5 space-y-1.5">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               2. Cumplimiento Reciente
             </div>
-            <div className="text-sm font-bold text-slate-100">
+            <div className="text-sm font-bold text-white">
               {analysis.totalHist > 0
                 ? `${analysis.hits} de ${analysis.totalHist} partidos (${analysis.hitRatePct}%)`
                 : 'Según promedio colectivo'}
@@ -983,11 +1179,11 @@ export function PropAnalysisView({
             </p>
           </div>
 
-          <div className="rounded-xl bg-slate-950/60 border border-slate-800/80 p-3.5 space-y-1.5">
+          <div className="rounded-xl bg-black/35 border border-white/[0.08] p-3.5 space-y-1.5">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               3. Factor Rival
             </div>
-            <div className="text-sm font-bold text-slate-100">{analysis.rivalFactorLabel}</div>
+            <div className="text-sm font-bold text-white">{analysis.rivalFactorLabel}</div>
             <p className="text-xs text-slate-400">{analysis.rivalFactorDetail}</p>
           </div>
         </div>
@@ -997,10 +1193,10 @@ export function PropAnalysisView({
 
       {/* Historical Chart & Game Log (Green/Red Bars) */}
       {isLocked ? null : analysis.historySeries.length > 0 ? (
-        <section className="rounded-2xl bg-slate-900/80 border border-slate-800/90 p-4 sm:p-5 space-y-4">
+        <section className="sb-card rounded-2xl p-4 sm:p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-white">
                 Historial Reciente frente a la Línea ({customLine.toFixed(1)} {analysis.unit})
               </h2>
               <p className="text-[11px] text-slate-400 mt-0.5">
@@ -1011,7 +1207,7 @@ export function PropAnalysisView({
             </div>
             <div className="flex items-center gap-4 text-[11px] text-slate-400">
               <span className="inline-flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-[2px] bg-emerald-500 inline-block" />
+                <span className="w-2.5 h-2.5 rounded-[2px] bg-emerald-400 inline-block" />
                 Cumple (
                 {analysis.effectivePick === 'UNDER'
                   ? `< ${customLine.toFixed(1)}`
@@ -1027,17 +1223,17 @@ export function PropAnalysisView({
             </div>
           </div>
 
-          {/* Bar Chart (Green when hits target pick, Red when misses) */}
+          {/* Bar Chart */}
           <div className="relative pt-5 pb-1">
             <div className="relative flex items-end gap-1.5 h-36">
               {prop.pick !== 'SPREAD' && prop.pick !== 'ML' && (
                 <div
-                  className="absolute left-0 right-0 border-t border-dashed border-slate-400/80 pointer-events-none z-10 flex justify-end"
+                  className="absolute left-0 right-0 border-t border-dashed border-amber-400/80 pointer-events-none z-10 flex justify-end"
                   style={{
                     bottom: `${Math.min(94, Math.max(6, (customLine / maxChartVal) * 100))}%`,
                   }}
                 >
-                  <span className="-translate-y-4 text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-800 text-slate-200 border border-slate-600 tabular-nums">
+                  <span className="-translate-y-4 text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-900 text-amber-300 border border-amber-500/40 tabular-nums">
                     {customLine.toFixed(1)}
                   </span>
                 </div>
@@ -1088,9 +1284,9 @@ export function PropAnalysisView({
           </div>
 
           {/* Clean Tabular Breakdown */}
-          <div className="overflow-x-auto rounded-xl border border-slate-800/80">
+          <div className="overflow-x-auto rounded-xl border border-white/[0.08]">
             <table className="w-full text-xs tabular-nums whitespace-nowrap">
-              <thead className="bg-slate-950/70 text-slate-400 border-b border-slate-800">
+              <thead className="bg-black/40 text-slate-400 border-b border-white/[0.08]">
                 <tr>
                   <th className="text-left py-2 px-3 font-semibold">FECHA</th>
                   <th className="text-left py-2 px-2 font-semibold">PARTIDO</th>
@@ -1099,7 +1295,7 @@ export function PropAnalysisView({
                   <th className="text-center py-2 px-3 font-semibold">ESTADO</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-white/[0.06]">
                 {[...analysis.historySeries].reverse().map((pt) => {
                   const hit =
                     analysis.effectivePick === 'SPREAD'
@@ -1110,11 +1306,11 @@ export function PropAnalysisView({
                           ? pt.value < customLine
                           : pt.value > customLine;
                   return (
-                    <tr key={pt.id} className="hover:bg-slate-800/30">
+                    <tr key={pt.id} className="hover:bg-white/[0.03]">
                       <td className="py-2 px-3 text-slate-400">{pt.dateLabel}</td>
                       <td className="py-2 px-2 font-medium text-slate-200">{pt.matchupLabel}</td>
                       <td className="py-2 px-2 text-slate-400">{pt.secondaryText}</td>
-                      <td className="text-right py-2 px-2 font-bold text-slate-100">
+                      <td className="text-right py-2 px-2 font-bold text-white">
                         {(prop.pick === 'SPREAD' || prop.pick === 'ML') && pt.value > 0
                           ? `+${pt.value}`
                           : pt.value}{' '}
@@ -1122,7 +1318,7 @@ export function PropAnalysisView({
                       </td>
                       <td className="text-center py-2 px-3">
                         <span
-                          className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded border ${
+                          className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded border ${
                             hit
                               ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                               : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
@@ -1139,7 +1335,7 @@ export function PropAnalysisView({
           </div>
         </section>
       ) : (
-        <section className="rounded-2xl bg-slate-900/80 border border-slate-800/90 p-4 text-xs text-slate-400">
+        <section className="sb-card rounded-2xl p-4 text-xs text-slate-400">
           Mercado evaluado directamente desde promedios colectivos de la temporada actual (
           {prop.statSummary}).
         </section>
@@ -1147,13 +1343,15 @@ export function PropAnalysisView({
 
       {/* Quick Switch to Other Props in this Same Game */}
       {relatedProps.length > 0 && (
-        <section className="rounded-2xl bg-slate-900/80 border border-slate-800/90 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+        <section className="sb-card rounded-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-200">
               Otros Props del Partido ({liveGame.away_team.abbreviation} @{' '}
               {liveGame.home_team.abbreviation})
             </h2>
-            <span className="text-[11px] text-slate-500">Ordenados de menor a mayor confianza</span>
+            <span className="text-[11px] text-emerald-300/80">
+              Ordenados de mayor a menor confianza
+            </span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             {relatedProps.map((rp) => {
@@ -1163,22 +1361,22 @@ export function PropAnalysisView({
                   key={rp.id}
                   type="button"
                   onClick={() => onSelectProp(rp)}
-                  className="rounded-xl bg-slate-950/75 border border-slate-800 hover:border-slate-600 p-2.5 text-left transition-colors space-y-1"
+                  className="rounded-xl bg-black/40 border border-white/[0.08] hover:border-emerald-400/50 p-2.5 text-left transition-all space-y-1"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-bold text-slate-100 truncate">
+                    <span className="text-[11px] font-bold text-white truncate">
                       {rp.subjectName}
                     </span>
-                    <span className="text-[11px] font-semibold text-slate-300 tabular-nums shrink-0">
-                      {rp.confidence}%
+                    <span className="text-[10px] font-black text-emerald-300 tabular-nums shrink-0">
+                      {rp.confidence}% · {rp.estimatedMultiplier.toFixed(2)}x
                     </span>
                   </div>
                   <div className="text-[10px] text-slate-400 truncate">{rp.marketLabel}</div>
-                  <div className="text-[11px] font-semibold text-slate-200 tabular-nums inline-flex items-center gap-1">
+                  <div className="text-[11px] font-bold text-slate-200 tabular-nums inline-flex items-center gap-1">
                     {rpLocked ? (
                       <>
-                        <Lock className="w-3 h-3 text-slate-400" />
-                        <span>PRO · Desbloquear</span>
+                        <Lock className="w-3 h-3 text-amber-300" />
+                        <span className="text-amber-200">PRO · Desbloquear</span>
                       </>
                     ) : (
                       rp.pickLabel

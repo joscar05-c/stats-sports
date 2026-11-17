@@ -178,13 +178,13 @@ export function LeadersView({
     <div className="space-y-4">
       {/* Mode Switcher: Jugadores vs Equipos */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="inline-flex rounded-xl bg-slate-900 border border-slate-800 p-1">
+        <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1">
           <button
             type="button"
             onClick={() => setMode('players')}
             className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
               mode === 'players'
-                ? 'bg-orange-500 text-slate-950 shadow-md shadow-orange-500/20'
+                ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 shadow-[0_4px_14px_rgba(16,185,129,0.28)]'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -196,7 +196,7 @@ export function LeadersView({
             onClick={() => setMode('teams')}
             className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
               mode === 'teams'
-                ? 'bg-orange-500 text-slate-950 shadow-md shadow-orange-500/20'
+                ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 shadow-[0_4px_14px_rgba(16,185,129,0.28)]'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -207,12 +207,12 @@ export function LeadersView({
 
         {mode === 'players' ? (
           <label className="inline-flex items-center gap-1.5 text-xs text-slate-400">
-            <Filter className="w-3.5 h-3.5" />
+            <Filter className="w-3.5 h-3.5 text-emerald-400" />
             Mín. PJ:
             <select
               value={minGp}
               onChange={(e) => setMinGp(Number(e.target.value))}
-              className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-orange-500"
+              className="bg-slate-950/90 border border-white/[0.1] rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-emerald-400"
             >
               <option value={1}>1+</option>
               <option value={3}>3+</option>
@@ -221,7 +221,7 @@ export function LeadersView({
             </select>
           </label>
         ) : (
-          <div className="inline-flex rounded-xl bg-slate-900 border border-slate-800 p-1 text-xs">
+          <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1 text-xs">
             {(
               [
                 { key: 'ALL', label: 'NBA (30)' },
@@ -235,7 +235,7 @@ export function LeadersView({
                 onClick={() => setConferenceFilter(cf.key)}
                 className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
                   conferenceFilter === cf.key
-                    ? 'bg-slate-800 text-orange-400'
+                    ? 'bg-emerald-500/20 text-emerald-300'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -255,8 +255,8 @@ export function LeadersView({
               onClick={() => setPlayerMetric(cat.key)}
               className={`shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
                 playerMetric === cat.key
-                  ? 'bg-orange-500 text-slate-950 border-orange-400 shadow-lg shadow-orange-500/20'
-                  : 'bg-slate-900/70 text-slate-300 border-slate-800 hover:border-slate-700'
+                  ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 border-emerald-300 shadow-[0_4px_14px_rgba(16,185,129,0.28)]'
+                  : 'bg-white/[0.04] text-slate-300 border-white/[0.08] hover:border-emerald-400/40'
               }`}
             >
               {cat.label}
@@ -271,8 +271,8 @@ export function LeadersView({
               onClick={() => setTeamMetric(cat.key)}
               className={`shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
                 teamMetric === cat.key
-                  ? 'bg-orange-500 text-slate-950 border-orange-400 shadow-lg shadow-orange-500/20'
-                  : 'bg-slate-900/70 text-slate-300 border-slate-800 hover:border-slate-700'
+                  ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 border-emerald-300 shadow-[0_4px_14px_rgba(16,185,129,0.28)]'
+                  : 'bg-white/[0.04] text-slate-300 border-white/[0.08] hover:border-emerald-400/40'
               }`}
             >
               {cat.label}
@@ -283,8 +283,8 @@ export function LeadersView({
 
       {/* Section Title */}
       <div className="flex items-center justify-between px-1">
-        <div className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-300">
-          <Flame className="w-4 h-4 text-orange-400" />
+        <div className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-200">
+          <Flame className="w-4 h-4 text-emerald-400" />
           {mode === 'players'
             ? `Top 20 Jugadores — ${activePlayerCat.label}`
             : `Ranking de Equipos — ${activeTeamCat.label}`}
@@ -299,13 +299,13 @@ export function LeadersView({
           {[1, 2, 3, 4, 5].map((i) => (
             <div
               key={i}
-              className="h-16 rounded-2xl bg-slate-900/60 border border-slate-800 animate-pulse"
+              className="h-16 rounded-2xl sb-card animate-pulse"
             />
           ))}
         </div>
       ) : mode === 'players' ? (
         rankedPlayers.length === 0 ? (
-          <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-8 text-center text-sm text-slate-400">
+          <div className="sb-card rounded-2xl p-8 text-center text-sm text-slate-400">
             No hay líderes que cumplan con el mínimo de partidos seleccionado.
           </div>
         ) : (

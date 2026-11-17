@@ -78,8 +78,8 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
             onClick={() => setSubTab(tab.key)}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
               subTab === tab.key
-                ? 'bg-orange-500 text-slate-950 border-orange-400'
-                : 'bg-slate-900/70 text-slate-300 border-slate-800 hover:border-slate-700'
+                ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 border-emerald-300 shadow-[0_4px_14px_rgba(16,185,129,0.25)]'
+                : 'bg-white/[0.04] text-slate-300 border-white/[0.08] hover:border-emerald-400/40'
             }`}
           >
             {tab.label}
@@ -90,7 +90,7 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
       {subTab !== 'local' && (
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+            <Search className="w-4 h-4 text-emerald-400/80 absolute left-3 top-2.5" />
             <input
               type="text"
               value={query}
@@ -100,7 +100,7 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
                   ? 'Buscar jugador o equipo (ej. Jokic, Lakers)...'
                   : 'Buscar franquicia...'
               }
-              className="w-full bg-slate-900/80 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-orange-500"
+              className="w-full bg-slate-950/80 border border-white/[0.1] rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
             />
           </div>
 
@@ -109,7 +109,7 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
               <select
                 value={teamFilter}
                 onChange={(e) => setTeamFilter(e.target.value)}
-                className="bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-orange-500"
+                className="bg-slate-950/80 border border-white/[0.1] rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-400"
               >
                 <option value="all">Todos los equipos</option>
                 {teams.map((t) => (
@@ -122,7 +122,7 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
               <select
                 value={posFilter}
                 onChange={(e) => setPosFilter(e.target.value)}
-                className="bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-orange-500"
+                className="bg-slate-950/80 border border-white/[0.1] rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-400"
               >
                 <option value="all">Posición</option>
                 <option value="G">Guard (G)</option>
@@ -135,8 +135,8 @@ export function ExploreView({ league, onSelectPlayer, onSelectTeam }: ExploreVie
       )}
 
       {subTab === 'local' ? (
-        <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-[#0f172a] to-orange-950/30 border border-orange-500/30 p-5 space-y-4">
-          <div className="inline-flex items-center gap-2 text-xs font-bold px-2.5 py-1 rounded-full bg-orange-500/20 text-orange-300">
+        <div className="sb-card rounded-2xl border-emerald-500/30 p-5 space-y-4">
+          <div className="inline-flex items-center gap-2 text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/35">
             <Sparkles className="w-3.5 h-3.5" />
             Arquitectura Híbrida Lista en Supabase
           </div>

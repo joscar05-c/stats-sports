@@ -83,18 +83,18 @@ export function TeamDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#03050a]/85 backdrop-blur-md"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl max-h-[92vh] flex flex-col bg-[#0f1623] border border-slate-800 rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-2xl"
+        className="w-full max-w-2xl max-h-[92vh] flex flex-col bg-[#080d1a] border border-white/[0.1] rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.85)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div
-          className="p-5 border-b border-slate-800"
+          className="shrink-0 p-5 border-b border-white/[0.08]"
           style={{
-            background: `linear-gradient(135deg, ${accent}38 0%, #0f1623 70%)`,
+            background: `linear-gradient(135deg, ${accent}38 0%, #080d1a 72%)`,
           }}
         >
           <div className="flex items-start justify-between">
@@ -135,7 +135,7 @@ export function TeamDetailModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-800 bg-slate-900/50">
+        <div className="shrink-0 flex border-b border-slate-800 bg-slate-900/50">
           <button
             onClick={() => setTab('stats')}
             className={`flex-1 py-2.5 text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 border-b-2 transition-colors ${
@@ -169,7 +169,7 @@ export function TeamDetailModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto p-3 sm:p-4">
+        <div className="flex-1 min-h-0 overflow-auto p-3 sm:p-4">
           {loading ? (
             <div className="py-12 text-center text-slate-400 text-sm">Cargando datos...</div>
           ) : tab === 'stats' ? (

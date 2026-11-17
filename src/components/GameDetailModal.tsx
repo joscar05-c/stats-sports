@@ -150,7 +150,7 @@ export function GameDetailModal({
   const [loadingBet, setLoadingBet] = useState(true);
   const [activeTeamId, setActiveTeamId] = useState<number>(initialGame.away_team_id);
   const [propsScope, setPropsScope] = useState<'all' | 'team' | 'player'>('all');
-  const [propsOrder, setPropsOrder] = useState<'asc' | 'desc'>('asc');
+  const [propsOrder, setPropsOrder] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     setGame(initialGame);
@@ -274,6 +274,8 @@ export function GameDetailModal({
       betCtx.awayStanding,
       homeRecent,
       awayRecent,
+      betCtx.homeRecentGames,
+      betCtx.awayRecentGames,
     );
     const propsRecs = buildGamePropsRecommendations({
       game,
@@ -283,6 +285,8 @@ export function GameDetailModal({
       awayTeamAvg: betCtx.awayTeamAvg,
       homeRecent,
       awayRecent,
+      homeRecentGames: betCtx.homeRecentGames,
+      awayRecentGames: betCtx.awayRecentGames,
       keyPlayers: betCtx.keyPlayers,
       playerRecentLogs: betCtx.playerRecentLogs ?? [],
     });
@@ -348,25 +352,33 @@ export function GameDetailModal({
   const awayImplied = americanToImpliedProb(odds?.away_moneyline);
   const homeImplied = americanToImpliedProb(odds?.home_moneyline);
 
+  const awayColor = game.away_team.primary_color || '#06b6d4';
+  const homeColor = game.home_team.primary_color || '#10b981';
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#03050a]/85 backdrop-blur-md"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-3xl max-h-[92vh] flex flex-col bg-[#0f1623] border border-slate-800 rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-2xl"
+        className="w-full max-w-3xl max-h-[92vh] flex flex-col bg-[#080d1a] border border-white/[0.1] rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.85)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-800/80 bg-gradient-to-b from-slate-900/90 to-[#0f1623]">
-          <div className="flex items-center justify-between mb-3">
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              <Calendar className="w-3.5 h-3.5 text-orange-400" />
+        <div
+          className="shrink-0 p-3.5 sm:p-5 border-b border-white/[0.08]"
+          style={{
+            background: `linear-gradient(120deg, ${awayColor}2b 0%, #080d1a 50%, ${homeColor}2b 100%)`,
+          }}
+        >
+          <div className="flex items-center justify-between mb-2 sm:mb-3">
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-300">
+              <Calendar className="w-3.5 h-3.5 text-emerald-400" />
               {game.status_detail || game.game_date}
             </span>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-full bg-slate-800/80 text-slate-300 hover:bg-slate-700"
+              className="p-1.5 rounded-full bg-black/50 border border-white/[0.1] text-slate-300 hover:text-white"
               aria-label="Cerrar"
             >
               <X className="w-4 h-4" />
@@ -374,13 +386,13 @@ export function GameDetailModal({
           </div>
 
           {/* Matchup Scoreboard */}
-          <div className="grid grid-cols-3 items-center gap-2 py-1">
+          <div className="grid grid-cols-3 items-center gap-2 py-0.5 sm:py-1">
             <div className="flex flex-col items-center text-center">
               {game.away_team.logo_url && (
                 <img
                   src={game.away_team.logo_url}
                   alt={game.away_team.abbreviation}
-                  className="w-12 h-12 object-contain mb-1.5"
+                  className="w-10 h-10 sm:w-12 sm:h-12 object-contain mb-1 sm:mb-1.5 drop-shadow"
                 />
               )}
               <span className="font-bold text-sm sm:text-base">{game.away_team.short_name}</span>
@@ -392,11 +404,11 @@ export function GameDetailModal({
               </span>
             </div>
 
-            <div className="flex items-center justify-center gap-3 sm:gap-5 tabular-nums">
+            <div className="flex items-center justify-center gap-2.5 sm:gap-5 tabular-nums">
               <span
-                className={`text-3xl sm:text-4xl font-black ${
+                className={`text-2xl sm:text-4xl font-black ${
                   game.away_score >= game.home_score && game.status !== 'scheduled'
-                    ? 'text-white'
+                    ? 'text-emerald-300'
                     : 'text-slate-400'
                 }`}
               >
@@ -404,9 +416,9 @@ export function GameDetailModal({
               </span>
               <span className="text-xs font-bold text-slate-500">VS</span>
               <span
-                className={`text-3xl sm:text-4xl font-black ${
+                className={`text-2xl sm:text-4xl font-black ${
                   game.home_score >= game.away_score && game.status !== 'scheduled'
-                    ? 'text-white'
+                    ? 'text-emerald-300'
                     : 'text-slate-400'
                 }`}
               >
@@ -419,7 +431,7 @@ export function GameDetailModal({
                 <img
                   src={game.home_team.logo_url}
                   alt={game.home_team.abbreviation}
-                  className="w-12 h-12 object-contain mb-1.5"
+                  className="w-10 h-10 sm:w-12 sm:h-12 object-contain mb-1 sm:mb-1.5 drop-shadow"
                 />
               )}
               <span className="font-bold text-sm sm:text-base">{game.home_team.short_name}</span>
@@ -435,10 +447,10 @@ export function GameDetailModal({
           {/* Linescores by Quarter */}
           {game.status !== 'scheduled' &&
             (game.away_linescores?.length || game.home_linescores?.length) && (
-              <div className="mt-3 rounded-xl bg-slate-900/70 border border-slate-800/80 p-2.5 overflow-x-auto">
+              <div className="mt-3 rounded-xl bg-black/40 border border-white/[0.08] p-2.5 overflow-x-auto">
                 <table className="w-full text-xs tabular-nums">
                   <thead>
-                    <tr className="text-slate-500 border-b border-slate-800">
+                    <tr className="text-slate-500 border-b border-white/[0.08]">
                       <th className="text-left py-1 px-2 font-medium">EQUIPO</th>
                       {Array.from({ length: periods }).map((_, i) => (
                         <th key={i} className="text-center py-1 px-2 font-medium">
@@ -482,20 +494,20 @@ export function GameDetailModal({
 
           {game.venue && (
             <div className="mt-2.5 flex items-center justify-center gap-1 text-[11px] text-slate-400">
-              <MapPin className="w-3 h-3" />
+              <MapPin className="w-3 h-3 text-emerald-400/70" />
               <span>{game.venue}</span>
             </div>
           )}
         </div>
 
-        {/* Primary Section Switcher: Apuestas vs Estadísticas de Equipo vs Box Score */}
-        <div className="flex border-b border-slate-800 bg-slate-950/60 px-3 pt-2 gap-1.5 overflow-x-auto no-scrollbar">
+        {/* Primary Section Switcher */}
+        <div className="shrink-0 flex border-b border-white/[0.08] bg-[#060a14] px-3 pt-2 gap-1.5 overflow-x-auto no-scrollbar">
           <button
             type="button"
             onClick={() => setSection('betting')}
-            className={`shrink-0 px-3 py-2 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
+            className={`shrink-0 px-3 py-2.5 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
               section === 'betting'
-                ? 'border-orange-500 text-orange-400 bg-slate-900/90'
+                ? 'border-emerald-400 text-emerald-300 bg-white/[0.06]'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -505,21 +517,21 @@ export function GameDetailModal({
           <button
             type="button"
             onClick={() => setSection('teamstats')}
-            className={`shrink-0 px-3 py-2 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
+            className={`shrink-0 px-3 py-2.5 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
               section === 'teamstats'
-                ? 'border-orange-500 text-white bg-slate-900/90'
+                ? 'border-emerald-400 text-white bg-white/[0.06]'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            <BarChart3 className="w-3.5 h-3.5 text-orange-400" />
+            <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
             Estadísticas de Equipo
           </button>
           <button
             type="button"
             onClick={() => setSection('boxscore')}
-            className={`shrink-0 px-3 py-2 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
+            className={`shrink-0 px-3 py-2.5 text-xs font-bold rounded-t-xl border-b-2 inline-flex items-center gap-1.5 transition-colors ${
               section === 'boxscore'
-                ? 'border-orange-500 text-white bg-slate-900/90'
+                ? 'border-emerald-400 text-white bg-white/[0.06]'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -531,12 +543,12 @@ export function GameDetailModal({
         </div>
 
         {section === 'betting' ? (
-          <div className="flex-1 overflow-auto p-4 sm:p-5 space-y-4">
+          <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-5 space-y-4">
             {/* Sportsbook Market Board */}
-            <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-4 space-y-3">
+            <div className="sb-card rounded-2xl p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-orange-400">
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-emerald-400">
                     Línea de Casas de Apuestas {odds?.provider ? `· ${odds.provider}` : ''}
                   </h3>
                   <p className="text-[11px] text-slate-400 mt-0.5">
@@ -859,25 +871,25 @@ export function GameDetailModal({
 
             {/* Data-Driven Props Recommendations (Team & Player Markets) */}
             {bettingAnalysis && bettingAnalysis.propsRecs.length > 0 && (
-              <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-4 space-y-3">
+              <div className="sb-card rounded-2xl p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <div className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-orange-400">
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-emerald-400">
                       <Target className="w-3.5 h-3.5" />
                       Opciones de Props Sugeridos ({filteredProps.length})
                     </div>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      Cruce automático: Estadísticas reales → Línea de mercado → Propuesta ordenada por confianza.
+                      Cruce automático (MPG, Local/Visita, B2B) · Ordenado por confianza.
                     </p>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => setPropsOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
-                    className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-slate-950/90 border border-slate-700 text-slate-200 hover:border-orange-500 transition-colors"
+                    className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/[0.1] text-slate-200 hover:border-emerald-400/50 transition-colors"
                   >
-                    <ArrowUpDown className="w-3 h-3 text-orange-400" />
-                    {propsOrder === 'asc' ? 'Menor → Mayor confianza' : 'Mayor → Menor confianza'}
+                    <ArrowUpDown className="w-3 h-3 text-emerald-400" />
+                    {propsOrder === 'desc' ? 'Mayor → Menor confianza' : 'Menor → Mayor confianza'}
                   </button>
                 </div>
 
@@ -899,8 +911,8 @@ export function GameDetailModal({
                         onClick={() => setPropsScope(f.key)}
                         className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
                           active
-                            ? 'bg-orange-500 text-slate-950 border-orange-400'
-                            : 'bg-slate-950/70 text-slate-300 border-slate-800 hover:border-slate-700'
+                            ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 border-emerald-300'
+                            : 'bg-black/40 text-slate-300 border-white/[0.08] hover:border-white/25'
                         }`}
                       >
                         {Icon && <Icon className="w-3 h-3" />}
@@ -917,26 +929,22 @@ export function GameDetailModal({
                     const liveProgress = getLivePropProgress(prop);
                     const pickBadgeClass =
                       prop.pick === 'OVER'
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        ? 'sb-neon-over'
                         : prop.pick === 'UNDER'
-                          ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                          ? 'sb-neon-under'
                           : 'bg-amber-500/20 text-amber-300 border-amber-500/40';
                     const confColorClass =
                       prop.confidence >= 80
                         ? 'text-emerald-400'
                         : prop.confidence >= 68
-                          ? 'text-orange-400'
-                          : prop.confidence >= 58
-                            ? 'text-amber-300'
-                            : 'text-slate-300';
+                          ? 'text-amber-300'
+                          : 'text-cyan-300';
                     const barColorClass =
                       prop.confidence >= 80
-                        ? 'bg-emerald-500'
+                        ? 'bg-emerald-400'
                         : prop.confidence >= 68
-                          ? 'bg-orange-500'
-                          : prop.confidence >= 58
-                            ? 'bg-amber-400'
-                            : 'bg-slate-400';
+                          ? 'bg-amber-400'
+                          : 'bg-cyan-400';
 
                     return (
                       <div
@@ -948,18 +956,18 @@ export function GameDetailModal({
                               ? () => onSelectPlayer(prop.playerId!)
                               : undefined
                         }
-                        className={`rounded-xl bg-slate-950/75 border border-slate-800/90 p-3 space-y-2 transition-colors ${
-                          locked || prop.playerId ? 'cursor-pointer hover:border-orange-500/50' : ''
+                        className={`rounded-xl bg-black/35 border border-white/[0.08] p-3 space-y-2 transition-colors ${
+                          locked || prop.playerId ? 'cursor-pointer hover:border-emerald-400/50' : ''
                         }`}
                       >
                         {/* Header row */}
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
                             <span
-                              className={`text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
+                              className={`text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded border ${
                                 prop.scope === 'team'
-                                  ? 'bg-indigo-500/20 text-indigo-300'
-                                  : 'bg-purple-500/20 text-purple-300'
+                                  ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                                  : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
                               }`}
                             >
                               {prop.scope === 'team' ? 'Equipo' : 'Jugador'}
@@ -974,14 +982,19 @@ export function GameDetailModal({
 
                           <div className="flex items-center gap-2 shrink-0 tabular-nums">
                             {!locked && liveProgress && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 border border-slate-700">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-200 border border-white/[0.1]">
                                 {liveProgress}
                               </span>
                             )}
+                            {!locked && (
+                              <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-white/[0.06] text-amber-300 border border-white/[0.1]">
+                                {prop.estimatedMultiplier.toFixed(2)}x
+                              </span>
+                            )}
                             {locked ? (
-                              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-lg bg-slate-900 text-slate-200 border border-slate-700">
-                                <Lock className="w-3 h-3 text-slate-400" />
-                                PRO ($5/mes)
+                              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-lg sb-pro-pill">
+                                <Lock className="w-3 h-3" />
+                                PRO ($5 / S/ 19)
                               </span>
                             ) : (
                               <span
@@ -993,31 +1006,45 @@ export function GameDetailModal({
                           </div>
                         </div>
 
-                        {/* 1. Estadísticas vs 2. Mercado */}
+                        {/* Stats vs Market */}
                         {locked ? (
-                          <div className="rounded-lg bg-slate-900/70 px-3 py-2 border border-slate-800/60 text-[11px] text-slate-300 flex items-center justify-between gap-2">
+                          <div className="rounded-lg bg-white/[0.03] px-3 py-2 border border-white/[0.07] text-[11px] text-slate-300 flex items-center justify-between gap-2">
                             <span>
                               Prop de alta probabilidad ({PRO_CONFIDENCE_THRESHOLD}%+). Desbloquea
-                              con CourtVision PRO.
+                              con CourtVision PRO ($5 USD o S/ 19).
                             </span>
-                            <span className="text-slate-100 font-bold underline shrink-0">
+                            <span className="text-amber-300 font-bold underline shrink-0">
                               Desbloquear
                             </span>
                           </div>
                         ) : (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] bg-slate-900/70 rounded-lg px-2.5 py-2 border border-slate-800/60 tabular-nums">
-                            <div className="text-slate-300">
-                              <span className="text-slate-500 font-semibold">Estadística: </span>
-                              {prop.statSummary}
+                          <div className="space-y-1.5">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] bg-white/[0.03] rounded-lg px-2.5 py-2 border border-white/[0.07] tabular-nums">
+                              <div className="text-slate-300">
+                                <span className="text-slate-500 font-semibold">Estadística: </span>
+                                {prop.statSummary}
+                              </div>
+                              <div className="text-slate-200 sm:text-right">
+                                <span className="text-slate-500 font-semibold">Mercado: </span>
+                                <strong className="text-amber-300">{prop.marketLineText}</strong>
+                              </div>
                             </div>
-                            <div className="text-slate-200 sm:text-right">
-                              <span className="text-slate-500 font-semibold">Mercado: </span>
-                              <strong className="text-amber-300">{prop.marketLineText}</strong>
-                            </div>
+                            {prop.contextBadges.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {prop.contextBadges.map((b, idx) => (
+                                  <span
+                                    key={`${b.label}_${idx}`}
+                                    className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-white/[0.05] text-slate-300 border border-white/[0.08] tabular-nums"
+                                  >
+                                    {b.label}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
 
-                        {/* 3. Rationale + Confidence Meter */}
+                        {/* Rationale + Confidence Meter */}
                         <div className="flex flex-wrap items-center justify-between gap-3 pt-0.5">
                           <p className="text-[11px] text-slate-400 flex-1 min-w-[200px]">
                             {locked
@@ -1025,7 +1052,7 @@ export function GameDetailModal({
                               : prop.rationale}
                           </p>
                           <div className="flex items-center gap-2 shrink-0 tabular-nums">
-                            <div className="w-20 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                            <div className="w-20 h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
                               <div
                                 className={`h-full rounded-full ${barColorClass}`}
                                 style={{ width: `${prop.confidence}%` }}
@@ -1081,7 +1108,7 @@ export function GameDetailModal({
             )}
           </div>
         ) : section === 'teamstats' ? (
-          <div className="flex-1 overflow-auto p-4 sm:p-5 space-y-4">
+          <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-5 space-y-4">
             {/* Live or Final Game Collective Comparison */}
             {game.status !== 'scheduled' && stats.length > 0 && (
               <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-4 space-y-3.5 tabular-nums">
@@ -1393,7 +1420,7 @@ export function GameDetailModal({
         ) : (
           <>
             {/* Team Switcher for Box Score */}
-            <div className="flex border-b border-slate-800 bg-slate-900/50">
+            <div className="shrink-0 flex border-b border-slate-800 bg-slate-900/50">
               {[game.away_team, game.home_team].map((t) => (
                 <button
                   key={t.id}
@@ -1411,7 +1438,7 @@ export function GameDetailModal({
             </div>
 
             {/* Box Score Body */}
-            <div className="flex-1 overflow-auto p-2 sm:p-4">
+            <div className="flex-1 min-h-0 overflow-auto p-2 sm:p-4">
               {game.status === 'scheduled' ? (
                 <div className="py-10 text-center space-y-3">
                   <p className="text-slate-400 text-sm">

@@ -64,6 +64,7 @@ function dbHeaders(prefer?: string): Record<string, string> {
 
 interface SubRow {
   id: number;
+  user_id: string | null;
   email: string;
   access_code: string;
   status: string;
@@ -72,15 +73,34 @@ interface SubRow {
   external_order_id: string | null;
 }
 
+async function resolveProfileUserId(email: string, explicitUserId: string | null): Promise<string | null> {
+  if (explicitUserId) return explicitUserId;
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=id&limit=1`,
+      { headers: dbHeaders() },
+    );
+    if (res.ok) {
+      const rows = (await res.json()) as Array<{ id: string }>;
+      if (rows[0]?.id) return rows[0].id;
+    }
+  } catch {
+    // Non-fatal fallback
+  }
+  return null;
+}
+
 async function findExistingSubscription(
   externalSubId: string | null,
   externalOrderId: string | null,
 ): Promise<SubRow | null> {
+  const cols =
+    "id,user_id,email,access_code,status,expires_at,external_subscription_id,external_order_id";
   if (externalSubId) {
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/pro_subscriptions?external_subscription_id=eq.${encodeURIComponent(
         externalSubId,
-      )}&select=id,email,access_code,status,expires_at,external_subscription_id,external_order_id&limit=1`,
+      )}&select=${cols}&limit=1`,
       { headers: dbHeaders() },
     );
     if (res.ok) {
@@ -92,7 +112,7 @@ async function findExistingSubscription(
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/pro_subscriptions?external_order_id=eq.${encodeURIComponent(
         externalOrderId,
-      )}&select=id,email,access_code,status,expires_at,external_subscription_id,external_order_id&limit=1`,
+      )}&select=${cols}&limit=1`,
       { headers: dbHeaders() },
     );
     if (res.ok) {
@@ -103,7 +123,11 @@ async function findExistingSubscription(
   return null;
 }
 
-async function broadcastUnlock(email: string, status: string): Promise<void> {
+async function broadcastUnlock(
+  email: string,
+  status: string,
+  userId: string | null,
+): Promise<void> {
   try {
     await fetch(`${SUPABASE_URL}/realtime/v1/api/broadcast`, {
       method: "POST",
@@ -113,7 +137,7 @@ async function broadcastUnlock(email: string, status: string): Promise<void> {
           {
             topic: "pro_unlock",
             event: "pro_updated",
-            payload: { email, status, ts: Date.now() },
+            payload: { email, user_id: userId, status, ts: Date.now() },
           },
         ],
       }),
@@ -255,6 +279,12 @@ Deno.serve(async (req: Request) => {
   }
 
   const existing = await findExistingSubscription(externalSubId, externalOrderId);
+  const rawCustomUserId =
+    typeof customData.user_id === "string" ? customData.user_id.trim() : "";
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const explicitUserId = uuidRegex.test(rawCustomUserId) ? rawCustomUserId : null;
+  const resolvedUserId = await resolveProfileUserId(email, explicitUserId ?? existing?.user_id ?? null);
 
   if (existing) {
     const finalExpires =
@@ -268,6 +298,7 @@ Deno.serve(async (req: Request) => {
         method: "PATCH",
         headers: dbHeaders("return=minimal"),
         body: JSON.stringify({
+          user_id: resolvedUserId ?? existing.user_id,
           email,
           status: targetStatus,
           expires_at: finalExpires,
@@ -283,7 +314,7 @@ Deno.serve(async (req: Request) => {
     if (!patchRes.ok) {
       return jsonResp({ error: await patchRes.text() }, 500);
     }
-    await broadcastUnlock(email, targetStatus);
+    await broadcastUnlock(email, targetStatus, resolvedUserId ?? existing.user_id);
     return jsonResp({ ok: true, action: "updated", event: eventName, status: targetStatus, email });
   }
 
@@ -296,6 +327,7 @@ Deno.serve(async (req: Request) => {
     method: "POST",
     headers: dbHeaders("return=minimal"),
     body: JSON.stringify({
+      user_id: resolvedUserId,
       email,
       access_code: accessCode,
       provider: "lemonsqueezy",
@@ -316,6 +348,6 @@ Deno.serve(async (req: Request) => {
     return jsonResp({ error: await insertRes.text() }, 500);
   }
 
-  await broadcastUnlock(email, targetStatus);
+  await broadcastUnlock(email, targetStatus, resolvedUserId);
   return jsonResp({ ok: true, action: "created", event: eventName, status: targetStatus, email });
 });

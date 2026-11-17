@@ -47,11 +47,11 @@ export function PlayerDetailModal({
   const [propLine, setPropLine] = useState<number>(15.5);
   const [targetSide, setTargetSide] = useState<'OVER' | 'UNDER'>('OVER');
   const [selectedBarIdx, setSelectedBarIdx] = useState<number | null>(null);
-  const [propsOrder, setPropsOrder] = useState<'asc' | 'desc'>('asc');
+  const [propsOrder, setPropsOrder] = useState<'asc' | 'desc'>('desc');
 
   const playerProps = useMemo(() => {
     const recs = buildSinglePlayerPropsRecommendations(average, logs);
-    return propsOrder === 'asc' ? recs : [...recs].reverse();
+    return propsOrder === 'desc' ? recs : [...recs].reverse();
   }, [average, logs, propsOrder]);
 
   useEffect(() => {
@@ -144,7 +144,7 @@ export function PlayerDetailModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl max-h-[92vh] flex flex-col bg-[#0f1623] border border-slate-800 rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-2xl"
+        className="w-full max-w-2xl max-h-[92vh] flex flex-col bg-[#080d1a] border border-white/[0.1] rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.85)]"
         onClick={(e) => e.stopPropagation()}
       >
         {loading || !player ? (
@@ -155,14 +155,14 @@ export function PlayerDetailModal({
           <>
             {/* Hero Header */}
             <div
-              className="relative p-5 border-b border-slate-800/80"
+              className="shrink-0 relative p-5 border-b border-white/[0.08]"
               style={{
-                background: `linear-gradient(135deg, ${accent}33 0%, #0f1623 70%)`,
+                background: `linear-gradient(135deg, ${accent}38 0%, #080d1a 72%)`,
               }}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-4">
-                  <div className="w-20 h-20 rounded-2xl bg-slate-900/90 border border-slate-700/60 overflow-hidden shrink-0 flex items-center justify-center">
+                  <div className="w-20 h-20 rounded-2xl bg-slate-950/90 border border-white/[0.12] overflow-hidden shrink-0 flex items-center justify-center shadow-lg">
                     {player.headshot_url ? (
                       <img
                         src={player.headshot_url}
@@ -179,7 +179,7 @@ export function PlayerDetailModal({
                     <div className="flex items-center gap-2 mb-1">
                       {player.team?.abbreviation && (
                         <span
-                          className="text-[11px] font-bold px-2 py-0.5 rounded text-white"
+                          className="text-[11px] font-bold px-2 py-0.5 rounded text-white shadow-sm"
                           style={{ backgroundColor: accent }}
                         >
                           {player.team.abbreviation}
@@ -207,7 +207,7 @@ export function PlayerDetailModal({
 
                 <button
                   onClick={onClose}
-                  className="p-1.5 rounded-full bg-slate-900/80 text-slate-300 hover:bg-slate-800"
+                  className="p-1.5 rounded-full bg-black/50 border border-white/[0.1] text-slate-300 hover:text-white"
                   aria-label="Cerrar"
                 >
                   <X className="w-4 h-4" />
@@ -224,13 +224,13 @@ export function PlayerDetailModal({
                     {average.triple_doubles > 0 && (
                       <span>
                         Triple-Dobles:{' '}
-                        <strong className="text-orange-400">{average.triple_doubles}</strong>
+                        <strong className="text-emerald-400">{average.triple_doubles}</strong>
                       </span>
                     )}
                   </div>
                   <button
                     onClick={() => downloadPlayerStatCard(average)}
-                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-slate-950 transition-colors"
+                    className="inline-flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 transition-all"
                   >
                     <Download className="w-3.5 h-3.5" />
                     Tarjeta PNG
@@ -240,7 +240,7 @@ export function PlayerDetailModal({
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-auto p-4 sm:p-5 space-y-5">
+            <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-5 space-y-5">
               {average ? (
                 <>
                   {/* Main Averages Grid */}
@@ -253,12 +253,12 @@ export function PlayerDetailModal({
                     ].map((st) => (
                       <div
                         key={st.label}
-                        className="rounded-xl bg-slate-900/80 border border-slate-800 p-3 text-center"
+                        className="sb-card rounded-xl p-3 text-center"
                       >
                         <div className="text-[11px] font-semibold text-slate-400">{st.label}</div>
                         <div
                           className={`text-xl font-black mt-0.5 ${
-                            st.hi ? 'text-orange-400' : 'text-white'
+                            st.hi ? 'text-emerald-400' : 'text-white'
                           }`}
                         >
                           {st.value}
@@ -268,7 +268,7 @@ export function PlayerDetailModal({
                   </div>
 
                   {/* Shooting & Advanced Metrics */}
-                  <div className="rounded-xl bg-slate-900/60 border border-slate-800/80 p-3.5">
+                  <div className="sb-card rounded-xl p-3.5">
                     <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5">
                       Eficiencia de Tiro y Métricas Avanzadas ({average.gp} PJ)
                     </div>
@@ -291,17 +291,17 @@ export function PlayerDetailModal({
                   </div>
                 </>
               ) : (
-                <div className="rounded-xl bg-slate-900/60 border border-slate-800 p-4 text-center text-xs text-slate-400">
+                <div className="sb-card rounded-xl p-4 text-center text-xs text-slate-400">
                   Este jugador aún no registra partidos finalizados en la temporada actual.
                 </div>
               )}
 
-              {/* Suggested Props for this Player (Lowest to Highest Confidence by default) */}
+              {/* Suggested Props for this Player */}
               {playerProps.length > 0 && (
-                <div className="rounded-xl bg-slate-900/75 border border-slate-800 p-3.5 space-y-2.5">
+                <div className="sb-card rounded-xl p-3.5 space-y-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <div className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-orange-400">
+                      <div className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-emerald-400">
                         <Target className="w-3.5 h-3.5" />
                         Props Sugeridos del Jugador
                       </div>
@@ -312,10 +312,10 @@ export function PlayerDetailModal({
                     <button
                       type="button"
                       onClick={() => setPropsOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
-                      className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 hover:border-orange-500 transition-colors"
+                      className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-black/40 border border-white/[0.1] text-slate-200 hover:border-emerald-400/50 transition-colors"
                     >
-                      <ArrowUpDown className="w-3 h-3 text-orange-400" />
-                      {propsOrder === 'asc' ? 'Menor → Mayor' : 'Mayor → Menor'}
+                      <ArrowUpDown className="w-3 h-3 text-emerald-400" />
+                      {propsOrder === 'desc' ? 'Mayor → Menor' : 'Menor → Mayor'}
                     </button>
                   </div>
 
@@ -324,9 +324,7 @@ export function PlayerDetailModal({
                       const locked = !isPro && isHighProbabilityProp(prop.confidence);
                       const isSelected = !locked && chartMetric === prop.metricKey;
                       const badgeCls =
-                        prop.pick === 'OVER'
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                          : 'bg-sky-500/20 text-sky-300 border-sky-500/40';
+                        prop.pick === 'OVER' ? 'sb-neon-over' : 'sb-neon-under';
                       return (
                         <button
                           key={prop.id}
@@ -342,19 +340,24 @@ export function PlayerDetailModal({
                               setTargetSide(prop.pick === 'UNDER' ? 'UNDER' : 'OVER');
                             }
                           }}
-                          className={`w-full text-left rounded-xl p-2.5 border transition-colors ${
+                          className={`w-full text-left rounded-xl p-2.5 border transition-all ${
                             isSelected
-                              ? 'bg-slate-800/70 border-orange-500/60'
-                              : 'bg-slate-950/75 border-slate-800/80 hover:border-slate-700'
+                              ? 'bg-emerald-500/10 border-emerald-400/60'
+                              : 'bg-black/35 border-white/[0.08] hover:border-emerald-400/35'
                           }`}
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="text-xs font-bold text-white">{prop.marketLabel}</span>
                             <div className="flex items-center gap-2 tabular-nums">
+                              {!locked && (
+                                <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-white/[0.06] text-amber-300 border border-white/[0.1]">
+                                  {prop.estimatedMultiplier.toFixed(2)}x
+                                </span>
+                              )}
                               {locked ? (
-                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-900 text-slate-200 border border-slate-700">
-                                  <Lock className="w-3 h-3 text-slate-400" />
-                                  PRO ($5/mes)
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md sb-pro-pill">
+                                  <Lock className="w-3 h-3" />
+                                  PRO ($5 / S/ 19)
                                 </span>
                               ) : (
                                 <span
@@ -363,7 +366,7 @@ export function PlayerDetailModal({
                                   {prop.pickLabel}
                                 </span>
                               )}
-                              <span className="text-xs font-black text-orange-400">
+                              <span className="text-xs font-black text-emerald-400">
                                 {prop.confidence}%
                               </span>
                             </div>
@@ -374,6 +377,18 @@ export function PlayerDetailModal({
                               {locked ? 'Desbloquear PRO' : `${prop.marketLineText} · ${prop.confidenceTier}`}
                             </span>
                           </div>
+                          {!locked && prop.contextBadges.length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {prop.contextBadges.map((b, idx) => (
+                                <span
+                                  key={`${b.label}_${idx}`}
+                                  className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-white/[0.05] text-slate-300 border border-white/[0.08] tabular-nums"
+                                >
+                                  {b.label}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </button>
                       );
                     })}
@@ -383,15 +398,15 @@ export function PlayerDetailModal({
 
               {/* Interactive Trend Chart + Sportsbook Prop Line Hit Rate */}
               {chartLogs.length > 0 && (
-                <div className="rounded-xl bg-slate-900/70 border border-slate-800/90 p-3.5 space-y-3">
+                <div className="sb-card rounded-xl p-3.5 space-y-3">
                   {/* Title + Metric Selector */}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-200 uppercase tracking-wider">
-                      <TrendingUp className="w-3.5 h-3.5 text-orange-400" />
+                      <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
                       {metricCfg.label} · Últimos {chartLogs.length} PJ
                     </span>
 
-                    <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-lg border border-slate-800">
+                    <div className="flex items-center gap-1 bg-black/50 p-1 rounded-lg border border-white/[0.08]">
                       {METRIC_ORDER.map((mKey) => {
                         const cfg = PLAYER_CHART_METRICS[mKey];
                         const active = chartMetric === mKey;
@@ -402,7 +417,7 @@ export function PlayerDetailModal({
                             onClick={() => setChartMetric(mKey)}
                             className={`px-2 py-1 rounded-md text-[11px] font-bold transition-colors ${
                               active
-                                ? 'bg-orange-500 text-slate-950'
+                                ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950'
                                 : 'text-slate-400 hover:text-slate-200'
                             }`}
                           >
