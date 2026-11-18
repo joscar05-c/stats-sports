@@ -26,7 +26,6 @@ import {
   americanToImpliedProb,
   buildGamePropsRecommendations,
   buildMatchupBettingInsight,
-  evaluatePropStatus,
   formatAmericanOdds,
   getConfidenceTier,
   isHighProbabilityProp,
@@ -38,9 +37,10 @@ import {
 import {
   buildFootballMatchupInsight,
   buildFootballPropsRecommendations,
+  evaluateAnyPropStatus,
   getFootballPlayerStatValue,
-  getLiveFootballPropProgress,
 } from '../utils/footballProps';
+import { isNativeAndroid } from '../utils/platform';
 import type {
   FootballPlayerSeasonAverage,
   FootballTeamSeasonAverage,
@@ -788,11 +788,7 @@ export function PropAnalysisView({
   ]);
 
   const liveStatus = useMemo(() => {
-    if (sport === 'football') {
-      const txt = getLiveFootballPropProgress(prop, liveGame, boxStats);
-      return txt ? { state: 'live' as const, label: txt, currentVal: null } : null;
-    }
-    return evaluatePropStatus(prop, liveGame, boxStats);
+    return evaluateAnyPropStatus(prop, liveGame, boxStats, sport);
   }, [sport, prop, liveGame, boxStats]);
 
   const safeStake = Number.isFinite(stakeAmount) && stakeAmount > 0 ? stakeAmount : 0;
@@ -963,8 +959,10 @@ export function PropAnalysisView({
               </h3>
               <p className="text-xs text-slate-300 leading-relaxed">
                 Los análisis con índice entre {PRO_CONFIDENCE_THRESHOLD}% y 94% forman parte de{' '}
-                <strong className="text-white">CourtVision Pro ($5 USD o S/ 19 / mes)</strong>.
-                Incluye el detalle de la proyección, simulador de línea, tendencia de minutos y factor B2B.
+                <strong className="text-white">
+                  CourtVision Pro{!isNativeAndroid() ? ' ($5 USD o S/ 19 / mes)' : ''}
+                </strong>
+                . Incluye el detalle de la proyección, simulador de línea, tendencia de minutos y factor B2B.
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
@@ -974,7 +972,7 @@ export function PropAnalysisView({
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg cv-btn-primary text-xs sm:text-sm"
               >
                 <Lock className="w-4 h-4" aria-hidden="true" />
-                Suscribirse al Plan Pro ($5 / S/ 19)
+                {isNativeAndroid() ? 'Desbloquear Plan Pro' : 'Suscribirse al Plan Pro ($5 / S/ 19)'}
               </button>
               <button
                 type="button"

@@ -427,6 +427,33 @@ dialog.sb-drawer-dialog[open]:where(:not([data-closing]))::backdrop {
   padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);
 }
 
+progress.cv-eff-progress {
+  appearance: none;
+  display: block;
+  inline-size: 100%;
+  block-size: 0.45rem;
+  border: 0 solid;
+  border-radius: 1e5px;
+  overflow: clip;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+progress.cv-eff-progress::-webkit-progress-bar {
+  background: transparent;
+}
+
+progress.cv-eff-progress::-webkit-progress-value {
+  background: var(--cv-eff-fill, #34d399);
+  border-radius: 1e5px;
+  transition: inline-size 0.3s ease;
+}
+
+progress.cv-eff-progress::-moz-progress-bar {
+  background: var(--cv-eff-fill, #34d399);
+  border-radius: 1e5px;
+  transition: inline-size 0.3s ease;
+}
+
 @media (forced-colors: active) {
   .sb-card,
   .sb-glass-header,

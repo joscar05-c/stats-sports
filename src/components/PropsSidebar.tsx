@@ -21,7 +21,6 @@ import {
 import { supabase } from '../lib/supabase';
 import {
   buildGamePropsRecommendations,
-  evaluatePropStatus,
   isHighProbabilityProp,
   PRO_CONFIDENCE_THRESHOLD,
   summarizeTeamRecent,
@@ -30,9 +29,12 @@ import {
 } from '../utils/betting';
 import {
   buildFootballPropsRecommendations,
-  getLiveFootballPropProgress,
+  evaluateAnyPropStatus,
+  summarizeAnyGamePropsEffectiveness,
 } from '../utils/footballProps';
 import type { Game, PlayerGameStat } from '../types/database';
+import { isNativeAndroid } from '../utils/platform';
+import { PropsEffectivenessCard, type PropResultFilter } from './PropsEffectivenessCard';
 import { closeTopLayerDialog } from './ModalDialog';
 
 export type AnyBettingContext = GameBettingContext | FootballGameBettingContext;
@@ -112,6 +114,11 @@ export function PropsSidebar({
   const [scopeFilter, setScopeFilter] = useState<'all' | 'team' | 'player'>('all');
   const [reliableOnly, setReliableOnly] = useState(true);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [resultFilter, setResultFilter] = useState<PropResultFilter>('all');
+
+  useEffect(() => {
+    setResultFilter('all');
+  }, [focusedGameId]);
 
   const inFlightRef = useRef<Set<number>>(new Set());
   const boxInFlightRef = useRef<Set<number>>(new Set());
@@ -366,7 +373,7 @@ export function PropsSidebar({
     });
   }, [focusedGame, focusedContext, sport]);
 
-  const visibleProps = useMemo(() => {
+  const scopedProps = useMemo(() => {
     let list = gameProps.filter((p) => scopeFilter === 'all' || p.scope === scopeFilter);
     const reliable = list.filter((p) => p.confidence >= 58);
     if (reliableOnly && reliable.length > 0) {
@@ -376,6 +383,20 @@ export function PropsSidebar({
       sortOrder === 'asc' ? a.confidence - b.confidence : b.confidence - a.confidence,
     );
   }, [gameProps, scopeFilter, reliableOnly, sortOrder]);
+
+  const propsEffectiveness = useMemo(() => {
+    if (!focusedGame || focusedGame.status !== 'final') return null;
+    return summarizeAnyGamePropsEffectiveness(scopedProps, focusedGame, focusedBoxStats, sport);
+  }, [focusedGame, focusedBoxStats, scopedProps, sport]);
+
+  const visibleProps = useMemo(() => {
+    if (!focusedGame || focusedGame.status !== 'final' || resultFilter === 'all') {
+      return scopedProps;
+    }
+    return scopedProps.filter(
+      (p) => evaluateAnyPropStatus(p, focusedGame, focusedBoxStats, sport)?.state === resultFilter,
+    );
+  }, [scopedProps, focusedGame, focusedBoxStats, sport, resultFilter]);
 
   const handleGameLogoSelect = (gameId: number) => {
     setFocusedGameId(gameId);
@@ -616,7 +637,7 @@ export function PropsSidebar({
                   Análisis avanzado ({PRO_CONFIDENCE_THRESHOLD}%+)
                 </div>
                 <div className="text-[11px] text-slate-400">
-                  Incluido en Plan Pro · $5 USD o S/ 19
+                  Incluido en Plan Pro{!isNativeAndroid() ? ' · $5 USD o S/ 19' : ''}
                 </div>
               </div>
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-md bg-white/[0.08] text-slate-100 border border-white/[0.14] shrink-0">
@@ -636,24 +657,35 @@ export function PropsSidebar({
                 <div key={i} className="h-24 rounded-lg bg-white/[0.04] animate-pulse" />
               ))}
             </div>
-          ) : visibleProps.length === 0 ? (
+          ) : scopedProps.length === 0 ? (
             <div className="py-10 text-center text-xs text-slate-400">
               No hay registros disponibles para este filtro en el partido seleccionado.
             </div>
           ) : (
-            visibleProps.map((prop) => {
-              const isActive = activePropId === prop.id;
-              const locked = !isPro && isHighProbabilityProp(prop.confidence);
-              const fbLiveText =
-                sport === 'football'
-                  ? getLiveFootballPropProgress(prop, focusedGame, focusedBoxStats)
-                  : null;
-              const liveStatus =
-                sport === 'football'
-                  ? fbLiveText
-                    ? { state: 'live' as const, label: fbLiveText }
-                    : null
-                  : evaluatePropStatus(prop, focusedGame, focusedBoxStats);
+            <>
+              {propsEffectiveness && (
+                <PropsEffectivenessCard
+                  summary={propsEffectiveness}
+                  variant="compact"
+                  isPro={isPro}
+                  resultFilter={resultFilter}
+                  onChangeResultFilter={setResultFilter}
+                />
+              )}
+              {visibleProps.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-400">
+                  No hay props en la categoría &ldquo;{resultFilter === 'won' ? 'Salieron' : 'No salieron'}&rdquo; para este filtro.
+                </div>
+              ) : (
+                visibleProps.map((prop) => {
+                  const isActive = activePropId === prop.id;
+                  const locked = !isPro && isHighProbabilityProp(prop.confidence);
+                  const liveStatus = evaluateAnyPropStatus(
+                    prop,
+                    focusedGame,
+                    focusedBoxStats,
+                    sport,
+                  );
 
               const stripeColor =
                 prop.confidence >= 75
@@ -756,6 +788,16 @@ export function PropsSidebar({
                         {liveStatus.label}
                       </span>
                     )}
+                    {locked &&
+                      focusedGame.status === 'final' &&
+                      liveStatus &&
+                      (liveStatus.state === 'won' || liveStatus.state === 'lost') && (
+                        <span
+                          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border tabular-nums ${statusPillClass}`}
+                        >
+                          {liveStatus.state === 'won' ? 'Salió (Pro)' : 'No salió (Pro)'}
+                        </span>
+                      )}
                     {!locked ? (
                       prop.contextBadges.slice(0, 3).map((b, i) => (
                         <span
@@ -774,6 +816,8 @@ export function PropsSidebar({
                 </button>
               );
             })
+              )}
+            </>
           )}
         </div>
       </div>

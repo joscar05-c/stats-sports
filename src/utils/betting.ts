@@ -1232,3 +1232,97 @@ export function evaluatePropStatus(
 
   return null;
 }
+
+export interface EvaluatedPropEntry {
+  prop: PropRecommendation;
+  status: PropLiveStatus | null;
+}
+
+export interface GamePropsEffectivenessSummary {
+  totalProps: number;
+  wonCount: number;
+  lostCount: number;
+  pushCount: number;
+  dnpCount: number;
+  pendingCount: number;
+  evaluatedCount: number;
+  effectivenessPct: number | null;
+  teamWon: number;
+  teamEvaluated: number;
+  teamEffectivenessPct: number | null;
+  playerWon: number;
+  playerEvaluated: number;
+  playerEffectivenessPct: number | null;
+  entries: EvaluatedPropEntry[];
+  wonEntries: EvaluatedPropEntry[];
+  lostEntries: EvaluatedPropEntry[];
+}
+
+export function computeEffectivenessFromCounts(
+  props: PropRecommendation[],
+  resolveStatus: (prop: PropRecommendation) => PropLiveStatus | null,
+): GamePropsEffectivenessSummary {
+  const entries: EvaluatedPropEntry[] = props.map((prop) => ({
+    prop,
+    status: resolveStatus(prop),
+  }));
+
+  const wonEntries: EvaluatedPropEntry[] = [];
+  const lostEntries: EvaluatedPropEntry[] = [];
+  let pushCount = 0;
+  let dnpCount = 0;
+  let pendingCount = 0;
+  let teamWon = 0;
+  let teamEvaluated = 0;
+  let playerWon = 0;
+  let playerEvaluated = 0;
+
+  for (const entry of entries) {
+    const st = entry.status?.state;
+    if (st === 'won') {
+      wonEntries.push(entry);
+      if (entry.prop.scope === 'team') {
+        teamWon += 1;
+        teamEvaluated += 1;
+      } else {
+        playerWon += 1;
+        playerEvaluated += 1;
+      }
+    } else if (st === 'lost') {
+      lostEntries.push(entry);
+      if (entry.prop.scope === 'team') teamEvaluated += 1;
+      else playerEvaluated += 1;
+    } else if (st === 'push') {
+      pushCount += 1;
+    } else if (st === 'dnp') {
+      dnpCount += 1;
+    } else {
+      pendingCount += 1;
+    }
+  }
+
+  const wonCount = wonEntries.length;
+  const lostCount = lostEntries.length;
+  const evaluatedCount = wonCount + lostCount;
+
+  return {
+    totalProps: props.length,
+    wonCount,
+    lostCount,
+    pushCount,
+    dnpCount,
+    pendingCount,
+    evaluatedCount,
+    effectivenessPct: evaluatedCount > 0 ? Math.round((wonCount / evaluatedCount) * 100) : null,
+    teamWon,
+    teamEvaluated,
+    teamEffectivenessPct: teamEvaluated > 0 ? Math.round((teamWon / teamEvaluated) * 100) : null,
+    playerWon,
+    playerEvaluated,
+    playerEffectivenessPct:
+      playerEvaluated > 0 ? Math.round((playerWon / playerEvaluated) * 100) : null,
+    entries,
+    wonEntries,
+    lostEntries,
+  };
+}

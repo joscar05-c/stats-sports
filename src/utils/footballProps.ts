@@ -7,10 +7,14 @@ import type {
 } from '../types/database';
 import {
   americanToImpliedProb,
+  computeEffectivenessFromCounts,
   computePropOddsFromConfidence,
   computeTeamRestDays,
+  evaluatePropStatus,
   getConfidenceTier,
+  type GamePropsEffectivenessSummary,
   type MatchupBettingInsight,
+  type PropLiveStatus,
   type PropRecommendation,
   type TeamRecentSummary,
 } from './betting';
@@ -382,24 +386,95 @@ export function buildFootballPropsRecommendations(
   return recs.sort((a, b) => b.confidence - a.confidence).slice(0, 14);
 }
 
+export function evaluateFootballPropStatus(
+  prop: PropRecommendation,
+  game: Game,
+  stats: PlayerGameStat[] = [],
+): PropLiveStatus | null {
+  if (game.status === 'scheduled' || game.status === 'postponed') return null;
+
+  const isFinal = game.status === 'final';
+  const gradeOverUnder = (
+    val: number,
+    line: number,
+    pick: 'OVER' | 'UNDER',
+    unitSuffix = '',
+  ): PropLiveStatus => {
+    const valLabel = unitSuffix ? `${val} ${unitSuffix}` : `${val}`;
+    if (isFinal) {
+      if (val === line) return { label: `EMPATE (${valLabel})`, state: 'push' };
+      const won = pick === 'UNDER' ? val < line : val > line;
+      return {
+        label: `${won ? 'SALIÓ' : 'NO SALIÓ'} · ${valLabel}`,
+        state: won ? 'won' : 'lost',
+      };
+    }
+    if (pick === 'OVER' && val > line) {
+      return { label: `CUMPLIÓ · ${valLabel}`, state: 'won' };
+    }
+    return { label: `EN VIVO · ${val}/${line}`, state: 'live' };
+  };
+
+  if (prop.scope === 'player' && prop.playerId && prop.footballMetricKey) {
+    const row = stats.find((s) => s.player_id === prop.playerId);
+    if (!row) return isFinal ? null : { label: 'EN VIVO', state: 'live' };
+    if (row.did_not_play) return { label: 'DNP', state: 'dnp' };
+    const val = getFootballPlayerStatValue(row, prop.footballMetricKey);
+    const pick = prop.pick === 'UNDER' ? 'UNDER' : 'OVER';
+    return gradeOverUnder(val, prop.lineValue, pick);
+  }
+
+  if (prop.id.startsWith('fb_total_')) {
+    const totalGoals = game.away_score + game.home_score;
+    return gradeOverUnder(totalGoals, prop.lineValue, prop.pick === 'UNDER' ? 'UNDER' : 'OVER', 'G');
+  }
+
+  if (prop.id.startsWith('fb_btts_')) {
+    const bothScored = game.home_score > 0 && game.away_score > 0;
+    const isYesPick = prop.pick !== 'UNDER';
+    const scoreStr = `${game.away_score}-${game.home_score}`;
+    if (!isFinal) {
+      if (isYesPick && bothScored) {
+        return { label: `CUMPLIÓ · ${scoreStr}`, state: 'won' };
+      }
+      return { label: `EN VIVO · ${scoreStr}`, state: 'live' };
+    }
+    const won = isYesPick ? bothScored : !bothScored;
+    return {
+      label: `${won ? 'SALIÓ' : 'NO SALIÓ'} · ${scoreStr}`,
+      state: won ? 'won' : 'lost',
+    };
+  }
+
+  return null;
+}
+
 export function getLiveFootballPropProgress(
   prop: PropRecommendation,
   game: Game,
   stats: PlayerGameStat[],
 ): string | null {
-  if (game.status === 'scheduled') return null;
-  if (prop.scope === 'player' && prop.playerId && prop.footballMetricKey) {
-    const row = stats.find((s) => s.player_id === prop.playerId);
-    if (!row || row.did_not_play) return row?.did_not_play ? 'Suplente' : null;
-    const val = getFootballPlayerStatValue(row, prop.footballMetricKey);
-    return `Actual: ${val}`;
-  }
-  if (prop.id.startsWith('fb_total_')) {
-    return `Actual: ${game.away_score + game.home_score} goles`;
-  }
-  if (prop.id.startsWith('fb_btts_')) {
-    const both = game.home_score > 0 && game.away_score > 0;
-    return `Actual: ${both ? 'Sí (ambos)' : `${game.away_score}-${game.home_score}`}`;
-  }
-  return null;
+  return evaluateFootballPropStatus(prop, game, stats)?.label ?? null;
+}
+
+export function evaluateAnyPropStatus(
+  prop: PropRecommendation,
+  game: Game,
+  boxStats: PlayerGameStat[] = [],
+  sport: 'basketball' | 'football' = 'basketball',
+): PropLiveStatus | null {
+  return sport === 'football'
+    ? evaluateFootballPropStatus(prop, game, boxStats)
+    : evaluatePropStatus(prop, game, boxStats);
+}
+
+export function summarizeAnyGamePropsEffectiveness(
+  props: PropRecommendation[],
+  game: Game,
+  boxStats: PlayerGameStat[] = [],
+  sport: 'basketball' | 'football' = 'basketball',
+): GamePropsEffectivenessSummary {
+  return computeEffectivenessFromCounts(props, (prop) =>
+    evaluateAnyPropStatus(prop, game, boxStats, sport),
+  );
 }

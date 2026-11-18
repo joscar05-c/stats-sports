@@ -32,18 +32,19 @@ import {
   formatDecimalOdds,
   formatSpreadCompact,
   isHighProbabilityProp,
-  PLAYER_CHART_METRICS,
   PRO_CONFIDENCE_THRESHOLD,
   summarizeTeamRecent,
-  type PropRecommendation,
 } from '../utils/betting';
 import {
   buildFootballMatchupInsight,
   buildFootballPropsRecommendations,
-  getLiveFootballPropProgress,
+  evaluateAnyPropStatus,
+  summarizeAnyGamePropsEffectiveness,
 } from '../utils/footballProps';
 import type { FootballPlayerSeasonAverage, Game, PlayerGameStat } from '../types/database';
 import type { AnyBettingContext } from './PropsSidebar';
+import { isNativeAndroid } from '../utils/platform';
+import { PropsEffectivenessCard, type PropResultFilter } from './PropsEffectivenessCard';
 import { ModalDialog } from './ModalDialog';
 
 interface GameDetailModalProps {
@@ -162,6 +163,7 @@ export function GameDetailModal({
   const [activeTeamId, setActiveTeamId] = useState<number>(initialGame.away_team_id);
   const [propsScope, setPropsScope] = useState<'all' | 'team' | 'player'>('all');
   const [propsOrder, setPropsOrder] = useState<'asc' | 'desc'>('desc');
+  const [resultFilter, setResultFilter] = useState<PropResultFilter>('all');
 
   useEffect(() => {
     setGame(initialGame);
@@ -170,6 +172,7 @@ export function GameDetailModal({
   useEffect(() => {
     setSection(game.status === 'scheduled' ? 'betting' : 'boxscore');
     setActiveTeamId(game.away_team_id);
+    setResultFilter('all');
   }, [game.id, game.away_team_id]);
 
   useEffect(() => {
@@ -335,7 +338,7 @@ export function GameDetailModal({
     return { homeRecent, awayRecent, insight, propsRecs };
   }, [game, betCtx, sport]);
 
-  const filteredProps = useMemo(() => {
+  const scopedProps = useMemo(() => {
     if (!bettingAnalysis) return [];
     const list = bettingAnalysis.propsRecs.filter(
       (p) => propsScope === 'all' || p.scope === propsScope,
@@ -345,46 +348,19 @@ export function GameDetailModal({
     );
   }, [bettingAnalysis, propsScope, propsOrder]);
 
-  const liveStatByPlayerId = useMemo(() => {
-    const map = new Map<number, PlayerGameStat>();
-    stats.forEach((s) => map.set(s.player_id, s));
-    return map;
-  }, [stats]);
+  const propsEffectiveness = useMemo(() => {
+    if (game.status !== 'final' || scopedProps.length === 0) return null;
+    return summarizeAnyGamePropsEffectiveness(scopedProps, game, stats, sport);
+  }, [scopedProps, game, stats, sport]);
 
-  const getLivePropProgress = (prop: PropRecommendation): string | null => {
-    if (game.status === 'scheduled') return null;
-    if (sport === 'football') {
-      return getLiveFootballPropProgress(prop, game, stats);
+  const filteredProps = useMemo(() => {
+    if (game.status !== 'final' || resultFilter === 'all') {
+      return scopedProps;
     }
-    if (prop.scope === 'player' && prop.playerId && prop.metricKey) {
-      const row = liveStatByPlayerId.get(prop.playerId);
-      if (!row || row.did_not_play) return row?.did_not_play ? 'DNP' : null;
-      const val = PLAYER_CHART_METRICS[prop.metricKey].getStatValue(row);
-      return `Actual: ${val}`;
-    }
-    if (prop.id.startsWith('team_total_')) {
-      return `Actual: ${game.away_score + game.home_score} pts`;
-    }
-    if (prop.id === `team_pts_${game.away_team_id}`) {
-      return `Actual: ${game.away_score} pts`;
-    }
-    if (prop.id === `team_pts_${game.home_team_id}`) {
-      return `Actual: ${game.home_score} pts`;
-    }
-    if (prop.id === `team_3pm_${game.away_team_id}` && stats.length > 0) {
-      return `Actual: ${awayTotals.tpm} 3PM`;
-    }
-    if (prop.id === `team_3pm_${game.home_team_id}` && stats.length > 0) {
-      return `Actual: ${homeTotals.tpm} 3PM`;
-    }
-    if (prop.id === `team_reb_${game.away_team_id}` && stats.length > 0) {
-      return `Actual: ${awayTotals.reb} REB`;
-    }
-    if (prop.id === `team_reb_${game.home_team_id}` && stats.length > 0) {
-      return `Actual: ${homeTotals.reb} REB`;
-    }
-    return null;
-  };
+    return scopedProps.filter(
+      (prop) => evaluateAnyPropStatus(prop, game, stats, sport)?.state === resultFilter,
+    );
+  }, [scopedProps, game, stats, sport, resultFilter]);
 
   const odds = game.odds;
   const hasBookLines = Boolean(
@@ -1005,84 +981,118 @@ export function GameDetailModal({
                   })}
                 </div>
 
+                {/* Post-game Props Effectiveness Summary */}
+                {propsEffectiveness && (
+                  <PropsEffectivenessCard
+                    summary={propsEffectiveness}
+                    variant="full"
+                    isPro={isPro}
+                    resultFilter={resultFilter}
+                    onChangeResultFilter={setResultFilter}
+                  />
+                )}
+
                 {/* Props List */}
                 <div className="space-y-2.5">
-                  {filteredProps.map((prop) => {
-                    const locked = !isPro && isHighProbabilityProp(prop.confidence);
-                    const liveProgress = getLivePropProgress(prop);
-                    const pickBadgeClass =
-                      prop.pick === 'OVER'
-                        ? 'sb-neon-over'
-                        : prop.pick === 'UNDER'
-                          ? 'sb-neon-under'
-                          : 'bg-white/[0.08] text-slate-100 border-white/[0.14]';
-                    const barColorClass =
-                      prop.confidence >= 80
-                        ? 'bg-blue-400'
-                        : prop.confidence >= 68
-                          ? 'bg-slate-300'
-                          : 'bg-slate-500';
+                  {filteredProps.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-slate-400 rounded-lg bg-[#12151c] border border-white/[0.07]">
+                      No hay props en esta categoría para el filtro actual.
+                    </div>
+                  ) : (
+                    filteredProps.map((prop) => {
+                      const locked = !isPro && isHighProbabilityProp(prop.confidence);
+                      const propStatus = evaluateAnyPropStatus(prop, game, stats, sport);
+                      const showPostGameLockedBadge =
+                        locked && game.status === 'final' && propStatus && (propStatus.state === 'won' || propStatus.state === 'lost');
+                      const statusPillClass =
+                        propStatus?.state === 'won'
+                          ? 'bg-emerald-500/12 text-emerald-300 border-emerald-500/25'
+                          : propStatus?.state === 'lost'
+                            ? 'bg-rose-500/12 text-rose-300 border-rose-500/25'
+                            : 'bg-white/[0.06] text-slate-200 border-white/[0.1]';
+                      const pickBadgeClass =
+                        prop.pick === 'OVER'
+                          ? 'sb-neon-over'
+                          : prop.pick === 'UNDER'
+                            ? 'sb-neon-under'
+                            : 'bg-white/[0.08] text-slate-100 border-white/[0.14]';
+                      const barColorClass =
+                        prop.confidence >= 80
+                          ? 'bg-blue-400'
+                          : prop.confidence >= 68
+                            ? 'bg-slate-300'
+                            : 'bg-slate-500';
 
-                    return (
-                      <div
-                        key={prop.id}
-                        onClick={
-                          locked
-                            ? onOpenProModal
-                            : prop.playerId
-                              ? () => onSelectPlayer(prop.playerId!)
-                              : undefined
-                        }
-                        className={`rounded-lg bg-[#12151c] border border-white/[0.08] p-3 space-y-2 transition-colors ${
-                          locked || prop.playerId ? 'cursor-pointer hover:border-white/[0.2]' : ''
-                        }`}
-                      >
-                        {/* Header row */}
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border bg-white/[0.04] text-slate-300 border-white/[0.08]">
-                              {prop.scope === 'team' ? 'Equipo' : 'Jugador'}
-                            </span>
-                            <span className="text-xs font-bold text-white truncate">
-                              {prop.subjectName}
-                            </span>
-                            <span className="text-[11px] text-slate-400 truncate">
-                              · {prop.marketLabel}
-                            </span>
+                      return (
+                        <div
+                          key={prop.id}
+                          onClick={
+                            locked
+                              ? onOpenProModal
+                              : prop.playerId
+                                ? () => onSelectPlayer(prop.playerId!)
+                                : undefined
+                          }
+                          className={`rounded-lg bg-[#12151c] border border-white/[0.08] p-3 space-y-2 transition-colors ${
+                            locked || prop.playerId ? 'cursor-pointer hover:border-white/[0.2]' : ''
+                          }`}
+                        >
+                          {/* Header row */}
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border bg-white/[0.04] text-slate-300 border-white/[0.08]">
+                                {prop.scope === 'team' ? 'Equipo' : 'Jugador'}
+                              </span>
+                              <span className="text-xs font-bold text-white truncate">
+                                {prop.subjectName}
+                              </span>
+                              <span className="text-[11px] text-slate-400 truncate">
+                                · {prop.marketLabel}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0 tabular-nums">
+                              {!locked && propStatus && (
+                                <span
+                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${statusPillClass}`}
+                                >
+                                  {propStatus.label}
+                                </span>
+                              )}
+                              {showPostGameLockedBadge && (
+                                <span
+                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${statusPillClass}`}
+                                >
+                                  {propStatus.state === 'won' ? 'Salió (Pro)' : 'No salió (Pro)'}
+                                </span>
+                              )}
+                              {!locked && (
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white/[0.05] text-slate-300 border border-white/[0.08]">
+                                  {prop.estimatedMultiplier.toFixed(2)}x
+                                </span>
+                              )}
+                              {locked ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded sb-pro-pill">
+                                  <Lock className="w-3 h-3" aria-hidden="true" />
+                                  Plan Pro
+                                </span>
+                              ) : (
+                                <span
+                                  className={`text-xs font-bold px-2.5 py-0.5 rounded border ${pickBadgeClass}`}
+                                >
+                                  {prop.pickLabel}
+                                </span>
+                              )}
+                            </div>
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0 tabular-nums">
-                            {!locked && liveProgress && (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white/[0.06] text-slate-200 border border-white/[0.1]">
-                                {liveProgress}
+                          {/* Stats vs Market */}
+                          {locked ? (
+                            <div className="rounded-lg bg-[#0b0d11] px-3 py-2 border border-white/[0.07] text-[11px] text-slate-300 flex items-center justify-between gap-2">
+                              <span>
+                                Análisis avanzado ({PRO_CONFIDENCE_THRESHOLD}%+). Incluido en Plan Pro
+                                {!isNativeAndroid() ? ' ($5 USD o S/ 19)' : ''}.
                               </span>
-                            )}
-                            {!locked && (
-                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white/[0.05] text-slate-300 border border-white/[0.08]">
-                                {prop.estimatedMultiplier.toFixed(2)}x
-                              </span>
-                            )}
-                            {locked ? (
-                              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded sb-pro-pill">
-                                <Lock className="w-3 h-3" aria-hidden="true" />
-                                Plan Pro
-                              </span>
-                            ) : (
-                              <span
-                                className={`text-xs font-bold px-2.5 py-0.5 rounded border ${pickBadgeClass}`}
-                              >
-                                {prop.pickLabel}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Stats vs Market */}
-                        {locked ? (
-                          <div className="rounded-lg bg-[#0b0d11] px-3 py-2 border border-white/[0.07] text-[11px] text-slate-300 flex items-center justify-between gap-2">
-                            <span>
-                              Análisis avanzado ({PRO_CONFIDENCE_THRESHOLD}%+). Incluido en Plan Pro ($5 USD o S/ 19).
-                            </span>
                             <span className="text-white font-semibold underline shrink-0">
                               Ver Plan Pro
                             </span>
@@ -1138,7 +1148,8 @@ export function GameDetailModal({
                         </div>
                       </div>
                     );
-                  })}
+                  })
+                  )}
                 </div>
               </div>
             )}
