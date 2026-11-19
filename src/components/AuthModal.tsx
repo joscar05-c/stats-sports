@@ -19,7 +19,6 @@ import {
   signUpWithEmail,
   translateAuthError,
 } from '../services/authService';
-import { isNativeAndroid } from '../utils/platform';
 import { ModalDialog } from './ModalDialog';
 
 interface AuthModalProps {
@@ -35,7 +34,6 @@ export function AuthModal({
   onClose,
   onSuccess,
 }: AuthModalProps) {
-  const androidNative = isNativeAndroid();
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>(initialTab);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -51,10 +49,18 @@ export function AuthModal({
     setFeedback(null);
     setGoogleBusy(true);
     try {
-      await signInWithGoogle();
+      const mode = await signInWithGoogle();
+      if (mode === 'native') {
+        onSuccess();
+      }
     } catch (err) {
+      const code = typeof err === 'object' && err !== null && 'code' in err ? String((err as { code?: unknown }).code ?? '') : '';
+      const rawMsg = err instanceof Error ? err.message.toLowerCase() : String(err ?? '').toLowerCase();
+      if (code !== 'CANCELLED' && !rawMsg.includes('cancelado') && !rawMsg.includes('canceled')) {
+        setFeedback({ text: translateAuthError(err), tone: 'err' });
+      }
+    } finally {
       setGoogleBusy(false);
-      setFeedback({ text: translateAuthError(err), tone: 'err' });
     }
   };
 
@@ -127,15 +133,13 @@ export function AuthModal({
                   : 'Recupera tu contraseña'}
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              {androidNative
-                ? 'Accede con tu correo electrónico para sincronizar tu cuenta.'
-                : 'Accede con Google o correo electrónico para sincronizar tu cuenta.'}
+              Accede con Google o correo electrónico para sincronizar tu cuenta.
             </p>
           </div>
           <button
             type="button"
             onClick={requestClose}
-            className="p-1.5 rounded-full bg-white/[0.05] text-slate-400 hover:text-white border border-white/[0.08]"
+            className="p-1.5 rounded-full bg-white/[0.05] text-slate-400 hover:text-white border border-white/[0.08] cv-touch-target inline-flex items-center justify-center"
             aria-label="Cerrar"
           >
             <X className="w-4 h-4" aria-hidden="true" />
@@ -149,47 +153,43 @@ export function AuthModal({
             </div>
           )}
 
-          {!androidNative && (
-            <>
-              {/* Google OAuth Button (Web/PWA only; WebView blocks embedded OAuth) */}
-              <button
-                type="button"
-                disabled={googleBusy || busy}
-                onClick={handleGoogle}
-                className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-sm inline-flex items-center justify-center gap-2.5 shadow-md transition-colors disabled:opacity-60"
-              >
-                {googleBusy ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-slate-700" aria-hidden="true" />
-                ) : (
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      fill="#4285F4"
-                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 24c3.3 0 6.08-1.09 8.1-2.96l-3.88-3.05c-1.09.73-2.48 1.16-4.22 1.16-3.24 0-5.99-2.19-6.97-5.13H1.04v3.14C3.05 21.14 7.21 24 12 24Z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.03 14.02c-.25-.73-.39-1.52-.39-2.32 0-.8.14-1.59.39-2.32V6.24H1.04C.38 7.56 0 9.04 0 10.7c0 1.66.38 3.14 1.04 4.46l3.99-3.14Z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 4.75c1.8 0 3.41.62 4.68 1.83l3.51-3.51C18.07 1.19 15.3 0 12 0 7.21 0 3.05 2.86 1.04 7.04l3.99 3.14C6.01 7.24 8.76 4.75 12 4.75Z"
-                    />
-                  </svg>
-                )}
-                <span>Continuar con Google</span>
-              </button>
+          {/* Google Sign-In Button (Web OAuth + Android native Credential Manager) */}
+          <button
+            type="button"
+            disabled={googleBusy || busy}
+            onClick={handleGoogle}
+            className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-sm inline-flex items-center justify-center gap-2.5 shadow-md transition-colors disabled:opacity-60"
+          >
+            {googleBusy ? (
+              <Loader2 className="w-4 h-4 animate-spin text-slate-700" aria-hidden="true" />
+            ) : (
+              <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="#4285F4"
+                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 24c3.3 0 6.08-1.09 8.1-2.96l-3.88-3.05c-1.09.73-2.48 1.16-4.22 1.16-3.24 0-5.99-2.19-6.97-5.13H1.04v3.14C3.05 21.14 7.21 24 12 24Z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.03 14.02c-.25-.73-.39-1.52-.39-2.32 0-.8.14-1.59.39-2.32V6.24H1.04C.38 7.56 0 9.04 0 10.7c0 1.66.38 3.14 1.04 4.46l3.99-3.14Z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 4.75c1.8 0 3.41.62 4.68 1.83l3.51-3.51C18.07 1.19 15.3 0 12 0 7.21 0 3.05 2.86 1.04 7.04l3.99 3.14C6.01 7.24 8.76 4.75 12 4.75Z"
+                />
+              </svg>
+            )}
+            <span>Continuar con Google</span>
+          </button>
 
-              <div className="flex items-center gap-3 text-[11px] text-slate-500">
-                <div className="flex-1 h-px bg-white/[0.08]" />
-                <span>o con tu correo</span>
-                <div className="flex-1 h-px bg-white/[0.08]" />
-              </div>
-            </>
-          )}
+          <div className="flex items-center gap-3 text-[11px] text-slate-500">
+            <div className="flex-1 h-px bg-white/[0.08]" />
+            <span>o con tu correo</span>
+            <div className="flex-1 h-px bg-white/[0.08]" />
+          </div>
 
           {/* Mode Tabs */}
           <div className="flex rounded-lg bg-[#0b0d11] border border-white/[0.08] p-1 text-xs">

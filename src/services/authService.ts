@@ -1,5 +1,7 @@
 import type { User } from '@supabase/supabase-js';
 import { supabase, supabaseKeyResolved, supabaseUrlResolved } from '../lib/supabase';
+import { createGoogleNoncePair, NativeGoogleAuth } from '../utils/nativeGoogleAuth';
+import { isNativeAndroid } from '../utils/platform';
 
 export interface UserProfile {
   id: string;
@@ -81,7 +83,34 @@ export async function fetchUserProfile(user: User | null): Promise<UserProfile |
   return fallback;
 }
 
-export async function signInWithGoogle(): Promise<void> {
+export async function signInWithGoogle(): Promise<'native' | 'redirect'> {
+  if (isNativeAndroid()) {
+    const webClientId = (import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID as string | undefined)?.trim();
+    if (!webClientId) {
+      throw new Error(
+        'Falta configurar VITE_GOOGLE_WEB_CLIENT_ID para iniciar sesión con Google en Android.',
+      );
+    }
+
+    const { rawNonce, hashedNonce } = await createGoogleNoncePair();
+    const res = await NativeGoogleAuth.signIn({
+      webClientId,
+      nonce: hashedNonce,
+    });
+
+    if (!res?.idToken) {
+      throw new Error('Google no devolvió un token de identidad válido.');
+    }
+
+    const { error } = await supabase.auth.signInWithIdToken({
+      provider: 'google',
+      token: res.idToken,
+      nonce: rawNonce,
+    });
+    if (error) throw error;
+    return 'native';
+  }
+
   const redirectTo = window.location.origin;
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
@@ -93,6 +122,7 @@ export async function signInWithGoogle(): Promise<void> {
     },
   });
   if (error) throw error;
+  return 'redirect';
 }
 
 export async function signInWithEmail(email: string, password: string): Promise<User | null> {
@@ -135,6 +165,9 @@ export async function sendPasswordReset(email: string): Promise<void> {
 
 export async function signOutAccount(): Promise<void> {
   const { error } = await supabase.auth.signOut();
+  if (isNativeAndroid()) {
+    await NativeGoogleAuth.signOut().catch(() => {});
+  }
   if (error) throw error;
 }
 
@@ -181,6 +214,12 @@ export function translateAuthError(err: unknown): string {
   }
   if (lower.includes('provider is not enabled') || lower.includes('unsupported provider')) {
     return 'Google Sign-In aún no está activado en Supabase Auth (Authentication → Providers → Google).';
+  }
+  if (lower.includes('developer_error') || lower.includes('[10]') || lower.includes('10:')) {
+    return 'Falta vincular el SHA-1 de Android o el Web Client ID en Google Cloud Console.';
+  }
+  if (lower.includes('no credentials available') || lower.includes('nocredentialexception')) {
+    return 'No hay una cuenta de Google disponible o autorizada en este dispositivo.';
   }
   return raw || 'No se pudo completar la autenticación.';
 }

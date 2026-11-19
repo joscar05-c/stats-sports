@@ -424,9 +424,7 @@ export function ProUpgradeModal({
                       Paso 1: Inicia sesión o crea tu cuenta
                     </div>
                     <p className="text-xs text-slate-400 leading-relaxed">
-                      {androidNative
-                        ? 'Inicia sesión con tu correo electrónico para sincronizar tu suscripción o vincular tu código de acceso.'
-                        : 'Tu suscripción queda vinculada de forma segura a tu cuenta (Google o correo) para usarla en cualquier dispositivo.'}
+                      Tu suscripción queda vinculada de forma segura a tu cuenta (Google o correo) para usarla en cualquier dispositivo.
                     </p>
                   </div>
                   <button
@@ -435,7 +433,7 @@ export function ProUpgradeModal({
                     className="w-full py-2.5 px-4 rounded-lg cv-btn-primary text-sm inline-flex items-center justify-center gap-2"
                   >
                     <LogIn className="w-4 h-4" aria-hidden="true" />
-                    {androidNative ? 'Iniciar sesión con correo' : 'Continuar con Google o correo'}
+                    Continuar con Google o correo
                   </button>
                 </div>
               ) : (
