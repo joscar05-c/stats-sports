@@ -19,7 +19,7 @@ Estas reglas aplican a **todo el repositorio** y deben cumplirse en cada interve
 - Nunca consultar ni modificar otro servidor MCP de Supabase ajeno al proyecto.
 
 ## 4. Control de Versiones y Notas de Lanzamiento (Google Play Store)
-- **Última versión `.aab` generada:** `versionCode: 5` | `versionName: 1.0.3` (2026-11-19).
+- **Última versión `.aab` generada:** `versionCode: 6` | `versionName: 1.0.4` (2026-11-19).
 - **Regla obligatoria en cada actualización destinada a Play Store (`.aab`):**
   1. Incrementar correlativamente a partir de la última versión registrada (`versionCode` `+ 1` y `versionName` correlativo, p. ej. `6` y `1.0.4`, salvo cambio mayor/menor explícito).
   2. Actualizar la línea **Última versión `.aab` generada** en este archivo `GEMINI.md` con el nuevo `versionCode`, `versionName` y fecha antes de hacer commit.

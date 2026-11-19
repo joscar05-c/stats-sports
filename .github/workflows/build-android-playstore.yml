@@ -42,8 +42,13 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://dowxayyvtghtjkctasfn.supabase.co' }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_ofEQ4jJ_O8ziwbOemySWiA_stfFYEhE' }}
-          VITE_GOOGLE_WEB_CLIENT_ID: ${{ vars.VITE_GOOGLE_WEB_CLIENT_ID }}
+          VITE_GOOGLE_WEB_CLIENT_ID: ${{ vars.VITE_GOOGLE_WEB_CLIENT_ID || secrets.VITE_GOOGLE_WEB_CLIENT_ID || vars.GOOGLE_WEB_CLIENT_ID || secrets.GOOGLE_WEB_CLIENT_ID }}
         run: |
+          if [ -z "$VITE_GOOGLE_WEB_CLIENT_ID" ]; then
+            echo "::error::VITE_GOOGLE_WEB_CLIENT_ID está vacío. Agrégalo como Variable o Secret en el Environment 'VARIABLES DE ENTORNO' o en Repository Secrets/Variables."
+            exit 1
+          fi
+          echo "VITE_GOOGLE_WEB_CLIENT_ID detectado (${#VITE_GOOGLE_WEB_CLIENT_ID} caracteres)"
           npm ci
           npm run build
           npx cap sync android

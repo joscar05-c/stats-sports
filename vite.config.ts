@@ -9,6 +9,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: null,
       includeAssets: ['icon.svg'],
       manifest: {
         name: 'CourtVision Stats — Fútbol y NBA',
