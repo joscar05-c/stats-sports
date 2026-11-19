@@ -7,7 +7,7 @@ Estas reglas aplican a **todo el repositorio** y deben cumplirse en cada interve
 - Flujo obligatorio al terminar los cambios:
   1. Verificar que `npm run build` (`tsc -b && vite build`) y las comprobaciones correspondientes pasen con código `0`.
   2. Revisar `git status` para asegurarse de **no** incluir archivos secretos ignorados (`.env`, `.env.local`, claves privadas).
-  3. Ejecutar `git add` de los archivos modificados/creados, `git commit -m "<tipo>: <resumen claro>"` y `git push origin main`.
+  3. Ejecutar `git add` de los archivos modificados/creados, `git commit -m "<tipo>: <resumen claro en español>"` y `git push origin main`. **Todos los mensajes de commit deben redactarse obligatoriamente en español** (ej.: `feat: resumen en español`, `fix: corrección en español`).
   4. Reportar el hash del commit subido (`git rev-parse --short HEAD`) al usuario.
 
 ## 2. Entorno de Producción y Pagos Reales
