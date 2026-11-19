@@ -405,7 +405,18 @@ export function PropsSidebar({
   };
 
   const renderLogoRail = (isMobileOverlay: boolean) => (
-    <div className="w-[68px] shrink-0 h-full bg-[#0b0d11] border-r border-white/[0.08] flex flex-col items-center py-2.5">
+    <div
+      className="w-[68px] shrink-0 h-full bg-[#0b0d11] border-r border-white/[0.08] flex flex-col items-center py-2.5"
+      style={
+        isMobileOverlay
+          ? {
+              paddingTop: 'max(0.625rem, env(safe-area-inset-top, 0px))',
+              paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom, 0px))',
+              paddingLeft: 'env(safe-area-inset-left, 0px)',
+            }
+          : undefined
+      }
+    >
       <button
         type="button"
         onClick={() => {
@@ -497,7 +508,17 @@ export function PropsSidebar({
     return (
       <div className="flex-1 h-full flex flex-col bg-[#0e1117] min-w-0">
         {/* Drawer Header */}
-        <div className="p-3.5 border-b border-white/[0.08] space-y-2.5 shrink-0 bg-[#12151c]">
+        <div
+          className="p-3.5 border-b border-white/[0.08] space-y-2.5 shrink-0 bg-[#12151c]"
+          style={
+            isMobileOverlay
+              ? {
+                  paddingTop: 'max(0.875rem, env(safe-area-inset-top, 0px))',
+                  paddingRight: 'max(0.875rem, env(safe-area-inset-right, 0px))',
+                }
+              : undefined
+          }
+        >
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
@@ -530,7 +551,7 @@ export function PropsSidebar({
                     setDesktopPinned(false);
                   }
                 }}
-                className="p-1 rounded-lg bg-white/[0.04] border border-white/[0.1] text-slate-400 hover:text-white"
+                className="p-1.5 rounded-lg bg-white/[0.04] border border-white/[0.1] text-slate-400 hover:text-white cv-touch-target inline-flex items-center justify-center"
                 aria-label="Cerrar panel"
               >
                 <X className="w-3.5 h-3.5" aria-hidden="true" />
@@ -625,7 +646,7 @@ export function PropsSidebar({
         </div>
 
         {/* Props List */}
-        <div className="flex-1 overflow-y-auto sb-scroller p-3 space-y-2.5 pb-16">
+        <div className="flex-1 overflow-y-auto sb-scroller p-3 space-y-2.5 pb-[calc(4rem+env(safe-area-inset-bottom,0px))]">
           {!isPro && (
             <button
               type="button"
@@ -827,7 +848,13 @@ export function PropsSidebar({
   return (
     <>
       {/* Desktop Persistent Left Rail + Slide-out Drawer */}
-      <aside className="hidden md:flex fixed left-0 top-[108px] bottom-0 z-30 shadow-2xl shadow-black/50">
+      <aside
+        className="hidden md:flex fixed left-0 bottom-0 z-30 shadow-2xl shadow-black/50"
+        style={{
+          top: 'calc(108px + env(safe-area-inset-top, 0px))',
+          left: 'env(safe-area-inset-left, 0px)',
+        }}
+      >
         {renderLogoRail(false)}
         <div
           className={`h-full border-r border-white/[0.08] overflow-hidden transition-all duration-200 ${

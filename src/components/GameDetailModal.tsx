@@ -398,7 +398,7 @@ export function GameDetailModal({
             <button
               type="button"
               onClick={requestClose}
-              className="p-1.5 rounded-full bg-white/[0.05] border border-white/[0.1] text-slate-300 hover:text-white"
+              className="p-1.5 rounded-full bg-white/[0.05] border border-white/[0.1] text-slate-300 hover:text-white cv-touch-target inline-flex items-center justify-center"
               aria-label="Cerrar"
             >
               <X className="w-4 h-4" aria-hidden="true" />

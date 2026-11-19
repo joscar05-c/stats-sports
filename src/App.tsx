@@ -444,9 +444,9 @@ export function App() {
         Saltar al contenido principal
       </a>
       {/* Header */}
-      <header className="sticky top-0 z-40 sb-glass-header">
+      <header className="sticky top-0 z-40 sb-glass-header pt-safe">
         {/* Row 1: Brand Identity + Utility Controls */}
-        <div className="max-w-7xl mx-auto px-3 sm:px-5 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-5 min-h-14 sm:min-h-16 py-1.5 flex items-center justify-between gap-2 sm:gap-3">
           {/* Left Brand Block */}
           <button
             type="button"
@@ -674,7 +674,7 @@ export function App() {
 
         {/* Row 2: Dedicated Desktop Navigation Rail */}
         <div className="hidden md:block border-t border-white/[0.06] bg-[#0b0d11]">
-          <div className="max-w-7xl mx-auto px-5 h-11 flex items-center justify-between gap-4">
+          <div className="max-w-7xl mx-auto px-5 min-h-11 py-1 flex items-center justify-between gap-4">
             <nav
               aria-label="Principal"
               className="flex items-center gap-1 overflow-x-auto no-scrollbar sb-scroll-fade-x"
