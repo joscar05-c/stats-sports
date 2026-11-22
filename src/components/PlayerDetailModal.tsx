@@ -408,7 +408,18 @@ export function PlayerDetailModal({
                           }`}
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-xs font-semibold text-white">{prop.marketLabel}</span>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span
+                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 ${
+                                  prop.strategy === 'safe'
+                                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                    : 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                                }`}
+                              >
+                                {prop.strategy === 'safe' ? 'Segura' : 'Valor'}
+                              </span>
+                              <span className="text-xs font-semibold text-white truncate">{prop.marketLabel}</span>
+                            </div>
                             <div className="flex items-center gap-2 tabular-nums">
                               {!locked && (
                                 <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white/[0.05] text-slate-300 border border-white/[0.08]">

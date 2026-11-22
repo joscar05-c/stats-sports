@@ -26,6 +26,7 @@ import {
   summarizeTeamRecent,
   type PropContextBadge,
   type PropRecommendation,
+  type PropStrategyMode,
 } from '../utils/betting';
 import {
   buildFootballPropsRecommendations,
@@ -112,6 +113,7 @@ export function PropsSidebar({
   const [loadingCtxId, setLoadingCtxId] = useState<number | null>(null);
 
   const [scopeFilter, setScopeFilter] = useState<'all' | 'team' | 'player'>('all');
+  const [strategyFilter, setStrategyFilter] = useState<'safe' | 'value' | 'all'>('safe');
   const [reliableOnly, setReliableOnly] = useState(true);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [resultFilter, setResultFilter] = useState<PropResultFilter>('all');
@@ -355,6 +357,7 @@ export function PropsSidebar({
         awayRecentGames: fbCtx.awayRecentGames,
         keyPlayers: fbCtx.keyPlayers,
         playerRecentLogs: fbCtx.playerRecentLogs ?? [],
+        playerStatuses: fbCtx.playerStatuses,
       });
     }
     const nbaCtx = focusedContext as GameBettingContext;
@@ -370,11 +373,16 @@ export function PropsSidebar({
       awayRecentGames: nbaCtx.awayRecentGames,
       keyPlayers: nbaCtx.keyPlayers,
       playerRecentLogs: nbaCtx.playerRecentLogs ?? [],
+      playerStatuses: nbaCtx.playerStatuses,
     });
   }, [focusedGame, focusedContext, sport]);
 
   const scopedProps = useMemo(() => {
-    let list = gameProps.filter((p) => scopeFilter === 'all' || p.scope === scopeFilter);
+    let list = gameProps.filter(
+      (p) =>
+        (scopeFilter === 'all' || p.scope === scopeFilter) &&
+        (strategyFilter === 'all' || ((p.strategy ?? 'value') as PropStrategyMode) === strategyFilter),
+    );
     const reliable = list.filter((p) => p.confidence >= 58);
     if (reliableOnly && reliable.length > 0) {
       list = reliable;
@@ -382,7 +390,7 @@ export function PropsSidebar({
     return list.toSorted((a, b) =>
       sortOrder === 'asc' ? a.confidence - b.confidence : b.confidence - a.confidence,
     );
-  }, [gameProps, scopeFilter, reliableOnly, sortOrder]);
+  }, [gameProps, scopeFilter, strategyFilter, reliableOnly, sortOrder]);
 
   const propsEffectiveness = useMemo(() => {
     if (!focusedGame || focusedGame.status !== 'final') return null;
@@ -590,57 +598,96 @@ export function PropsSidebar({
           )}
 
           {/* Filters */}
-          <div className="flex items-center justify-between gap-1.5 flex-wrap">
-            <div className="inline-flex rounded-lg bg-[#0b0d11] border border-white/[0.08] p-0.5">
-              {(
-                [
-                  { key: 'all', label: 'Todos', icon: null },
-                  { key: 'team', label: 'Equipo', icon: Shield },
-                  { key: 'player', label: 'Jugador', icon: User },
-                ] as const
-              ).map((f) => {
-                const Icon = f.icon;
-                const active = scopeFilter === f.key;
-                return (
-                  <button
-                    key={f.key}
-                    type="button"
-                    onClick={() => setScopeFilter(f.key)}
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
-                      active
-                        ? 'cv-tab-active'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    {Icon && <Icon className="w-3 h-3" aria-hidden="true" />}
-                    {f.label}
-                  </button>
-                );
-              })}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="inline-flex rounded-lg bg-[#0b0d11] border border-white/[0.08] p-0.5 w-full">
+                {(
+                  [
+                    { key: 'safe', label: 'Seguras' },
+                    { key: 'value', label: 'Valor' },
+                    { key: 'all', label: 'Todas' },
+                  ] as const
+                ).map((s) => {
+                  const active = strategyFilter === s.key;
+                  return (
+                    <button
+                      key={s.key}
+                      type="button"
+                      onClick={() => setStrategyFilter(s.key)}
+                      className={`flex-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                        active
+                          ? s.key === 'safe'
+                            ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/35'
+                            : 'cv-tab-active'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                      title={
+                        s.key === 'safe'
+                          ? 'Líneas alternativas conservadoras con mayor probabilidad real de acierto'
+                          : s.key === 'value'
+                            ? 'Líneas estándar con ventaja estadística calibrada'
+                            : 'Mostrar todas las recomendaciones'
+                      }
+                    >
+                      {s.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setReliableOnly((r) => !r)}
-                className={`px-2 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
-                  reliableOnly
-                    ? 'bg-white/[0.1] border-white/[0.2] text-white'
-                    : 'bg-white/[0.03] border-white/[0.08] text-slate-400'
-                }`}
-                title="Mostrar análisis con índice >= 58% o todos"
-              >
-                {reliableOnly ? 'Filtrados' : 'Todos %'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-white/[0.04] border border-white/[0.1] text-slate-200 hover:border-white/[0.2]"
-                title="Invertir orden"
-              >
-                <ArrowUpDown className="w-3 h-3 text-slate-400" aria-hidden="true" />
-                {sortOrder === 'desc' ? 'Mayor→Menor' : 'Menor→Mayor'}
-              </button>
+            <div className="flex items-center justify-between gap-1.5 flex-wrap">
+              <div className="inline-flex rounded-lg bg-[#0b0d11] border border-white/[0.08] p-0.5">
+                {(
+                  [
+                    { key: 'all', label: 'Todos', icon: null },
+                    { key: 'team', label: 'Equipo', icon: Shield },
+                    { key: 'player', label: 'Jugador', icon: User },
+                  ] as const
+                ).map((f) => {
+                  const Icon = f.icon;
+                  const active = scopeFilter === f.key;
+                  return (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => setScopeFilter(f.key)}
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                        active
+                          ? 'cv-tab-active'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {Icon && <Icon className="w-3 h-3" aria-hidden="true" />}
+                      {f.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setReliableOnly((r) => !r)}
+                  className={`px-2 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
+                    reliableOnly
+                      ? 'bg-white/[0.1] border-white/[0.2] text-white'
+                      : 'bg-white/[0.03] border-white/[0.08] text-slate-400'
+                  }`}
+                  title="Mostrar análisis con índice >= 58% o todos"
+                >
+                  {reliableOnly ? 'Filtrados' : 'Todos %'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-white/[0.04] border border-white/[0.1] text-slate-200 hover:border-white/[0.2]"
+                  title="Invertir orden"
+                >
+                  <ArrowUpDown className="w-3 h-3 text-slate-400" aria-hidden="true" />
+                  {sortOrder === 'desc' ? 'Mayor→Menor' : 'Menor→Mayor'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -780,7 +827,7 @@ export function PropsSidebar({
                     ) : (
                       <span
                         className={`text-[11px] font-bold px-2 py-0.5 rounded tabular-nums shrink-0 ${
-                          prop.pick === 'OVER'
+                          prop.pick === 'OVER' || prop.pick === 'DC'
                             ? 'sb-neon-over'
                             : prop.pick === 'UNDER'
                               ? 'sb-neon-under'

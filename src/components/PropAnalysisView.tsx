@@ -95,7 +95,7 @@ export function PropAnalysisView({
 
   // Interactive sportsbook line simulator & payout calculator
   const [customLine, setCustomLine] = useState<number>(prop.lineValue);
-  const [targetPick, setTargetPick] = useState<'OVER' | 'UNDER' | 'SPREAD' | 'ML'>(prop.pick);
+  const [targetPick, setTargetPick] = useState<PropRecommendation['pick']>(prop.pick);
   const [stakeCurrency, setStakeCurrency] = useState<'PEN' | 'USD'>('PEN');
   const [stakeAmount, setStakeAmount] = useState<number>(20);
 
@@ -218,6 +218,7 @@ export function PropAnalysisView({
         awayRecentGames: fbCtx.awayRecentGames,
         keyPlayers: fbCtx.keyPlayers,
         playerRecentLogs: fbCtx.playerRecentLogs ?? [],
+        playerStatuses: fbCtx.playerStatuses,
       });
     }
     const nbaCtx = context as GameBettingContext;
@@ -233,6 +234,7 @@ export function PropAnalysisView({
       awayRecentGames: nbaCtx.awayRecentGames,
       keyPlayers: nbaCtx.keyPlayers,
       playerRecentLogs: nbaCtx.playerRecentLogs ?? [],
+      playerStatuses: nbaCtx.playerStatuses,
     });
   }, [liveGame, context, sport, homeRecent, awayRecent]);
 
@@ -261,7 +263,7 @@ export function PropAnalysisView({
                           ? 'P+R+A'
                           : prop.metricKey === 'tpm'
                             ? '3PT'
-                            : prop.pick === 'ML'
+                            : prop.pick === 'ML' || prop.pick === 'DC'
                               ? '%'
                               : prop.id.startsWith('team_3pm_')
                                 ? '3PM'
@@ -325,6 +327,44 @@ export function PropAnalysisView({
             matchupLabel: oppAbbr ? `${isHome ? 'vs' : '@'} ${oppAbbr}` : `${row.minutes}m`,
             value: val,
             secondaryText: `${ss?.goals ?? 0}G / ${ss?.assists ?? 0}A / ${ss?.shots ?? 0} REM (${ss?.shots_on_target ?? 0} arco)`,
+          };
+        });
+    } else if (sport === 'football' && (prop.id.startsWith('fb_dc_') || prop.id.startsWith('fb_ml_'))) {
+      const fbCtx = context as FootballGameBettingContext;
+      const isHome =
+        prop.teamId != null
+          ? prop.teamId === liveGame.home_team_id
+          : prop.teamAbbr === liveGame.home_team.abbreviation;
+      const mySt = isHome ? fbCtx.homeStanding : fbCtx.awayStanding;
+      const myRec = isHome ? homeRecent : awayRecent;
+      const recentList = isHome ? fbCtx.homeRecentGames : fbCtx.awayRecentGames;
+      const myTeamId = isHome ? liveGame.home_team_id : liveGame.away_team_id;
+      seasonBaseline = Number(mySt?.win_pct ?? 0.5) * 100;
+      recentBaseline = myRec.gamesCount > 0 ? (myRec.wins / myRec.gamesCount) * 100 : seasonBaseline;
+      projectedVal = prop.projectedValue ?? prop.lineValue;
+      rivalFactorLabel =
+        prop.pick === 'DC'
+          ? `Modelo Poisson ${prop.pickLabel}`
+          : `Mercado 1X2 · ${prop.teamAbbr}`;
+      rivalFactorDetail = `Historial de los últimos encuentros disputados por ${
+        isHome ? liveGame.home_team.short_name : liveGame.away_team.short_name
+      }.`;
+      historySeries = [...recentList]
+        .filter((g) => g.status === 'final')
+        .reverse()
+        .map((g) => {
+          const isH = g.home_team_id === myTeamId;
+          const myG = isH ? g.home_score : g.away_score;
+          const opG = isH ? g.away_score : g.home_score;
+          const opp = isH ? g.away_team : g.home_team;
+          return {
+            id: String(g.id),
+            dateLabel: g.game_date.slice(5),
+            matchupLabel: `${isH ? 'vs' : '@'} ${opp.abbreviation}`,
+            value: myG - opG,
+            secondaryText: `${
+              myG > opG ? 'Victoria' : myG === opG ? 'Empate' : 'Derrota'
+            } ${myG}-${opG}`,
           };
         });
     } else if (sport === 'football' && (prop.id.startsWith('fb_total_') || prop.id.startsWith('fb_btts_'))) {
@@ -548,7 +588,8 @@ export function PropAnalysisView({
         });
     } else if (prop.id.startsWith('team_pts_')) {
       const nbaCtx = context as GameBettingContext;
-      const teamId = Number(prop.id.replace('team_pts_', ''));
+      const teamId =
+        prop.teamId ?? Number(prop.id.replace(/^team_pts_(?:safe_|val_)?/, ''));
       const isHome = teamId === liveGame.home_team_id;
       const myPpg = Number(
         (isHome ? nbaCtx.homeStanding?.ppg : nbaCtx.awayStanding?.ppg) ??
@@ -567,7 +608,7 @@ export function PropAnalysisView({
         myRec.gamesCount > 0 && oppRec.gamesCount > 0
           ? (myRec.avgFor + oppRec.avgAgainst) / 2
           : seasonBaseline;
-      projectedVal = seasonBaseline * 0.55 + recentBaseline * 0.45;
+      projectedVal = seasonBaseline * 0.72 + recentBaseline * 0.28;
       rivalFactorLabel = `Rival concede ${oppOppg.toFixed(1)} PPG`;
       rivalFactorDetail = `El equipo anota ${myPpg.toFixed(1)} PPG en temporada y ${myRec.avgFor.toFixed(
         1,
@@ -591,14 +632,15 @@ export function PropAnalysisView({
         });
     } else if (prop.id.startsWith('team_3pm_')) {
       const nbaCtx = context as GameBettingContext;
-      const teamId = Number(prop.id.replace('team_3pm_', ''));
+      const teamId =
+        prop.teamId ?? Number(prop.id.replace(/^team_3pm_(?:safe_|val_)?/, ''));
       const isHome = teamId === liveGame.home_team_id;
       const tAvg = isHome ? nbaCtx.homeTeamAvg : nbaCtx.awayTeamAvg;
       const oppAvg = isHome ? nbaCtx.awayTeamAvg : nbaCtx.homeTeamAvg;
       seasonBaseline = Number(tAvg?.tpm_pg ?? prop.lineValue);
       recentBaseline = seasonBaseline;
       const oppOppg = Number(oppAvg?.oppg ?? 113.5);
-      const defAdjust = oppOppg > 113.5 ? (oppOppg - 113.5) * 0.14 : (oppOppg - 113.5) * 0.1;
+      const defAdjust = oppOppg > 113.5 ? (oppOppg - 113.5) * 0.08 : (oppOppg - 113.5) * 0.08;
       projectedVal = seasonBaseline + defAdjust;
       rivalFactorLabel = `Defensa rival permite ${oppOppg.toFixed(1)} PPG`;
       rivalFactorDetail = `${tAvg?.team_abbreviation ?? ''} lanza ${Number(
@@ -606,15 +648,16 @@ export function PropAnalysisView({
       ).toFixed(1)}% en triples (${Number(tAvg?.tpa_pg ?? 0).toFixed(1)} intentos/PJ).`;
     } else if (prop.id.startsWith('team_reb_')) {
       const nbaCtx = context as GameBettingContext;
-      const teamId = Number(prop.id.replace('team_reb_', ''));
+      const teamId =
+        prop.teamId ?? Number(prop.id.replace(/^team_reb_(?:safe_|val_)?/, ''));
       const isHome = teamId === liveGame.home_team_id;
       const tAvg = isHome ? nbaCtx.homeTeamAvg : nbaCtx.awayTeamAvg;
       const oppAvg = isHome ? nbaCtx.awayTeamAvg : nbaCtx.homeTeamAvg;
       seasonBaseline = Number(tAvg?.rpg ?? prop.lineValue);
       recentBaseline = seasonBaseline;
       const oppReb = Number(oppAvg?.rpg ?? seasonBaseline);
-      const oppMissFactor = oppAvg?.fg_pct != null ? (46.8 - Number(oppAvg.fg_pct)) * 0.25 : 0;
-      projectedVal = seasonBaseline + oppMissFactor + (seasonBaseline - oppReb) * 0.15;
+      const oppMissFactor = oppAvg?.fg_pct != null ? (46.8 - Number(oppAvg.fg_pct)) * 0.2 : 0;
+      projectedVal = seasonBaseline + oppMissFactor + (seasonBaseline - oppReb) * 0.12;
       rivalFactorLabel = `Rival captura ${oppReb.toFixed(1)} RPG (${Number(
         oppAvg?.fg_pct ?? 0,
       ).toFixed(1)}% TC)`;
@@ -623,10 +666,15 @@ export function PropAnalysisView({
       ).toFixed(1)} rebotes ofensivos y ${Number(tAvg?.dreb_pg ?? 0).toFixed(1)} defensivos.`;
     }
 
+    if (prop.projectedValue != null && Number.isFinite(prop.projectedValue)) {
+      projectedVal = prop.projectedValue;
+    }
+
     // Evaluate customLine strictly against targetPick (never silently flip away from user's prop side)
-    const effectivePick: 'OVER' | 'UNDER' | 'SPREAD' | 'ML' = targetPick;
+    const effectivePick: PropRecommendation['pick'] = targetPick;
     const isHitPoint = (val: number): boolean => {
       if (effectivePick === 'SPREAD') return val + customLine > 0;
+      if (effectivePick === 'DC') return val >= 0;
       if (effectivePick === 'ML') return val > 0;
       if (effectivePick === 'UNDER') return val < customLine;
       return val > customLine;
@@ -635,7 +683,7 @@ export function PropAnalysisView({
     let signedEdge = 0;
     if (effectivePick === 'SPREAD') {
       signedEdge = projectedVal + customLine;
-    } else if (effectivePick === 'ML') {
+    } else if (effectivePick === 'ML' || effectivePick === 'DC') {
       signedEdge = (projectedVal - customLine) / 4;
     } else if (effectivePick === 'UNDER') {
       signedEdge = customLine - projectedVal;
@@ -649,7 +697,11 @@ export function PropAnalysisView({
 
     // Recalculate dynamic confidence at customLine
     const relDenom =
-      effectivePick === 'SPREAD' ? 8 : effectivePick === 'ML' ? 12 : Math.max(3, customLine);
+      effectivePick === 'SPREAD'
+        ? 8
+        : effectivePick === 'ML' || effectivePick === 'DC'
+          ? 12
+          : Math.max(3, customLine);
     const matchesOriginalConfig =
       Math.abs(customLine - prop.lineValue) < 0.01 && effectivePick === prop.pick;
     const dynamicConf = matchesOriginalConfig
@@ -671,17 +723,17 @@ export function PropAnalysisView({
     let accessibilityLevel: 'high' | 'medium' | 'low' = 'medium';
     let accessibilityText = '';
 
-    if (effectivePick === 'ML') {
-      if (dynamicConf >= 68 && projectedVal - customLine >= 4) {
+    if (effectivePick === 'ML' || effectivePick === 'DC') {
+      if (dynamicConf >= 68 && projectedVal - customLine >= 0) {
         accessibilityTitle = 'Mercado Accesible';
         accessibilityLevel = 'high';
-        accessibilityText = `Probabilidad estimada (${projectedVal.toFixed(
+        accessibilityText = `Probabilidad calibrada (${projectedVal.toFixed(
           1,
-        )}%) supera claramente la referencia evaluada (${customLine.toFixed(1)}%).`;
+        )}%) ofrece respaldo estadístico sólido para ${prop.pickLabel}.`;
       } else if (projectedVal - customLine >= 0) {
         accessibilityTitle = 'Accesibilidad Moderada';
         accessibilityLevel = 'medium';
-        accessibilityText = `Ventaja ajustada para ganar el partido. Conviene cuidar el tamaño de la apuesta si la cuota es baja.`;
+        accessibilityText = `Ventaja ajustada para ${prop.pickLabel}. Conviene cuidar el tamaño de la apuesta si la cuota es baja.`;
       } else {
         accessibilityTitle = 'Mercado Exigente';
         accessibilityLevel = 'low';
@@ -749,7 +801,7 @@ export function PropAnalysisView({
     const accessibleLimitText =
       effectivePick === 'SPREAD'
         ? `Hasta ${(Math.ceil((-projectedVal + 1.5) * 2) / 2).toFixed(1)}`
-        : effectivePick === 'ML'
+        : effectivePick === 'ML' || effectivePick === 'DC'
           ? `Valor desde prob. implícita <= ${Math.max(45, projectedVal - 3).toFixed(0)}%`
           : effectivePick === 'OVER'
             ? `Accesible hasta ${(Math.floor((projectedVal - 0.5) * 2) / 2).toFixed(1)} ${unit}`
@@ -799,7 +851,12 @@ export function PropAnalysisView({
   const maxChartVal = useMemo(() => {
     if (analysis.historySeries.length === 0) return sport === 'football' ? 5 : 20;
     const absVals = analysis.historySeries.map((h) => Math.abs(h.value));
-    const refLine = prop.pick === 'SPREAD' ? Math.abs(customLine) : customLine;
+    const refLine =
+      prop.pick === 'SPREAD'
+        ? Math.abs(customLine)
+        : prop.pick === 'ML' || prop.pick === 'DC'
+          ? 0
+          : customLine;
     return Math.max(sport === 'football' ? 2 : 5, Math.ceil(Math.max(...absVals, refLine) * 1.15));
   }, [analysis.historySeries, customLine, prop.pick, sport]);
 
@@ -1077,7 +1134,7 @@ export function PropAnalysisView({
             <div className="text-xl font-bold text-white">
               {prop.pick === 'SPREAD'
                 ? `${prop.teamAbbr} ${customLine > 0 ? `+${customLine.toFixed(1)}` : customLine.toFixed(1)}`
-                : prop.pick === 'ML'
+                : prop.pick === 'ML' || prop.pick === 'DC'
                   ? prop.pickLabel
                   : `${analysis.effectivePick} ${customLine.toFixed(1)}`}
             </div>
@@ -1343,7 +1400,7 @@ export function PropAnalysisView({
           {/* Bar Chart */}
           <div className="relative pt-5 pb-1">
             <div className="relative flex items-end gap-1.5 h-36">
-              {prop.pick !== 'SPREAD' && prop.pick !== 'ML' && (
+              {prop.pick !== 'SPREAD' && prop.pick !== 'ML' && prop.pick !== 'DC' && (
                 <div
                   className="absolute left-0 right-0 border-t border-dashed border-slate-400/75 pointer-events-none z-10 flex justify-end"
                   style={{
@@ -1360,13 +1417,17 @@ export function PropAnalysisView({
                 const hit =
                   analysis.effectivePick === 'SPREAD'
                     ? pt.value + customLine > 0
-                    : analysis.effectivePick === 'ML'
-                      ? pt.value > 0
-                      : analysis.effectivePick === 'UNDER'
-                        ? pt.value < customLine
-                        : pt.value > customLine;
+                    : analysis.effectivePick === 'DC'
+                      ? pt.value >= 0
+                      : analysis.effectivePick === 'ML'
+                        ? pt.value > 0
+                        : analysis.effectivePick === 'UNDER'
+                          ? pt.value < customLine
+                          : pt.value > customLine;
                 const barMagnitude =
-                  prop.pick === 'SPREAD' || prop.pick === 'ML' ? Math.abs(pt.value) : pt.value;
+                  prop.pick === 'SPREAD' || prop.pick === 'ML' || prop.pick === 'DC'
+                    ? Math.abs(pt.value)
+                    : pt.value;
                 const pct = Math.max(10, Math.round((barMagnitude / maxChartVal) * 100));
                 return (
                   <div
@@ -1379,7 +1440,7 @@ export function PropAnalysisView({
                         hit ? 'text-emerald-300' : 'text-rose-300'
                       }`}
                     >
-                      {(prop.pick === 'SPREAD' || prop.pick === 'ML') && pt.value > 0
+                      {(prop.pick === 'SPREAD' || prop.pick === 'ML' || prop.pick === 'DC') && pt.value > 0
                         ? `+${pt.value}`
                         : pt.value}
                     </span>
@@ -1425,21 +1486,27 @@ export function PropAnalysisView({
                   const hit =
                     analysis.effectivePick === 'SPREAD'
                       ? pt.value + customLine > 0
-                      : analysis.effectivePick === 'ML'
-                        ? pt.value > 0
-                        : analysis.effectivePick === 'UNDER'
-                          ? pt.value < customLine
-                          : pt.value > customLine;
+                      : analysis.effectivePick === 'DC'
+                        ? pt.value >= 0
+                        : analysis.effectivePick === 'ML'
+                          ? pt.value > 0
+                          : analysis.effectivePick === 'UNDER'
+                            ? pt.value < customLine
+                            : pt.value > customLine;
                   return (
                     <tr key={pt.id} className="hover:bg-white/[0.03]">
                       <td className="py-2 px-3 text-slate-400">{pt.dateLabel}</td>
                       <td className="py-2 px-2 font-medium text-slate-200">{pt.matchupLabel}</td>
                       <td className="py-2 px-2 text-slate-400">{pt.secondaryText}</td>
                       <td className="text-right py-2 px-2 font-bold text-white">
-                        {(prop.pick === 'SPREAD' || prop.pick === 'ML') && pt.value > 0
+                        {(prop.pick === 'SPREAD' || prop.pick === 'ML' || prop.pick === 'DC') && pt.value > 0
                           ? `+${pt.value}`
                           : pt.value}{' '}
-                        {prop.pick === 'SPREAD' || prop.pick === 'ML' ? 'pts' : analysis.unit}
+                        {prop.pick === 'SPREAD' || prop.pick === 'ML' || prop.pick === 'DC'
+                          ? sport === 'football'
+                            ? 'goles'
+                            : 'pts'
+                          : analysis.unit}
                       </td>
                       <td className="text-center py-2 px-3">
                         <span

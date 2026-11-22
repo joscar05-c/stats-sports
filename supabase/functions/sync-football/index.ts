@@ -1063,9 +1063,10 @@ Deno.serve(async (req: Request) => {
           }
 
           const out: any[] = [];
+          const validMatchTeams = new Set([g.home_team_ext_id, g.away_team_ext_id]);
           for (const ros of summ?.rosters ?? []) {
             const tid = String(ros?.team?.id ?? "");
-            if (!validTeamIds.has(tid)) continue;
+            if (!validTeamIds.has(tid) || !validMatchTeams.has(tid)) continue;
             for (const prow of ros?.roster ?? []) {
               const ath = prow?.athlete ?? {};
               const pid = String(ath?.id ?? "");

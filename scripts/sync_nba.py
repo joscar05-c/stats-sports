@@ -294,7 +294,12 @@ def extract_athletes_from_roster(roster_json: dict[str, Any], team_ext_id: str) 
         pos = (a.get("position") or {}).get("abbreviation") or (a.get("position") or {}).get("name")
         headshot = (a.get("headshot") or {}).get("href")
         birth = a.get("birthPlace") or {}
-        status = (a.get("status") or {}).get("type") or "active"
+        injuries = a.get("injuries") or []
+        inj_status = ""
+        if isinstance(injuries, list) and injuries:
+            inj_status = str((injuries[0] or {}).get("status") or "").strip().lower()
+        raw_status = str((a.get("status") or {}).get("type") or "active").strip().lower()
+        status = inj_status or raw_status or "active"
         full_name = a.get("fullName") or a.get("displayName") or f"{a.get('firstName', '')} {a.get('lastName', '')}".strip()
         out.append(
             {
@@ -329,6 +334,19 @@ def fetch_all_rosters(team_ids: list[str]) -> dict[str, dict[str, Any]]:
         for plist in ex.map(_one, team_ids):
             for p in plist:
                 players_by_ext_id[p["external_id"]] = p
+
+    # Supplement with ESPN league-wide NBA injury report when available
+    try:
+        inj_json = fetch_json(f"{ESPN_BASE}/site/v2/sports/basketball/nba/injuries")
+        for team_blk in inj_json.get("injuries") or []:
+            for inj in team_blk.get("injuries") or []:
+                ath = inj.get("athlete") or {}
+                pid = str(ath.get("id") or "")
+                st = str(inj.get("status") or "").strip().lower()
+                if pid and st and pid in players_by_ext_id:
+                    players_by_ext_id[pid]["status"] = st
+    except Exception:
+        pass
 
     return players_by_ext_id
 
@@ -443,14 +461,23 @@ def fetch_games_and_boxscores(
                     merged[k] = v
             g["odds"] = merged or None
 
+        for inj_team in summ.get("injuries") or []:
+            for inj in inj_team.get("injuries") or []:
+                ath = inj.get("athlete") or {}
+                pid = str(ath.get("id") or "")
+                st = str(inj.get("status") or "").strip().lower()
+                if pid and st and pid in players_by_ext_id:
+                    players_by_ext_id[pid]["status"] = st
+
         if g["status"] not in ("final", "live"):
             return []
 
         bx = summ.get("boxscore") or {}
         out_rows: list[dict[str, Any]] = []
+        valid_match_teams = {g["home_team_ext_id"], g["away_team_ext_id"]}
         for team_blk in bx.get("players", []):
             tid = str((team_blk.get("team") or {}).get("id", ""))
-            if tid not in valid_team_ids:
+            if tid not in valid_team_ids or tid not in valid_match_teams:
                 continue
             stat_groups = team_blk.get("statistics") or []
             if not stat_groups:
@@ -996,13 +1023,24 @@ def sync_via_supabase_rest(
         for r in inserted or []:
             game_id_map[str(r["external_id"])] = r["id"]
 
-    # 7. Player Game Stats
+    # 7. Player Game Stats (validate team belongs to target game)
+    game_teams_by_id: dict[int, tuple[int, int]] = {}
+    for g in games:
+        gid_val = game_id_map.get(g["external_id"])
+        ht_val = team_id_map.get(g["home_team_ext_id"])
+        at_val = team_id_map.get(g["away_team_ext_id"])
+        if gid_val and ht_val and at_val:
+            game_teams_by_id[gid_val] = (ht_val, at_val)
+
     stat_payloads = []
     for r in stats:
         gid = game_id_map.get(r["game_external_id"])
         tid = team_id_map.get(r["team_external_id"])
         pid = player_id_map.get(r["player_external_id"])
         if not gid or not tid or not pid:
+            continue
+        match_teams = game_teams_by_id.get(gid)
+        if match_teams and tid not in match_teams:
             continue
         stat_payloads.append(
             {

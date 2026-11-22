@@ -310,7 +310,7 @@ export async function fetchPlayerProfileAndLogs(
         .select(`
           *,
           game:games(
-            id, game_date, home_team_id, away_team_id, home_score, away_score,
+            id, game_date, status, home_team_id, away_team_id, home_score, away_score,
             home_team:teams!games_home_team_id_fkey(id, abbreviation, logo_url),
             away_team:teams!games_away_team_id_fkey(id, abbreviation, logo_url)
           )
@@ -318,13 +318,34 @@ export async function fetchPlayerProfileAndLogs(
         .eq('player_id', playerId)
         .eq('did_not_play', false)
         .order('id', { ascending: false })
-        .limit(15),
+        .limit(24),
     ]);
 
     if (playerRes.error) throw playerRes.error;
-    const logs = ((logsRes.data ?? []) as unknown as PlayerGameStat[]).sort((a, b) =>
-      (b.game?.game_date ?? '').localeCompare(a.game?.game_date ?? ''),
-    );
+    type LogWithGame = PlayerGameStat & { game?: { status?: string; game_date?: string } };
+    const seenDates = new Set<string>();
+    const logs = ((logsRes.data ?? []) as unknown as LogWithGame[])
+      .filter((r) => {
+        if (r.game?.status && r.game.status !== 'final') return false;
+        if (
+          r.game?.home_team_id != null &&
+          r.game?.away_team_id != null &&
+          r.team_id !== r.game.home_team_id &&
+          r.team_id !== r.game.away_team_id
+        ) {
+          return false;
+        }
+        return true;
+      })
+      .sort((a, b) => (b.game?.game_date ?? '').localeCompare(a.game?.game_date ?? '') || b.id - a.id)
+      .filter((r) => {
+        const d = r.game?.game_date;
+        if (!d) return true;
+        if (seenDates.has(d)) return false;
+        seenDates.add(d);
+        return true;
+      })
+      .slice(0, 15);
 
     return {
       player: (playerRes.data ?? null) as unknown as Player | null,
@@ -425,6 +446,7 @@ export interface GameBettingContext {
   awayRecentGames: Game[];
   keyPlayers: PlayerSeasonAverage[];
   playerRecentLogs: PlayerGameStat[];
+  playerStatuses: Record<number, string>;
 }
 
 export interface FootballGameBettingContext {
@@ -436,89 +458,150 @@ export interface FootballGameBettingContext {
   awayRecentGames: Game[];
   keyPlayers: FootballPlayerSeasonAverage[];
   playerRecentLogs: PlayerGameStat[];
+  playerStatuses: Record<number, string>;
+}
+
+const CONTEXT_TEAM_SELECT =
+  'id, league_id, external_id, name, short_name, abbreviation, city, conference, division, primary_color, alternate_color, logo_url';
+
+async function fetchTeamRecentFinalGames(
+  game: Game,
+  teamId: number,
+  includeSportStats: boolean,
+): Promise<Game[]> {
+  const cols = includeSportStats
+    ? `id, league_id, season_id, game_date, tipoff_at, status, status_detail, period, clock,
+       home_team_id, away_team_id, home_score, away_score, home_linescores, away_linescores, venue, odds, sport_stats,
+       home_team:teams!games_home_team_id_fkey(${CONTEXT_TEAM_SELECT}),
+       away_team:teams!games_away_team_id_fkey(${CONTEXT_TEAM_SELECT})`
+    : `id, league_id, season_id, game_date, tipoff_at, status, status_detail, period, clock,
+       home_team_id, away_team_id, home_score, away_score, home_linescores, away_linescores, venue, odds,
+       home_team:teams!games_home_team_id_fkey(${CONTEXT_TEAM_SELECT}),
+       away_team:teams!games_away_team_id_fkey(${CONTEXT_TEAM_SELECT})`;
+
+  const { data } = await supabase
+    .from('games')
+    .select(cols)
+    .eq('season_id', game.season_id)
+    .eq('status', 'final')
+    .neq('id', game.id)
+    .lte('game_date', game.game_date)
+    .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+    .order('game_date', { ascending: false })
+    .limit(10);
+
+  return (data ?? []) as unknown as Game[];
+}
+
+async function fetchCleanLogsAndStatuses(
+  game: Game,
+  playerIds: number[],
+): Promise<{ playerRecentLogs: PlayerGameStat[]; playerStatuses: Record<number, string> }> {
+  if (playerIds.length === 0) {
+    return { playerRecentLogs: [], playerStatuses: {} };
+  }
+
+  const [logsRes, statusesRes] = await Promise.all([
+    supabase
+      .from('player_game_stats')
+      .select(`
+        *,
+        game:games(id, game_date, status, home_team_id, away_team_id, home_score, away_score)
+      `)
+      .in('player_id', playerIds)
+      .eq('did_not_play', false)
+      .neq('game_id', game.id)
+      .order('id', { ascending: false })
+      .limit(450),
+    supabase.from('players').select('id, status').in('id', playerIds),
+  ]);
+
+  const playerStatuses: Record<number, string> = {};
+  for (const row of (statusesRes.data ?? []) as Array<{ id: number; status: string | null }>) {
+    if (row.status) playerStatuses[row.id] = row.status.toLowerCase();
+  }
+
+  type LogRow = PlayerGameStat & {
+    game?: {
+      status?: string;
+      game_date?: string;
+      home_team_id?: number;
+      away_team_id?: number;
+    };
+  };
+
+  const seenPlayerDates = new Set<string>();
+  const playerRecentLogs = ((logsRes.data ?? []) as unknown as LogRow[])
+    .filter((r) => {
+      if (r.game?.status && r.game.status !== 'final') return false;
+      if (r.game?.game_date && r.game.game_date > game.game_date) return false;
+      if (
+        r.game?.home_team_id != null &&
+        r.game?.away_team_id != null &&
+        r.team_id !== r.game.home_team_id &&
+        r.team_id !== r.game.away_team_id
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort((a, b) => (b.game?.game_date ?? '').localeCompare(a.game?.game_date ?? '') || b.id - a.id)
+    .filter((r) => {
+      const key = `${r.player_id}_${r.game?.game_date ?? r.game_id}`;
+      if (seenPlayerDates.has(key)) return false;
+      seenPlayerDates.add(key);
+      return true;
+    });
+
+  return { playerRecentLogs, playerStatuses };
 }
 
 export async function fetchFootballGameBettingContext(
   game: Game,
 ): Promise<FootballGameBettingContext> {
-  const { data } = await withOfflineCache(`fb_bet_ctx_v1_${game.id}`, async () => {
-    const teamSelect =
-      'id, league_id, external_id, name, short_name, abbreviation, city, conference, division, primary_color, alternate_color, logo_url';
-    const [standingsRes, teamAvgsRes, homeGamesRes, awayGamesRes, playersRes] = await Promise.all([
-      supabase
-        .from('team_standings')
-        .select('*, team:teams(*)')
-        .eq('season_id', game.season_id)
-        .in('team_id', [game.home_team_id, game.away_team_id]),
-      supabase
-        .from('football_team_season_averages')
-        .select('*')
-        .in('team_id', [game.home_team_id, game.away_team_id]),
-      supabase
-        .from('games')
-        .select(
-          `id, league_id, season_id, game_date, tipoff_at, status, status_detail, period, clock,
-           home_team_id, away_team_id, home_score, away_score, home_linescores, away_linescores, venue, odds, sport_stats,
-           home_team:teams!games_home_team_id_fkey(${teamSelect}),
-           away_team:teams!games_away_team_id_fkey(${teamSelect})`,
-        )
-        .eq('season_id', game.season_id)
-        .eq('status', 'final')
-        .neq('id', game.id)
-        .lte('game_date', game.game_date)
-        .or(`home_team_id.eq.${game.home_team_id},away_team_id.eq.${game.home_team_id}`)
-        .order('game_date', { ascending: false })
-        .limit(6),
-      supabase
-        .from('games')
-        .select(
-          `id, league_id, season_id, game_date, tipoff_at, status, status_detail, period, clock,
-           home_team_id, away_team_id, home_score, away_score, home_linescores, away_linescores, venue, odds, sport_stats,
-           home_team:teams!games_home_team_id_fkey(${teamSelect}),
-           away_team:teams!games_away_team_id_fkey(${teamSelect})`,
-        )
-        .eq('season_id', game.season_id)
-        .eq('status', 'final')
-        .neq('id', game.id)
-        .lte('game_date', game.game_date)
-        .or(`home_team_id.eq.${game.away_team_id},away_team_id.eq.${game.away_team_id}`)
-        .order('game_date', { ascending: false })
-        .limit(6),
-      supabase
-        .from('football_player_season_averages')
-        .select('*')
-        .eq('season_id', game.season_id)
-        .in('team_id', [game.home_team_id, game.away_team_id])
-        .gt('gp', 0)
-        .order('goals', { ascending: false })
-        .order('shots_on_target', { ascending: false })
-        .limit(10),
-    ]);
+  const { data } = await withOfflineCache(`fb_bet_ctx_v2_${game.id}`, async () => {
+    const [standingsRes, teamAvgsRes, homeRecentGames, awayRecentGames, homePlayersRes, awayPlayersRes] =
+      await Promise.all([
+        supabase
+          .from('team_standings')
+          .select('*, team:teams(*)')
+          .eq('season_id', game.season_id)
+          .in('team_id', [game.home_team_id, game.away_team_id]),
+        supabase
+          .from('football_team_season_averages')
+          .select('*')
+          .eq('season_id', game.season_id)
+          .in('team_id', [game.home_team_id, game.away_team_id]),
+        fetchTeamRecentFinalGames(game, game.home_team_id, true),
+        fetchTeamRecentFinalGames(game, game.away_team_id, true),
+        supabase
+          .from('football_player_season_averages')
+          .select('*')
+          .eq('season_id', game.season_id)
+          .eq('team_id', game.home_team_id)
+          .gt('gp', 0)
+          .order('starts', { ascending: false })
+          .order('shots_on_target', { ascending: false })
+          .order('goals', { ascending: false })
+          .limit(8),
+        supabase
+          .from('football_player_season_averages')
+          .select('*')
+          .eq('season_id', game.season_id)
+          .eq('team_id', game.away_team_id)
+          .gt('gp', 0)
+          .order('starts', { ascending: false })
+          .order('shots_on_target', { ascending: false })
+          .order('goals', { ascending: false })
+          .limit(8),
+      ]);
 
-    const keyPlayers = (playersRes.data ?? []) as FootballPlayerSeasonAverage[];
-    const playerIds = keyPlayers.map((p) => p.player_id);
-    let playerRecentLogs: PlayerGameStat[] = [];
-    if (playerIds.length > 0) {
-      const logsRes = await supabase
-        .from('player_game_stats')
-        .select(`
-          *,
-          game:games(id, game_date, status, home_team_id, away_team_id, home_score, away_score)
-        `)
-        .in('player_id', playerIds)
-        .eq('did_not_play', false)
-        .neq('game_id', game.id)
-        .order('id', { ascending: false })
-        .limit(100);
-
-      playerRecentLogs = ((logsRes.data ?? []) as unknown as Array<
-        PlayerGameStat & { game?: { status?: string; game_date?: string } }
-      >).filter(
-        (r) =>
-          (!r.game?.status || r.game.status === 'final') &&
-          (!r.game?.game_date || r.game.game_date <= game.game_date),
-      );
-    }
+    const keyPlayers = [
+      ...((homePlayersRes.data ?? []) as FootballPlayerSeasonAverage[]),
+      ...((awayPlayersRes.data ?? []) as FootballPlayerSeasonAverage[]),
+    ];
+    const playerIds = Array.from(new Set(keyPlayers.map((p) => p.player_id)));
+    const { playerRecentLogs, playerStatuses } = await fetchCleanLogsAndStatuses(game, playerIds);
 
     const standings = (standingsRes.data ?? []) as unknown as TeamStanding[];
     const teamAvgs = (teamAvgsRes.data ?? []) as FootballTeamSeasonAverage[];
@@ -527,94 +610,56 @@ export async function fetchFootballGameBettingContext(
       awayStanding: standings.find((s) => s.team_id === game.away_team_id) ?? null,
       homeTeamAvg: teamAvgs.find((t) => t.team_id === game.home_team_id) ?? null,
       awayTeamAvg: teamAvgs.find((t) => t.team_id === game.away_team_id) ?? null,
-      homeRecentGames: (homeGamesRes.data ?? []) as unknown as Game[],
-      awayRecentGames: (awayGamesRes.data ?? []) as unknown as Game[],
+      homeRecentGames,
+      awayRecentGames,
       keyPlayers,
       playerRecentLogs,
+      playerStatuses,
     };
   });
   return data;
 }
 
 export async function fetchGameBettingContext(game: Game): Promise<GameBettingContext> {
-  const { data } = await withOfflineCache(`bet_ctx_v3_${game.id}`, async () => {
-    const teamSelect =
-      'id, league_id, external_id, name, short_name, abbreviation, city, conference, division, primary_color, alternate_color, logo_url';
-    const [standingsRes, teamAvgsRes, homeGamesRes, awayGamesRes, playersRes] = await Promise.all([
-      supabase
-        .from('team_standings')
-        .select('*, team:teams(*)')
-        .eq('season_id', game.season_id)
-        .in('team_id', [game.home_team_id, game.away_team_id]),
-      supabase
-        .from('team_season_averages')
-        .select('*')
-        .in('team_id', [game.home_team_id, game.away_team_id]),
-      supabase
-        .from('games')
-        .select(
-          `id, league_id, season_id, game_date, tipoff_at, status, status_detail, period, clock,
-           home_team_id, away_team_id, home_score, away_score, home_linescores, away_linescores, venue, odds,
-           home_team:teams!games_home_team_id_fkey(${teamSelect}),
-           away_team:teams!games_away_team_id_fkey(${teamSelect})`,
-        )
-        .eq('season_id', game.season_id)
-        .eq('status', 'final')
-        .neq('id', game.id)
-        .lte('game_date', game.game_date)
-        .or(`home_team_id.eq.${game.home_team_id},away_team_id.eq.${game.home_team_id}`)
-        .order('game_date', { ascending: false })
-        .limit(6),
-      supabase
-        .from('games')
-        .select(
-          `id, league_id, season_id, game_date, tipoff_at, status, status_detail, period, clock,
-           home_team_id, away_team_id, home_score, away_score, home_linescores, away_linescores, venue, odds,
-           home_team:teams!games_home_team_id_fkey(${teamSelect}),
-           away_team:teams!games_away_team_id_fkey(${teamSelect})`,
-        )
-        .eq('season_id', game.season_id)
-        .eq('status', 'final')
-        .neq('id', game.id)
-        .lte('game_date', game.game_date)
-        .or(`home_team_id.eq.${game.away_team_id},away_team_id.eq.${game.away_team_id}`)
-        .order('game_date', { ascending: false })
-        .limit(6),
-      supabase
-        .from('player_season_averages')
-        .select('*')
-        .eq('season_id', game.season_id)
-        .in('team_id', [game.home_team_id, game.away_team_id])
-        .gt('gp', 0)
-        .order('ppg', { ascending: false, nullsFirst: false })
-        .limit(10),
-    ]);
+  const { data } = await withOfflineCache(`bet_ctx_v4_${game.id}`, async () => {
+    const [standingsRes, teamAvgsRes, homeRecentGames, awayRecentGames, homePlayersRes, awayPlayersRes] =
+      await Promise.all([
+        supabase
+          .from('team_standings')
+          .select('*, team:teams(*)')
+          .eq('season_id', game.season_id)
+          .in('team_id', [game.home_team_id, game.away_team_id]),
+        supabase
+          .from('team_season_averages')
+          .select('*')
+          .eq('season_id', game.season_id)
+          .in('team_id', [game.home_team_id, game.away_team_id]),
+        fetchTeamRecentFinalGames(game, game.home_team_id, false),
+        fetchTeamRecentFinalGames(game, game.away_team_id, false),
+        supabase
+          .from('player_season_averages')
+          .select('*')
+          .eq('season_id', game.season_id)
+          .eq('team_id', game.home_team_id)
+          .gt('gp', 0)
+          .order('ppg', { ascending: false, nullsFirst: false })
+          .limit(8),
+        supabase
+          .from('player_season_averages')
+          .select('*')
+          .eq('season_id', game.season_id)
+          .eq('team_id', game.away_team_id)
+          .gt('gp', 0)
+          .order('ppg', { ascending: false, nullsFirst: false })
+          .limit(8),
+      ]);
 
-    const keyPlayers = (playersRes.data ?? []) as PlayerSeasonAverage[];
-    const playerIds = keyPlayers.map((p) => p.player_id);
-
-    let playerRecentLogs: PlayerGameStat[] = [];
-    if (playerIds.length > 0) {
-      const logsRes = await supabase
-        .from('player_game_stats')
-        .select(`
-          *,
-          game:games(id, game_date, status, home_team_id, away_team_id, home_score, away_score)
-        `)
-        .in('player_id', playerIds)
-        .eq('did_not_play', false)
-        .neq('game_id', game.id)
-        .order('id', { ascending: false })
-        .limit(100);
-
-      playerRecentLogs = ((logsRes.data ?? []) as unknown as Array<
-        PlayerGameStat & { game?: { status?: string; game_date?: string } }
-      >).filter(
-        (r) =>
-          (!r.game?.status || r.game.status === 'final') &&
-          (!r.game?.game_date || r.game.game_date <= game.game_date),
-      );
-    }
+    const keyPlayers = [
+      ...((homePlayersRes.data ?? []) as PlayerSeasonAverage[]),
+      ...((awayPlayersRes.data ?? []) as PlayerSeasonAverage[]),
+    ];
+    const playerIds = Array.from(new Set(keyPlayers.map((p) => p.player_id)));
+    const { playerRecentLogs, playerStatuses } = await fetchCleanLogsAndStatuses(game, playerIds);
 
     const standings = (standingsRes.data ?? []) as unknown as TeamStanding[];
     const teamAvgs = (teamAvgsRes.data ?? []) as TeamSeasonAverage[];
@@ -623,10 +668,11 @@ export async function fetchGameBettingContext(game: Game): Promise<GameBettingCo
       awayStanding: standings.find((s) => s.team_id === game.away_team_id) ?? null,
       homeTeamAvg: teamAvgs.find((t) => t.team_id === game.home_team_id) ?? null,
       awayTeamAvg: teamAvgs.find((t) => t.team_id === game.away_team_id) ?? null,
-      homeRecentGames: (homeGamesRes.data ?? []) as unknown as Game[],
-      awayRecentGames: (awayGamesRes.data ?? []) as unknown as Game[],
+      homeRecentGames,
+      awayRecentGames,
       keyPlayers,
       playerRecentLogs,
+      playerStatuses,
     };
   });
   return data;

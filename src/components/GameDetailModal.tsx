@@ -34,6 +34,7 @@ import {
   isHighProbabilityProp,
   PRO_CONFIDENCE_THRESHOLD,
   summarizeTeamRecent,
+  type PropStrategyMode,
 } from '../utils/betting';
 import {
   buildFootballMatchupInsight,
@@ -162,6 +163,7 @@ export function GameDetailModal({
   const [loadingBet, setLoadingBet] = useState(true);
   const [activeTeamId, setActiveTeamId] = useState<number>(initialGame.away_team_id);
   const [propsScope, setPropsScope] = useState<'all' | 'team' | 'player'>('all');
+  const [propsStrategy, setPropsStrategy] = useState<'safe' | 'value' | 'all'>('safe');
   const [propsOrder, setPropsOrder] = useState<'asc' | 'desc'>('desc');
   const [resultFilter, setResultFilter] = useState<PropResultFilter>('all');
 
@@ -309,6 +311,7 @@ export function GameDetailModal({
         awayRecentGames: fbCtx.awayRecentGames,
         keyPlayers: fbCtx.keyPlayers,
         playerRecentLogs: fbCtx.playerRecentLogs ?? [],
+        playerStatuses: fbCtx.playerStatuses,
       });
       return { homeRecent, awayRecent, insight, propsRecs };
     }
@@ -334,6 +337,7 @@ export function GameDetailModal({
       awayRecentGames: nbaCtx.awayRecentGames,
       keyPlayers: nbaCtx.keyPlayers,
       playerRecentLogs: nbaCtx.playerRecentLogs ?? [],
+      playerStatuses: nbaCtx.playerStatuses,
     });
     return { homeRecent, awayRecent, insight, propsRecs };
   }, [game, betCtx, sport]);
@@ -341,12 +345,14 @@ export function GameDetailModal({
   const scopedProps = useMemo(() => {
     if (!bettingAnalysis) return [];
     const list = bettingAnalysis.propsRecs.filter(
-      (p) => propsScope === 'all' || p.scope === propsScope,
+      (p) =>
+        (propsScope === 'all' || p.scope === propsScope) &&
+        (propsStrategy === 'all' || ((p.strategy ?? 'value') as PropStrategyMode) === propsStrategy),
     );
     return list.toSorted((a, b) =>
       propsOrder === 'asc' ? a.confidence - b.confidence : b.confidence - a.confidence,
     );
-  }, [bettingAnalysis, propsScope, propsOrder]);
+  }, [bettingAnalysis, propsScope, propsStrategy, propsOrder]);
 
   const propsEffectiveness = useMemo(() => {
     if (game.status !== 'final' || scopedProps.length === 0) return null;
@@ -952,33 +958,63 @@ export function GameDetailModal({
                   </button>
                 </div>
 
-                {/* Scope Filter */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {(
-                    [
-                      { key: 'all', label: 'Todos', icon: null },
-                      { key: 'team', label: 'Equipos', icon: Shield },
-                      { key: 'player', label: 'Jugadores', icon: User },
-                    ] as const
-                  ).map((f) => {
-                    const Icon = f.icon;
-                    const active = propsScope === f.key;
-                    return (
-                      <button
-                        key={f.key}
-                        type="button"
-                        onClick={() => setPropsScope(f.key)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
-                          active
-                            ? 'cv-tab-active'
-                            : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.2]'
-                        }`}
-                      >
-                        {Icon && <Icon className="w-3 h-3" aria-hidden="true" />}
-                        {f.label}
-                      </button>
-                    );
-                  })}
+                {/* Strategy & Scope Filters */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="inline-flex rounded-lg bg-[#0b0d11] border border-white/[0.08] p-0.5">
+                    {(
+                      [
+                        { key: 'safe', label: 'Seguras' },
+                        { key: 'value', label: 'Valor' },
+                        { key: 'all', label: 'Todas' },
+                      ] as const
+                    ).map((s) => {
+                      const active = propsStrategy === s.key;
+                      return (
+                        <button
+                          key={s.key}
+                          type="button"
+                          onClick={() => setPropsStrategy(s.key)}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                            active
+                              ? s.key === 'safe'
+                                ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/35'
+                                : 'cv-tab-active'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          {s.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {(
+                      [
+                        { key: 'all', label: 'Todos', icon: null },
+                        { key: 'team', label: 'Equipos', icon: Shield },
+                        { key: 'player', label: 'Jugadores', icon: User },
+                      ] as const
+                    ).map((f) => {
+                      const Icon = f.icon;
+                      const active = propsScope === f.key;
+                      return (
+                        <button
+                          key={f.key}
+                          type="button"
+                          onClick={() => setPropsScope(f.key)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
+                            active
+                              ? 'cv-tab-active'
+                              : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.2]'
+                          }`}
+                        >
+                          {Icon && <Icon className="w-3 h-3" aria-hidden="true" />}
+                          {f.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Post-game Props Effectiveness Summary */}
@@ -1011,7 +1047,7 @@ export function GameDetailModal({
                             ? 'bg-rose-500/12 text-rose-300 border-rose-500/25'
                             : 'bg-white/[0.06] text-slate-200 border-white/[0.1]';
                       const pickBadgeClass =
-                        prop.pick === 'OVER'
+                        prop.pick === 'OVER' || prop.pick === 'DC'
                           ? 'sb-neon-over'
                           : prop.pick === 'UNDER'
                             ? 'sb-neon-under'

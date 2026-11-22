@@ -1023,9 +1023,10 @@ def sync_league(
             }
 
         out: list[dict[str, Any]] = []
+        valid_match_teams = {g["home_team_ext_id"], g["away_team_ext_id"]}
         for ros in summ.get("rosters") or []:
             tid = str((ros.get("team") or {}).get("id") or "")
-            if tid not in valid_team_ids:
+            if tid not in valid_team_ids or tid not in valid_match_teams:
                 continue
             for prow in ros.get("roster") or []:
                 ath = prow.get("athlete") or {}
