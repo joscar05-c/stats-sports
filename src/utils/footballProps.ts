@@ -14,6 +14,8 @@ import {
   evaluatePropStatus,
   getConfidenceTier,
   poissonAtLeast,
+  selectPlayableSafeCandidate,
+  smoothEmpiricalRate,
   type GamePropsEffectivenessSummary,
   type MatchupBettingInsight,
   type PropLiveStatus,
@@ -563,12 +565,12 @@ export function buildFootballPropsRecommendations(
       : homeTeamAvg?.ga_pg ?? (homeRecent.gamesCount > 0 ? homeRecent.avgAgainst : null);
     const oppMod = oppGa != null ? Math.max(0.86, Math.min(1.16, 1 + (oppGa - 1.35) * 0.14)) : 1.0;
 
-    const pLogs = pAllLogs.slice(0, 8);
+    const pLogs = pAllLogs.slice(0, 10);
     const playerSafeCandidates: PropRecommendation[] = [];
     const playerValueCandidates: PropRecommendation[] = [];
 
-    // 5A. Remates Totales
-    if (p.shots_pg >= 1.25) {
+    // 5A. Remates Totales (escalado descendente [2.5, 1.5, 0.5] para evitar cuotas triviales 1.06x)
+    if (p.shots_pg >= 1.15) {
       const recentShots = pLogs.map((l) => getFootballPlayerStatValue(l, 'shots'));
       const recentAvg =
         recentShots.length > 0 ? recentShots.reduce((a, b) => a + b, 0) / recentShots.length : p.shots_pg;
@@ -577,21 +579,56 @@ export function buildFootballPropsRecommendations(
         (recentShots.length >= 3 ? p.shots_pg * 0.72 + recentAvg * 0.28 : p.shots_pg) * oppMod,
       );
 
-      // SAFE Shots: Prefer +1.5 for high-volume shooters (>=72% cal.), else +0.5 (>=70% cal.)
+      const blendShotCalProb = (pPois: number, empHits: number): number => {
+        const smoothed = smoothEmpiricalRate(empHits, recentShots.length, pPois);
+        if (recentShots.length >= 5 && startsRatio >= 0.65) {
+          return 0.45 * pPois + 0.55 * smoothed;
+        }
+        return recentShots.length >= 4 ? 0.65 * pPois + 0.35 * smoothed : pPois;
+      };
+
+      let chosenSafeShotLine: number | null = null;
       if (!avail.questionable) {
-        const tryLine =
-          p.shots_pg >= 2.35 &&
-          poissonAtLeast(lambdaShots, 2) >= 0.7 &&
-          (recentShots.length < 4 || recentShots.filter((v) => v >= 2).length / recentShots.length >= 0.62)
-            ? 1.5
-            : 0.5;
-        const targetK = tryLine === 1.5 ? 2 : 1;
-        const pPois = poissonAtLeast(lambdaShots, targetK);
-        const empHits = recentShots.filter((v) => v >= targetK).length;
-        const empRate = recentShots.length > 0 ? empHits / recentShots.length : pPois;
-        const pCal = Math.min(0.9, recentShots.length >= 4 ? 0.65 * pPois + 0.35 * empRate : pPois);
-        if (pCal >= 0.7 && (recentShots.length < 4 || empRate >= 0.64)) {
-          const conf = clampConf(pCal * 100);
+        let chosenShot: {
+          line: number;
+          pCal: number;
+          empHits: number;
+          empRate: number;
+        } | null = null;
+
+        // Check +2.5 and +1.5 first
+        const midCandidates = [
+          { line: 2.5, targetK: 3, minPg: 2.65, minCal: 0.67, minEmp: 0.6 },
+          { line: 1.5, targetK: 2, minPg: 1.75, minCal: 0.66, minEmp: 0.6 },
+        ];
+        let empRate15 = 0;
+        for (const c of midCandidates) {
+          if (p.shots_pg < c.minPg) continue;
+          const pPois = poissonAtLeast(lambdaShots, c.targetK);
+          const empHits = recentShots.filter((v) => v >= c.targetK).length;
+          const empRate = recentShots.length > 0 ? empHits / recentShots.length : pPois;
+          if (c.line === 1.5) empRate15 = empRate;
+          const pCal = Math.min(0.88, blendShotCalProb(pPois, empHits));
+          if (pCal >= c.minCal && (recentShots.length < 4 || empRate >= c.minEmp)) {
+            chosenShot = { line: c.line, pCal, empHits, empRate };
+            break;
+          }
+        }
+
+        // Fall back to +0.5 only for moderate volume shooters (1.15-1.85) or when +1.5 failed 60% empirical, and avoid >83% (1.06x)
+        if (!chosenShot && (p.shots_pg < 1.85 || (recentShots.length >= 4 && empRate15 < 0.6))) {
+          const pPois05 = poissonAtLeast(lambdaShots, 1);
+          const empHits05 = recentShots.filter((v) => v >= 1).length;
+          const empRate05 = recentShots.length > 0 ? empHits05 / recentShots.length : pPois05;
+          const pCal05 = Math.min(0.83, blendShotCalProb(pPois05, empHits05));
+          if (pCal05 >= 0.68 && (recentShots.length < 4 || empRate05 >= 0.64)) {
+            chosenShot = { line: 0.5, pCal: pCal05, empHits: empHits05, empRate: empRate05 };
+          }
+        }
+
+        if (chosenShot) {
+          chosenSafeShotLine = chosenShot.line;
+          const conf = clampConf(chosenShot.pCal * 100);
           const oddsVal = computePropOddsFromConfidence(conf);
           playerSafeCandidates.push({
             id: `fb_shots_${p.player_id}_safe`,
@@ -603,12 +640,12 @@ export function buildFootballPropsRecommendations(
             teamAbbr,
             playerId: p.player_id,
             footballMetricKey: 'shots',
-            statSummary: `${p.shots_pg.toFixed(1)} REM/PJ (${p.starts}/${p.gp} tit.) · Cumplió ${empHits}/${recentShots.length || p.gp}`,
-            marketLineText: `Línea Segura: +${tryLine} REM · Cuota ${oddsVal.decimal.toFixed(2)}x`,
-            lineValue: tryLine,
+            statSummary: `${p.shots_pg.toFixed(1)} REM/PJ (${p.starts}/${p.gp} tit.) · Cumplió ${chosenShot.empHits}/${recentShots.length || p.gp}`,
+            marketLineText: `Línea Segura: +${chosenShot.line} REM · Cuota ${oddsVal.decimal.toFixed(2)}x`,
+            lineValue: chosenShot.line,
             pick: 'OVER',
-            pickLabel: `Más de ${tryLine} Remates`,
-            rationale: `Poisson λ=${lambdaShots.toFixed(2)} remates y titularidad regular (${p.starts}/${p.gp} inicios) dan ${conf}% de acierto.`,
+            pickLabel: `Más de ${chosenShot.line} Remates`,
+            rationale: `Poisson λ=${lambdaShots.toFixed(2)} remates y titularidad regular (${p.starts}/${p.gp} inicios) dan ${conf}% de acierto para +${chosenShot.line} REM.`,
             confidence: conf,
             confidenceTier: getConfidenceTier(conf),
             estimatedOddsAmerican: oddsVal.american,
@@ -621,14 +658,21 @@ export function buildFootballPropsRecommendations(
         }
       }
 
-      // VALUE Shots (2.5 or 1.5 OVER)
-      const valLine = p.shots_pg >= 2.6 ? 2.5 : 1.5;
+      // VALUE Shots (step above Safe line when Safe already took 1.5 or 0.5 to avoid duplicate line)
+      let valLine = p.shots_pg >= 2.6 ? 2.5 : 1.5;
+      if (chosenSafeShotLine === 2.5) valLine = 3.5;
+      else if (chosenSafeShotLine === 1.5) valLine = 2.5;
+      else if (chosenSafeShotLine === 0.5) valLine = 1.5;
       const valK = Math.ceil(valLine);
       const pPoisVal = poissonAtLeast(lambdaShots, valK);
       const valHits = recentShots.filter((v) => v >= valK).length;
       const valEmpRate = recentShots.length > 0 ? valHits / recentShots.length : pPoisVal;
-      const pCalVal = Math.min(0.72, recentShots.length >= 4 ? 0.65 * pPoisVal + 0.35 * valEmpRate : pPoisVal);
-      if (pCalVal >= 0.58 && (recentShots.length < 4 || valEmpRate >= 0.5)) {
+      const smoothedValEmp = smoothEmpiricalRate(valHits, recentShots.length, pPoisVal);
+      const pCalVal = Math.min(
+        0.72,
+        recentShots.length >= 4 ? 0.6 * pPoisVal + 0.4 * smoothedValEmp : pPoisVal,
+      );
+      if (pCalVal >= 0.56 && (recentShots.length < 4 || valEmpRate >= 0.5)) {
         const conf = clampConf(pCalVal * 100);
         const oddsVal = computePropOddsFromConfidence(conf);
         playerValueCandidates.push({
@@ -656,8 +700,8 @@ export function buildFootballPropsRecommendations(
       }
     }
 
-    // 5B. Remates al Arco (+0.5 SOT Safe)
-    if (p.sot_pg >= 0.9 && !avail.questionable) {
+    // 5B. Remates al Arco (evaluar +1.5 primero para delanteros élite, luego +0.5)
+    if (p.sot_pg >= 0.85 && !avail.questionable) {
       const recentSot = pLogs.map((l) => getFootballPlayerStatValue(l, 'sot'));
       const recentAvg =
         recentSot.length > 0 ? recentSot.reduce((a, b) => a + b, 0) / recentSot.length : p.sot_pg;
@@ -665,12 +709,34 @@ export function buildFootballPropsRecommendations(
         0.35,
         (recentSot.length >= 3 ? p.sot_pg * 0.72 + recentAvg * 0.28 : p.sot_pg) * oppMod,
       );
-      const pPois = poissonAtLeast(lambdaSot, 1);
-      const empHits = recentSot.filter((v) => v >= 1).length;
-      const empRate = recentSot.length > 0 ? empHits / recentSot.length : pPois;
-      const pCal = Math.min(0.86, recentSot.length >= 4 ? 0.65 * pPois + 0.35 * empRate : pPois);
-      if (pCal >= 0.68 && (recentSot.length < 4 || empRate >= 0.6)) {
-        const conf = clampConf(pCal * 100);
+
+      const sotCandidates = [
+        { line: 1.5, targetK: 2, minPg: 1.55, minCal: 0.67, minEmp: 0.6 },
+        { line: 0.5, targetK: 1, minPg: 0.85, minCal: 0.68, minEmp: 0.6 },
+      ];
+      let chosenSot: { line: number; pCal: number; empHits: number } | null = null;
+      for (const c of sotCandidates) {
+        if (p.sot_pg < c.minPg) continue;
+        const pPois = poissonAtLeast(lambdaSot, c.targetK);
+        const empHits = recentSot.filter((v) => v >= c.targetK).length;
+        const empRate = recentSot.length > 0 ? empHits / recentSot.length : pPois;
+        const smoothed = smoothEmpiricalRate(empHits, recentSot.length, pPois);
+        const pCal = Math.min(
+          0.84,
+          recentSot.length >= 5 && startsRatio >= 0.65
+            ? 0.48 * pPois + 0.52 * smoothed
+            : recentSot.length >= 4
+              ? 0.65 * pPois + 0.35 * smoothed
+              : pPois,
+        );
+        if (pCal >= c.minCal && (recentSot.length < 4 || empRate >= c.minEmp)) {
+          chosenSot = { line: c.line, pCal, empHits };
+          break;
+        }
+      }
+
+      if (chosenSot) {
+        const conf = clampConf(chosenSot.pCal * 100);
         const oddsVal = computePropOddsFromConfidence(conf);
         playerSafeCandidates.push({
           id: `fb_sot_${p.player_id}_safe`,
@@ -682,12 +748,12 @@ export function buildFootballPropsRecommendations(
           teamAbbr,
           playerId: p.player_id,
           footballMetricKey: 'sot',
-          statSummary: `${p.sot_pg.toFixed(2)} SOT/PJ (${p.starts}/${p.gp} tit.) · Cumplió ${empHits}/${recentSot.length || p.gp}`,
-          marketLineText: `Línea Segura: +0.5 Al Arco · Cuota ${oddsVal.decimal.toFixed(2)}x`,
-          lineValue: 0.5,
+          statSummary: `${p.sot_pg.toFixed(2)} SOT/PJ (${p.starts}/${p.gp} tit.) · Cumplió ${chosenSot.empHits}/${recentSot.length || p.gp}`,
+          marketLineText: `Línea Segura: +${chosenSot.line} Al Arco · Cuota ${oddsVal.decimal.toFixed(2)}x`,
+          lineValue: chosenSot.line,
           pick: 'OVER',
-          pickLabel: '+0.5 Remates al Arco',
-          rationale: `Frecuencia al arco λ=${lambdaSot.toFixed(2)} proyecta ${conf}% de probabilidad de al menos 1 remate entre los 3 palos.`,
+          pickLabel: `+${chosenSot.line} Remates al Arco`,
+          rationale: `Frecuencia al arco λ=${lambdaSot.toFixed(2)} proyecta ${conf}% de probabilidad de al menos ${Math.ceil(chosenSot.line)} remate${chosenSot.line > 1 ? 's' : ''} entre los 3 palos.`,
           confidence: conf,
           confidenceTier: getConfidenceTier(conf),
           estimatedOddsAmerican: oddsVal.american,
@@ -742,8 +808,8 @@ export function buildFootballPropsRecommendations(
     }
 
     if (playerSafeCandidates.length > 0) {
-      playerSafeCandidates.sort((a, b) => b.confidence - a.confidence);
-      safePlayerPool.push(playerSafeCandidates[0]);
+      const pickedSafe = selectPlayableSafeCandidate(playerSafeCandidates);
+      if (pickedSafe) safePlayerPool.push(pickedSafe);
     }
     if (playerValueCandidates.length > 0) {
       playerValueCandidates.sort((a, b) => b.confidence - a.confidence);

@@ -26,11 +26,16 @@ import {
   americanToImpliedProb,
   buildGamePropsRecommendations,
   buildMatchupBettingInsight,
+  computePropOddsFromConfidence,
+  computeSampleStdDev,
   formatAmericanOdds,
   getConfidenceTier,
   isHighProbabilityProp,
+  normalCdf,
   PLAYER_CHART_METRICS,
+  poissonAtLeast,
   PRO_CONFIDENCE_THRESHOLD,
+  smoothEmpiricalRate,
   summarizeTeamRecent,
   type PropRecommendation,
 } from '../utils/betting';
@@ -695,28 +700,63 @@ export function PropAnalysisView({
     const totalHist = historySeries.length;
     const hitRatePct = totalHist > 0 ? Math.round((hits / totalHist) * 100) : 0;
 
-    // Recalculate dynamic confidence at customLine
-    const relDenom =
-      effectivePick === 'SPREAD'
-        ? 8
-        : effectivePick === 'ML' || effectivePick === 'DC'
-          ? 12
-          : Math.max(3, customLine);
+    // Recalculate calibrated confidence & dynamic odds at customLine / targetPick
     const matchesOriginalConfig =
       Math.abs(customLine - prop.lineValue) < 0.01 && effectivePick === prop.pick;
-    const dynamicConf = matchesOriginalConfig
-      ? prop.confidence
-      : Math.max(
-          42,
-          Math.min(
-            94,
-            Math.round(
-              50 +
-                Math.max(-18, Math.min(26, (signedEdge / relDenom) * 95)) +
-                (totalHist > 0 ? (hits / totalHist - 0.5) * 30 : 0),
-            ),
-          ),
-        );
+
+    let dynamicConf = prop.confidence;
+    let dynamicOdds: { american: number; decimal: number } = {
+      american: prop.estimatedOddsAmerican,
+      decimal: prop.estimatedMultiplier,
+    };
+
+    if (!matchesOriginalConfig) {
+      const isPoissonMarket =
+        (sport === 'football' &&
+          (prop.footballMetricKey != null || prop.id.startsWith('fb_total_'))) ||
+        prop.metricKey === 'tpm';
+
+      let pModel: number;
+      if (isPoissonMarket && effectivePick !== 'SPREAD' && effectivePick !== 'ML' && effectivePick !== 'DC') {
+        const k = Math.max(1, Math.floor(customLine) + 1);
+        const pOverPois = poissonAtLeast(Math.max(0.2, projectedVal), k);
+        pModel = effectivePick === 'UNDER' ? 1 - pOverPois : pOverPois;
+      } else {
+        const histVals = historySeries.map((h) => h.value);
+        const priorSd = prop.id.startsWith('team_total_')
+          ? 18.5
+          : effectivePick === 'SPREAD'
+            ? 12.5
+            : prop.id.startsWith('team_pts_')
+              ? 11.0
+              : prop.id.startsWith('team_3pm_')
+                ? 3.3
+                : prop.id.startsWith('team_reb_')
+                  ? 5.6
+                  : effectivePick === 'ML' || effectivePick === 'DC'
+                    ? 12.0
+                    : Math.max(1.5, seasonBaseline * 0.32);
+        const sd = computeSampleStdDev(histVals, priorSd);
+        pModel = normalCdf(signedEdge / Math.max(1.0, sd));
+      }
+
+      const empSmoothed = totalHist > 0 ? smoothEmpiricalRate(hits, totalHist, pModel) : pModel;
+      const pBlend =
+        totalHist >= 5
+          ? 0.5 * pModel + 0.5 * empSmoothed
+          : totalHist > 0
+            ? 0.68 * pModel + 0.32 * empSmoothed
+            : pModel;
+      dynamicConf = Math.max(25, Math.min(91, Math.round(pBlend * 100)));
+      dynamicOdds = computePropOddsFromConfidence(dynamicConf);
+    }
+
+    const isCustomSimulation = !matchesOriginalConfig;
+    const dynamicMarketLineText = !isCustomSimulation
+      ? prop.marketLineText
+      : effectivePick === 'SPREAD'
+        ? `Hándicap Simulado: ${prop.teamAbbr} ${customLine > 0 ? `+${customLine.toFixed(1)}` : customLine.toFixed(1)} · Cuota est. ${dynamicOdds.decimal.toFixed(2)}x (${formatAmericanOdds(dynamicOdds.american)})`
+        : `Línea Simulada: ${effectivePick} ${customLine.toFixed(1)} ${unit} · Cuota est. ${dynamicOdds.decimal.toFixed(2)}x (${formatAmericanOdds(dynamicOdds.american)})`;
 
     // Accessibility verdict ("¿Es accesible apostar a este mercado?")
     let accessibilityTitle = 'Accesibilidad Moderada';
@@ -822,6 +862,9 @@ export function PropAnalysisView({
       totalHist,
       hitRatePct,
       dynamicConf,
+      dynamicOdds,
+      isCustomSimulation,
+      dynamicMarketLineText,
       accessibilityTitle,
       accessibilityLevel,
       accessibilityText,
@@ -830,6 +873,7 @@ export function PropAnalysisView({
   }, [
     prop,
     context,
+    sport,
     fullPlayerLogs,
     liveGame,
     homeRecent,
@@ -840,12 +884,15 @@ export function PropAnalysisView({
   ]);
 
   const liveStatus = useMemo(() => {
-    return evaluateAnyPropStatus(prop, liveGame, boxStats, sport);
-  }, [sport, prop, liveGame, boxStats]);
+    const simulatedProp: PropRecommendation = analysis.isCustomSimulation
+      ? { ...prop, lineValue: customLine, pick: analysis.effectivePick }
+      : prop;
+    return evaluateAnyPropStatus(simulatedProp, liveGame, boxStats, sport);
+  }, [sport, prop, liveGame, boxStats, analysis.isCustomSimulation, analysis.effectivePick, customLine]);
 
   const safeStake = Number.isFinite(stakeAmount) && stakeAmount > 0 ? stakeAmount : 0;
-  const payoutTotal = safeStake * prop.estimatedMultiplier;
-  const payoutNet = safeStake * (prop.estimatedMultiplier - 1);
+  const payoutTotal = safeStake * analysis.dynamicOdds.decimal;
+  const payoutNet = safeStake * (analysis.dynamicOdds.decimal - 1);
   const currencyPrefix = stakeCurrency === 'PEN' ? 'S/' : '$';
 
   const maxChartVal = useMemo(() => {
@@ -935,7 +982,8 @@ export function PropAnalysisView({
                   {prop.marketLabel}
                 </span>
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white/[0.05] text-slate-200 border border-white/[0.1] tabular-nums">
-                  Cuota {prop.estimatedMultiplier.toFixed(2)}x ({formatAmericanOdds(prop.estimatedOddsAmerican)})
+                  Cuota {analysis.dynamicOdds.decimal.toFixed(2)}x ({formatAmericanOdds(analysis.dynamicOdds.american)})
+                  {analysis.isCustomSimulation ? ' · Simulada' : ''}
                 </span>
                 {liveGame.status === 'live' && (
                   <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded bg-red-500/12 text-red-300 border border-red-500/25">
@@ -1087,7 +1135,7 @@ export function PropAnalysisView({
                 </button>
               </div>
             </div>
-            <div className="text-[11px] text-slate-300 truncate">{prop.marketLineText}</div>
+            <div className="text-[11px] text-slate-300 truncate">{analysis.dynamicMarketLineText}</div>
           </div>
 
           {/* Card 2: Model Projection */}
@@ -1165,9 +1213,9 @@ export function PropAnalysisView({
               Calculadora de retorno estimado
             </div>
             <div className="text-[11px] text-slate-400">
-              Cuota estimada:{' '}
-              <strong className="text-slate-100">{prop.estimatedMultiplier.toFixed(2)}x</strong> (
-              {formatAmericanOdds(prop.estimatedOddsAmerican)}) · Elige moneda y monto:
+              Cuota {analysis.isCustomSimulation ? 'simulada' : 'estimada'}:{' '}
+              <strong className="text-slate-100">{analysis.dynamicOdds.decimal.toFixed(2)}x</strong> (
+              {formatAmericanOdds(analysis.dynamicOdds.american)}) · Elige moneda y monto:
             </div>
           </div>
 

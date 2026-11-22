@@ -15,8 +15,11 @@ import { fetchPlayerProfileAndLogs } from '../services/basketballApi';
 import { downloadPlayerStatCard } from '../utils/shareCard';
 import {
   buildSinglePlayerPropsRecommendations,
+  computePropOddsFromConfidence,
+  formatAmericanOdds,
   isHighProbabilityProp,
   PLAYER_CHART_METRICS,
+  smoothEmpiricalRate,
   suggestPropLine,
   type PlayerChartMetric,
 } from '../utils/betting';
@@ -165,6 +168,13 @@ export function PlayerDetailModal({
 
   const hitRatePct =
     chartLogs.length > 0 ? Math.round((chartStats.hitCount / chartLogs.length) * 100) : 0;
+  const lineSimOdds = useMemo(() => {
+    const smoothedPct =
+      chartLogs.length > 0
+        ? Math.round(smoothEmpiricalRate(chartStats.hitCount, chartLogs.length, 0.5) * 100)
+        : 50;
+    return computePropOddsFromConfidence(smoothedPct);
+  }, [chartStats.hitCount, chartLogs.length]);
   const lineBottomPct = Math.min(96, Math.max(4, (propLine / chartStats.maxScale) * 100));
 
   const adjustPropLine = (delta: number) => {
@@ -592,6 +602,9 @@ export function PlayerDetailModal({
                         <strong className="text-slate-200">
                           {chartStats.last5Hit}/{chartStats.last5Total}
                         </strong>
+                      </span>
+                      <span className="text-slate-300 font-semibold px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.08]">
+                        Est. {lineSimOdds.decimal.toFixed(2)}x ({formatAmericanOdds(lineSimOdds.american)})
                       </span>
                       <span className="text-slate-400">
                         Prom:{' '}

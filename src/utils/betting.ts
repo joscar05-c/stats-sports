@@ -438,6 +438,33 @@ export function computeSampleStdDev(values: number[], priorSd: number): number {
   return Math.max(0.5, sampleSd * weight + safePrior * (1 - weight));
 }
 
+/**
+ * Bayesian-smoothed empirical hit rate to avoid 100% small-sample inflation (e.g. 6/6 -> 90%+).
+ */
+export function smoothEmpiricalRate(hits: number, total: number, priorProb: number): number {
+  if (total <= 0) return priorProb;
+  return Math.max(0, Math.min(1, (hits + 1.2 * priorProb) / (total + 1.2)));
+}
+
+/**
+ * Select the most playable Safe recommendation (sweet-spot 67%-82% confidence for viable odds)
+ * instead of trivial 86%-91% lines that pay ~1.06x.
+ */
+export function selectPlayableSafeCandidate(
+  candidates: PropRecommendation[],
+): PropRecommendation | null {
+  if (candidates.length === 0) return null;
+  const inSweetSpot = candidates.filter((c) => c.confidence >= 67 && c.confidence <= 82);
+  if (inSweetSpot.length > 0) {
+    return [...inSweetSpot].sort((a, b) => b.confidence - a.confidence)[0];
+  }
+  const highAbove = candidates.filter((c) => c.confidence > 82);
+  if (highAbove.length > 0) {
+    return [...highAbove].sort((a, b) => a.confidence - b.confidence)[0];
+  }
+  return [...candidates].sort((a, b) => b.confidence - a.confidence)[0];
+}
+
 const HARD_OUT_STATUS_TOKENS = ['out', 'doubt', 'suspend', 'inactive', 'injur', 'ir', 'dnp'];
 const QUESTIONABLE_STATUS_TOKENS = ['question', 'day-to-day', 'gtd', 'probab'];
 
@@ -584,7 +611,7 @@ export function computePropOddsFromConfidence(
       decimal: Number((dec ?? 1.91).toFixed(2)),
     };
   }
-  const p = Math.max(0.5, Math.min(0.92, confidence / 100));
+  const p = Math.max(0.12, Math.min(0.9, confidence / 100));
   const viggedProb = Math.min(0.955, p * 1.045);
   const dec = Math.max(1.06, 1 / viggedProb);
   const american =
@@ -766,89 +793,130 @@ function evaluatePlayerPropMarkets(
 
   const out: PropRecommendation[] = [];
 
-  // A) SAFE MODE (Alternate Conservative Line with Calibrated High Hit Rate >= 66%)
+  // A) SAFE MODE (Alternate Conservative Line Scaled for Viable Odds, 67%-82% Target)
   if (!ctx?.questionable && (seasonMpg === 0 || seasonMpg >= 18) && sampleValues.length >= 4) {
     if (metricKey === 'tpm') {
-      if (proj >= 1.35) {
-        const safeLine = 0.5;
-        const pPois = poissonAtLeast(proj, 1);
-        const empHits = sampleValues.filter((v) => v >= 1).length;
+      const candidateLines = [2.5, 1.5, 0.5];
+      let chosenTpm: {
+        safeLine: number;
+        pCal: number;
+        empHits: number;
+        empRate: number;
+      } | null = null;
+      for (const candidateLine of candidateLines) {
+        const targetK = Math.ceil(candidateLine);
+        if (targetK === 1 ? proj < 1.3 : proj < candidateLine + 0.25) continue;
+        const pPois = poissonAtLeast(proj, targetK);
+        const empHits = sampleValues.filter((v) => v >= targetK).length;
         const empRate = empHits / sampleValues.length;
-        const pCal = Math.min(0.89, sampleValues.length >= 6 ? 0.65 * pPois + 0.35 * empRate : pPois);
-        if (pCal >= 0.7 && empRate >= 0.66) {
-          const confidence = clampConfidence(pCal * 100);
-          const oddsPair = computePropOddsFromConfidence(confidence);
-          out.push({
-            id: `player_${player.player_id}_${metricKey}_safe`,
-            scope: 'player',
-            strategy: 'safe',
-            teamId: player.team_id ?? undefined,
-            projectedValue: Number(proj.toFixed(2)),
-            marketLabel: `${meta.market} · Segura`,
-            subjectName: player.full_name,
-            teamAbbr: player.team_abbreviation ?? 'NBA',
-            playerId: player.player_id,
-            metricKey,
-            statSummary: `Temp: ${seasonAvg.toFixed(1)} ${meta.unit} · Cumplió ${empHits}/${sampleValues.length} últimos PJ (${Math.round(empRate * 100)}%)`,
-            marketLineText: `Línea Segura: +${safeLine.toFixed(1)} ${meta.unit} · Cuota ${oddsPair.decimal.toFixed(2)}x`,
-            lineValue: safeLine,
-            pick: 'OVER',
-            pickLabel: `OVER ${safeLine.toFixed(1)} ${meta.unit}`,
-            rationale: `Modelo Poisson proyecta ${proj.toFixed(1)} ${meta.unit} (prob. real de ≥1 triple: ${confidence}%).${defNote}${extraRationale}`,
-            confidence,
-            confidenceTier: getConfidenceTier(confidence),
-            estimatedOddsAmerican: oddsPair.american,
-            estimatedMultiplier: oddsPair.decimal,
-            contextBadges: [{ label: 'Línea Segura', tone: 'emerald' }, ...contextBadges],
-            mpgInfo,
-            splitInfo,
-            restInfo,
-          });
+        const smoothedEmp = smoothEmpiricalRate(empHits, sampleValues.length, pPois);
+        const pCal = Math.min(
+          0.89,
+          sampleValues.length >= 6 ? 0.6 * pPois + 0.4 * smoothedEmp : pPois,
+        );
+        if (pCal >= 0.68 && empRate >= 0.62) {
+          chosenTpm = { safeLine: candidateLine, pCal, empHits, empRate };
+          break; // Highest qualifying line wins (e.g. +1.5 3PT over trivial +0.5 3PT)
         }
+      }
+      if (chosenTpm) {
+        const confidence = clampConfidence(chosenTpm.pCal * 100);
+        const oddsPair = computePropOddsFromConfidence(confidence);
+        const targetK = Math.ceil(chosenTpm.safeLine);
+        out.push({
+          id: `player_${player.player_id}_${metricKey}_safe`,
+          scope: 'player',
+          strategy: 'safe',
+          teamId: player.team_id ?? undefined,
+          projectedValue: Number(proj.toFixed(2)),
+          marketLabel: `${meta.market} · Segura`,
+          subjectName: player.full_name,
+          teamAbbr: player.team_abbreviation ?? 'NBA',
+          playerId: player.player_id,
+          metricKey,
+          statSummary: `Temp: ${seasonAvg.toFixed(1)} ${meta.unit} · Cumplió ${chosenTpm.empHits}/${sampleValues.length} últimos PJ (${Math.round(chosenTpm.empRate * 100)}%)`,
+          marketLineText: `Línea Segura: +${chosenTpm.safeLine.toFixed(1)} ${meta.unit} · Cuota ${oddsPair.decimal.toFixed(2)}x`,
+          lineValue: chosenTpm.safeLine,
+          pick: 'OVER',
+          pickLabel: `OVER ${chosenTpm.safeLine.toFixed(1)} ${meta.unit}`,
+          rationale: `Modelo Poisson proyecta ${proj.toFixed(1)} ${meta.unit} (prob. real de ≥${targetK} ${targetK === 1 ? 'triple' : 'triples'}: ${confidence}%).${defNote}${extraRationale}`,
+          confidence,
+          confidenceTier: getConfidenceTier(confidence),
+          estimatedOddsAmerican: oddsPair.american,
+          estimatedMultiplier: oddsPair.decimal,
+          contextBadges: [{ label: 'Línea Segura', tone: 'emerald' }, ...contextBadges],
+          mpgInfo,
+          splitInfo,
+          restInfo,
+        });
       }
     } else {
       const stdLine = suggestPropLine(seasonAvg);
       const minGap = metricKey === 'pts' || metricKey === 'pra' ? 2.0 : 1.0;
-      const safeLine = Math.min(
-        stdLine - minGap,
-        snapDownHalf(proj - 0.58 * sd, meta.minSafeLine),
-      );
-      if (safeLine >= meta.minSafeLine && proj - safeLine >= 1.0) {
-        const z = (proj - safeLine) / Math.max(1.2, sd);
+      const maxSafeLine = stdLine - minGap;
+      const baseSafeLine = snapDownHalf(proj - 0.65 * sd, meta.minSafeLine);
+      const step = metricKey === 'pts' || metricKey === 'pra' ? 1.0 : 0.5;
+      const candidates: Array<{
+        safeLine: number;
+        z: number;
+        pCal: number;
+        empHits: number;
+      }> = [];
+
+      for (
+        let line = Math.min(maxSafeLine, Math.max(meta.minSafeLine, maxSafeLine));
+        line >= Math.max(meta.minSafeLine, Math.min(maxSafeLine, baseSafeLine) - step * 2);
+        line = Number((line - step).toFixed(1))
+      ) {
+        if (proj - line < 1.0) continue;
+        const z = (proj - line) / Math.max(1.2, sd);
         const pNorm = normalCdf(z);
-        const empHits = sampleValues.filter((v) => v > safeLine).length;
+        const empHits = sampleValues.filter((v) => v > line).length;
         const empRate = empHits / sampleValues.length;
-        const pCal = Math.min(0.88, sampleValues.length >= 6 ? 0.65 * pNorm + 0.35 * empRate : pNorm);
-        if (pCal >= 0.66 && empRate >= 0.62) {
-          const confidence = clampConfidence(pCal * 100);
-          const oddsPair = computePropOddsFromConfidence(confidence);
-          out.push({
-            id: `player_${player.player_id}_${metricKey}_safe`,
-            scope: 'player',
-            strategy: 'safe',
-            teamId: player.team_id ?? undefined,
-            projectedValue: Number(proj.toFixed(1)),
-            marketLabel: `${meta.market} · Segura`,
-            subjectName: player.full_name,
-            teamAbbr: player.team_abbreviation ?? 'NBA',
-            playerId: player.player_id,
-            metricKey,
-            statSummary: `Temp: ${seasonAvg.toFixed(1)} ${meta.unit} (SD ${sd.toFixed(1)}) · Cumplió ${empHits}/${sampleValues.length} últimos PJ`,
-            marketLineText: `Línea Segura: ${safeLine.toFixed(1)} ${meta.unit} · Cuota ${oddsPair.decimal.toFixed(2)}x`,
-            lineValue: safeLine,
-            pick: 'OVER',
-            pickLabel: `OVER ${safeLine.toFixed(1)} ${meta.unit}`,
-            rationale: `Proyección ${proj.toFixed(1)} vs línea conservadora ${safeLine.toFixed(1)} (z=+${z.toFixed(2)}, prob. calibrada ${confidence}%).${defNote}${extraRationale}`,
-            confidence,
-            confidenceTier: getConfidenceTier(confidence),
-            estimatedOddsAmerican: oddsPair.american,
-            estimatedMultiplier: oddsPair.decimal,
-            contextBadges: [{ label: 'Línea Segura', tone: 'emerald' }, ...contextBadges],
-            mpgInfo,
-            splitInfo,
-            restInfo,
-          });
+        const smoothedEmp = smoothEmpiricalRate(empHits, sampleValues.length, pNorm);
+        const pCal = Math.min(
+          0.88,
+          sampleValues.length >= 6 ? 0.6 * pNorm + 0.4 * smoothedEmp : pNorm,
+        );
+        if (pCal >= 0.67 && empRate >= 0.62) {
+          candidates.push({ safeLine: line, z, pCal, empHits });
         }
+      }
+
+      if (candidates.length > 0) {
+        // Prefer the highest line whose calibrated confidence stays in the 67%-82% playable range
+        const inRange = candidates.filter((c) => Math.round(c.pCal * 100) <= 82);
+        const chosen = inRange.length > 0
+          ? inRange.sort((a, b) => b.safeLine - a.safeLine)[0]
+          : candidates.sort((a, b) => b.safeLine - a.safeLine)[0];
+        const confidence = clampConfidence(chosen.pCal * 100);
+        const oddsPair = computePropOddsFromConfidence(confidence);
+        out.push({
+          id: `player_${player.player_id}_${metricKey}_safe`,
+          scope: 'player',
+          strategy: 'safe',
+          teamId: player.team_id ?? undefined,
+          projectedValue: Number(proj.toFixed(1)),
+          marketLabel: `${meta.market} · Segura`,
+          subjectName: player.full_name,
+          teamAbbr: player.team_abbreviation ?? 'NBA',
+          playerId: player.player_id,
+          metricKey,
+          statSummary: `Temp: ${seasonAvg.toFixed(1)} ${meta.unit} (SD ${sd.toFixed(1)}) · Cumplió ${chosen.empHits}/${sampleValues.length} últimos PJ`,
+          marketLineText: `Línea Segura: ${chosen.safeLine.toFixed(1)} ${meta.unit} · Cuota ${oddsPair.decimal.toFixed(2)}x`,
+          lineValue: chosen.safeLine,
+          pick: 'OVER',
+          pickLabel: `OVER ${chosen.safeLine.toFixed(1)} ${meta.unit}`,
+          rationale: `Proyección ${proj.toFixed(1)} vs línea conservadora ${chosen.safeLine.toFixed(1)} (z=+${chosen.z.toFixed(2)}, prob. calibrada ${confidence}%).${defNote}${extraRationale}`,
+          confidence,
+          confidenceTier: getConfidenceTier(confidence),
+          estimatedOddsAmerican: oddsPair.american,
+          estimatedMultiplier: oddsPair.decimal,
+          contextBadges: [{ label: 'Línea Segura', tone: 'emerald' }, ...contextBadges],
+          mpgInfo,
+          splitInfo,
+          restInfo,
+        });
       }
     }
   }
@@ -1591,16 +1659,20 @@ export function buildGamePropsRecommendations(params: {
       }
     }
 
-    // Pick top 1 safe prop per player, favoring core stats over +0.5 3PT when close in probability
+    // Pick top 1 safe prop per player within playable confidence window, favoring core stats when close
     if (pSafeRecs.length > 0) {
-      const bestCore = pSafeRecs
-        .filter((r) => r.metricKey !== 'tpm')
-        .sort((a, b) => b.confidence - a.confidence)[0];
+      const bestCore = selectPlayableSafeCandidate(
+        pSafeRecs.filter((r) => r.metricKey !== 'tpm'),
+      );
       const bestTpm = pSafeRecs.find((r) => r.metricKey === 'tpm');
-      if (bestCore && (!bestTpm || bestCore.confidence >= bestTpm.confidence - 5)) {
+      if (
+        bestCore &&
+        (!bestTpm || bestTpm.confidence > 83 || bestCore.confidence >= bestTpm.confidence - 5)
+      ) {
         safePlayerPool.push(bestCore);
-      } else if (bestTpm) {
-        safePlayerPool.push(bestTpm);
+      } else {
+        const picked = selectPlayableSafeCandidate(pSafeRecs);
+        if (picked) safePlayerPool.push(picked);
       }
     }
 
