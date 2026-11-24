@@ -11,7 +11,9 @@ import type {
   TeamSeasonAverage,
   TeamStanding,
 } from '../types/database';
+import { formatDecimalOdds, formatSpreadCompact } from '../utils/betting';
 import { ModalDialog } from './ModalDialog';
+import { PastGamesHistoryPanel } from './PastGamesHistoryPanel';
 import { PlayerAvatar } from './PlayerAvatar';
 
 interface TeamDetailModalProps {
@@ -38,6 +40,7 @@ export function TeamDetailModal({
   const [fbTeamAvg, setFbTeamAvg] = useState<FootballTeamSeasonAverage | null>(null);
   const [fbPlayerAvgs, setFbPlayerAvgs] = useState<FootballPlayerSeasonAverage[]>([]);
   const [tab, setTab] = useState<'stats' | 'roster' | 'games'>('stats');
+  const [gamesSubFilter, setGamesSubFilter] = useState<'final' | 'upcoming' | 'all'>('final');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -52,6 +55,8 @@ export function TeamDetailModal({
         setPlayerAvgs(res.playerAverages);
         setFbTeamAvg(res.footballTeamAverage);
         setFbPlayerAvgs(res.footballPlayerAverages);
+        const hasPlayed = res.games.some((g) => g.status === 'final');
+        setGamesSubFilter(hasPlayed ? 'final' : 'upcoming');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -60,6 +65,21 @@ export function TeamDetailModal({
       active = false;
     };
   }, [team.id, sport]);
+
+  const playedGames = useMemo(
+    () =>
+      games
+        .filter((g) => g.status === 'final')
+        .sort((a, b) => b.game_date.localeCompare(a.game_date) || b.id - a.id),
+    [games],
+  );
+  const upcomingGames = useMemo(
+    () =>
+      games
+        .filter((g) => g.status !== 'final')
+        .sort((a, b) => a.game_date.localeCompare(b.game_date) || a.id - b.id),
+    [games],
+  );
 
   const avgByPlayerId = useMemo(() => {
     const map = new Map<number, PlayerSeasonAverage>();
@@ -112,7 +132,7 @@ export function TeamDetailModal({
     <ModalDialog
       onClose={onClose}
       ariaLabelledBy="team-modal-title"
-      maxWidthCss="42rem"
+      maxWidthCss="56rem"
       borderClass="border border-white/[0.1]"
     >
       {(requestClose) => (
@@ -564,57 +584,121 @@ export function TeamDetailModal({
               })}
             </div>
           ) : (
-            <div className="space-y-2">
-              {games.map((g) => {
-                const isHome = g.home_team_id === team.id;
-                const opp = isHome ? g.away_team : g.home_team;
-                const myScore = isHome ? g.home_score : g.away_score;
-                const oppScore = isHome ? g.away_score : g.home_score;
-                const won = g.status === 'final' && myScore > oppScore;
-                const drew = g.status === 'final' && myScore === oppScore;
-                return (
-                  <button
-                    key={g.id}
-                    onClick={() => onSelectGame(g)}
-                    className="w-full flex items-center justify-between p-3 rounded-lg bg-[#0e1117] border border-white/[0.08] hover:border-white/[0.2] text-left tabular-nums transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-slate-400 w-12">{g.game_date.slice(5)}</span>
-                      {opp.logo_url && (
-                        <img src={opp.logo_url} alt={opp.abbreviation} className="w-6 h-6" />
-                      )}
-                      <div>
-                        <div className="text-sm font-semibold text-white">
-                          {isHome ? 'vs' : '@'} {opp.short_name}
-                        </div>
-                        <div className="text-[11px] text-slate-400">{g.status_detail}</div>
-                      </div>
+            <div className="space-y-4">
+              {/* Sub-filter: Jugados / Próximos / Todos */}
+              <div
+                role="region"
+                aria-label="Filtrar partidos del equipo"
+                className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5"
+              >
+                {(
+                  [
+                    { key: 'final', label: `Jugados (${playedGames.length})` },
+                    { key: 'upcoming', label: `Próximos (${upcomingGames.length})` },
+                    { key: 'all', label: `Todos (${games.length})` },
+                  ] as const
+                ).map((opt) => {
+                  const active = gamesSubFilter === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={(e) => {
+                        setGamesSubFilter(opt.key);
+                        e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                      }}
+                      className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap tabular-nums ${
+                        active
+                          ? 'cv-tab-active'
+                          : 'bg-[#0e1117] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {(gamesSubFilter === 'upcoming' || gamesSubFilter === 'all') && (
+                <div className="space-y-2">
+                  {gamesSubFilter === 'all' && upcomingGames.length > 0 && (
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      Próximos y en vivo ({upcomingGames.length})
                     </div>
-                    {g.status === 'scheduled' ? (
-                      <span className="text-xs font-medium text-slate-400">Programado</span>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        {g.status === 'final' && (
-                          <span
-                            className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${
-                              won
-                                ? 'bg-emerald-500/12 text-emerald-300'
-                                : drew
-                                  ? 'bg-white/[0.06] text-slate-300'
-                                  : 'bg-rose-500/12 text-rose-300'
-                            }`}
-                          >
-                            {won ? 'G' : drew ? 'E' : 'P'}
-                          </span>
-                        )}
-                        <span className="font-bold text-sm text-white">
-                          {myScore}-{oppScore}
-                        </span>
+                  )}
+                  {upcomingGames.length === 0 ? (
+                    gamesSubFilter === 'upcoming' && (
+                      <div className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-6 text-center text-xs text-slate-400">
+                        Sin próximos partidos programados en calendario.
                       </div>
-                    )}
-                  </button>
-                );
-              })}
+                    )
+                  ) : (
+                    upcomingGames.map((g) => {
+                      const isHome = g.home_team_id === team.id;
+                      const opp = isHome ? g.away_team : g.home_team;
+                      return (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => onSelectGame(g)}
+                          className="w-full flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-[#0e1117] border border-white/[0.08] hover:border-white/[0.2] text-left tabular-nums transition-colors"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="text-xs text-slate-400 w-12 shrink-0">{g.game_date.slice(5)}</span>
+                            {opp.logo_url && (
+                              <img src={opp.logo_url} alt={opp.abbreviation} className="w-6 h-6 shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-white truncate">
+                                {isHome ? 'vs' : '@'} {opp.short_name}
+                              </div>
+                              <div className="text-[11px] text-slate-400">
+                                {g.status_detail || 'Programado'}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px] text-slate-300">
+                            {g.odds?.home_spread != null && (
+                              <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.07]">
+                                {g.home_team.abbreviation} {formatSpreadCompact(g.odds.home_spread)}
+                              </span>
+                            )}
+                            {g.odds?.over_under != null && (
+                              <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.07]">
+                                O/U {g.odds.over_under}
+                              </span>
+                            )}
+                            {(isHome ? g.odds?.home_moneyline : g.odds?.away_moneyline) != null && (
+                              <span className="px-2 py-0.5 rounded bg-white/[0.05] text-white font-semibold">
+                                {formatDecimalOdds(isHome ? g.odds?.home_moneyline : g.odds?.away_moneyline)}x
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {(gamesSubFilter === 'final' || gamesSubFilter === 'all') && (
+                <div className="space-y-2">
+                  {gamesSubFilter === 'all' && playedGames.length > 0 && (
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      Partidos jugados con estadísticas ({playedGames.length})
+                    </div>
+                  )}
+                  <PastGamesHistoryPanel
+                    games={playedGames}
+                    focusTeamId={team.id}
+                    focusTeamName={team.short_name}
+                    sport={sport}
+                    emptyMessage="Aún no hay partidos finalizados registrados para este equipo."
+                    onSelectGame={onSelectGame}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

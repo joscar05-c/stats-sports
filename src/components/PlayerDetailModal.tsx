@@ -11,7 +11,7 @@ import {
   ArrowUpDown,
   Lock,
 } from 'lucide-react';
-import { fetchPlayerProfileAndLogs } from '../services/basketballApi';
+import { fetchGameById, fetchPlayerProfileAndLogs } from '../services/basketballApi';
 import { downloadPlayerStatCard } from '../utils/shareCard';
 import {
   buildSinglePlayerPropsRecommendations,
@@ -26,6 +26,7 @@ import {
 } from '../utils/betting';
 import type {
   FootballPlayerSeasonAverage,
+  Game,
   Player,
   PlayerGameStat,
   PlayerSeasonAverage,
@@ -45,6 +46,7 @@ interface PlayerDetailModalProps {
   isPro: boolean;
   onClose: () => void;
   onOpenProModal: () => void;
+  onSelectGame?: (game: Game) => void;
 }
 
 const METRIC_ORDER: PlayerChartMetric[] = ['pts', 'reb', 'ast', 'pra', 'tpm'];
@@ -55,6 +57,7 @@ export function PlayerDetailModal({
   isPro,
   onClose,
   onOpenProModal,
+  onSelectGame,
 }: PlayerDetailModalProps) {
   const [player, setPlayer] = useState<Player | null>(null);
   const [average, setAverage] = useState<PlayerSeasonAverage | null>(null);
@@ -872,7 +875,20 @@ export function PlayerDetailModal({
                                   {row.game?.game_date?.slice(5) ?? '-'}
                                 </td>
                                 <td className="py-2 px-2 font-semibold text-slate-200">
-                                  {isHome ? 'vs' : '@'} {opp ?? 'EPL'}
+                                  {onSelectGame && row.game_id ? (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        const g = await fetchGameById(row.game_id);
+                                        if (g) onSelectGame(g);
+                                      }}
+                                      className="font-semibold text-slate-200 hover:text-blue-300 hover:underline transition-colors text-left"
+                                    >
+                                      {isHome ? 'vs' : '@'} {opp ?? 'EPL'}
+                                    </button>
+                                  ) : (
+                                    `${isHome ? 'vs' : '@'} ${opp ?? 'EPL'}`
+                                  )}
                                 </td>
                                 <td className="text-center py-2 px-2 text-slate-400">
                                   {row.starter ? 'TIT' : 'SUP'}
@@ -921,7 +937,20 @@ export function PlayerDetailModal({
                                 {row.game?.game_date?.slice(5) ?? '-'}
                               </td>
                               <td className="py-2 px-2 font-semibold text-slate-200">
-                                {isHome ? 'vs' : '@'} {opp ?? 'NBA'}
+                                {onSelectGame && row.game_id ? (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const g = await fetchGameById(row.game_id);
+                                      if (g) onSelectGame(g);
+                                    }}
+                                    className="font-semibold text-slate-200 hover:text-blue-300 hover:underline transition-colors text-left"
+                                  >
+                                    {isHome ? 'vs' : '@'} {opp ?? 'NBA'}
+                                  </button>
+                                ) : (
+                                  `${isHome ? 'vs' : '@'} ${opp ?? 'NBA'}`
+                                )}
                               </td>
                               <td className="text-right py-2 px-2 text-slate-300">{row.minutes}</td>
                               <td

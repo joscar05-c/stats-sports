@@ -480,3 +480,35 @@ progress.cv-eff-progress::-moz-progress-bar {
     border-color: Highlight;
   }
 }
+
+/* Sticky responsive data tables (header + first column) */
+.cv-sticky-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.cv-sticky-table thead th {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  background-color: #0e1117;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cv-sticky-table thead th:first-child {
+  inset-inline-start: 0;
+  z-index: 3;
+}
+
+.cv-sticky-table tbody th[scope="row"] {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  background-color: #11151d;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background-color 120ms ease;
+}
+
+.cv-sticky-table tbody tr:hover th[scope="row"] {
+  background-color: #181d28;
+}

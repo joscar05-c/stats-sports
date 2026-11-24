@@ -86,6 +86,49 @@ export async function triggerCloudSync(
   return json;
 }
 
+export interface GameDateSummary {
+  game_date: string;
+  finalCount: number;
+  liveCount: number;
+  scheduledCount: number;
+  totalCount: number;
+}
+
+export async function fetchAvailableGameDateSummaries(leagueId: number): Promise<GameDateSummary[]> {
+  const { data } = await withOfflineCache(`game_date_summaries_v1_${leagueId}`, async () => {
+    const { data: rows, error } = await supabase
+      .from('games')
+      .select('game_date, status')
+      .eq('league_id', leagueId)
+      .order('game_date', { ascending: false })
+      .limit(2000);
+    if (error) throw error;
+
+    const order: string[] = [];
+    const byDate = new Map<string, GameDateSummary>();
+    for (const row of (rows ?? []) as Array<{ game_date: string; status: string }>) {
+      let bucket = byDate.get(row.game_date);
+      if (!bucket) {
+        bucket = {
+          game_date: row.game_date,
+          finalCount: 0,
+          liveCount: 0,
+          scheduledCount: 0,
+          totalCount: 0,
+        };
+        byDate.set(row.game_date, bucket);
+        order.push(row.game_date);
+      }
+      bucket.totalCount += 1;
+      if (row.status === 'final') bucket.finalCount += 1;
+      else if (row.status === 'live') bucket.liveCount += 1;
+      else if (row.status === 'scheduled') bucket.scheduledCount += 1;
+    }
+    return order.map((d) => byDate.get(d)!);
+  });
+  return data;
+}
+
 export async function fetchAvailableGameDates(leagueId: number): Promise<string[]> {
   const { data } = await withOfflineCache(`game_dates_${leagueId}`, async () => {
     const { data: rows, error } = await supabase
@@ -368,7 +411,7 @@ export async function fetchTeamRosterAndGames(
   footballTeamAverage: FootballTeamSeasonAverage | null;
   footballPlayerAverages: FootballPlayerSeasonAverage[];
 }> {
-  const { data } = await withOfflineCache(`team_detail_v3_${sport}_${teamId}`, async () => {
+  const { data } = await withOfflineCache(`team_detail_v4_${sport}_${teamId}`, async () => {
     const [rosterRes, gamesRes, teamAvgRes, playerAvgsRes, fbTeamAvgRes, fbPlayerAvgsRes] =
       await Promise.all([
         supabase
@@ -388,7 +431,7 @@ export async function fetchTeamRosterAndGames(
           `)
           .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
           .order('game_date', { ascending: false })
-          .limit(12),
+          .limit(40),
         sport === 'football'
           ? Promise.resolve({ data: null })
           : supabase
@@ -444,6 +487,7 @@ export interface GameBettingContext {
   awayTeamAvg: TeamSeasonAverage | null;
   homeRecentGames: Game[];
   awayRecentGames: Game[];
+  h2hGames?: Game[];
   keyPlayers: PlayerSeasonAverage[];
   playerRecentLogs: PlayerGameStat[];
   playerStatuses: Record<number, string>;
@@ -456,6 +500,7 @@ export interface FootballGameBettingContext {
   awayTeamAvg: FootballTeamSeasonAverage | null;
   homeRecentGames: Game[];
   awayRecentGames: Game[];
+  h2hGames?: Game[];
   keyPlayers: FootballPlayerSeasonAverage[];
   playerRecentLogs: PlayerGameStat[];
   playerStatuses: Record<number, string>;
@@ -464,12 +509,8 @@ export interface FootballGameBettingContext {
 const CONTEXT_TEAM_SELECT =
   'id, league_id, external_id, name, short_name, abbreviation, city, conference, division, primary_color, alternate_color, logo_url';
 
-async function fetchTeamRecentFinalGames(
-  game: Game,
-  teamId: number,
-  includeSportStats: boolean,
-): Promise<Game[]> {
-  const cols = includeSportStats
+function selectGameCols(includeSportStats: boolean): string {
+  return includeSportStats
     ? `id, league_id, season_id, game_date, tipoff_at, status, status_detail, period, clock,
        home_team_id, away_team_id, home_score, away_score, home_linescores, away_linescores, venue, odds, sport_stats,
        home_team:teams!games_home_team_id_fkey(${CONTEXT_TEAM_SELECT}),
@@ -478,15 +519,43 @@ async function fetchTeamRecentFinalGames(
        home_team_id, away_team_id, home_score, away_score, home_linescores, away_linescores, venue, odds,
        home_team:teams!games_home_team_id_fkey(${CONTEXT_TEAM_SELECT}),
        away_team:teams!games_away_team_id_fkey(${CONTEXT_TEAM_SELECT})`;
+}
 
+async function fetchTeamRecentFinalGames(
+  game: Game,
+  teamId: number,
+  includeSportStats: boolean,
+): Promise<Game[]> {
   const { data } = await supabase
     .from('games')
-    .select(cols)
+    .select(selectGameCols(includeSportStats))
     .eq('season_id', game.season_id)
     .eq('status', 'final')
     .neq('id', game.id)
     .lte('game_date', game.game_date)
     .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+    .order('game_date', { ascending: false })
+    .limit(15);
+
+  return (data ?? []) as unknown as Game[];
+}
+
+export async function fetchHeadToHeadGames(
+  leagueId: number,
+  teamAId: number,
+  teamBId: number,
+  excludeGameId: number,
+  includeSportStats: boolean,
+): Promise<Game[]> {
+  const { data } = await supabase
+    .from('games')
+    .select(selectGameCols(includeSportStats))
+    .eq('league_id', leagueId)
+    .eq('status', 'final')
+    .neq('id', excludeGameId)
+    .or(
+      `and(home_team_id.eq.${teamAId},away_team_id.eq.${teamBId}),and(home_team_id.eq.${teamBId},away_team_id.eq.${teamAId})`,
+    )
     .order('game_date', { ascending: false })
     .limit(10);
 
@@ -559,8 +628,8 @@ async function fetchCleanLogsAndStatuses(
 export async function fetchFootballGameBettingContext(
   game: Game,
 ): Promise<FootballGameBettingContext> {
-  const { data } = await withOfflineCache(`fb_bet_ctx_v3_${game.id}`, async () => {
-    const [standingsRes, teamAvgsRes, homeRecentGames, awayRecentGames, homePlayersRes, awayPlayersRes] =
+  const { data } = await withOfflineCache(`fb_bet_ctx_v4_${game.id}`, async () => {
+    const [standingsRes, teamAvgsRes, homeRecentGames, awayRecentGames, h2hGames, homePlayersRes, awayPlayersRes] =
       await Promise.all([
         supabase
           .from('team_standings')
@@ -574,6 +643,7 @@ export async function fetchFootballGameBettingContext(
           .in('team_id', [game.home_team_id, game.away_team_id]),
         fetchTeamRecentFinalGames(game, game.home_team_id, true),
         fetchTeamRecentFinalGames(game, game.away_team_id, true),
+        fetchHeadToHeadGames(game.league_id, game.home_team_id, game.away_team_id, game.id, true),
         supabase
           .from('football_player_season_averages')
           .select('*')
@@ -612,6 +682,7 @@ export async function fetchFootballGameBettingContext(
       awayTeamAvg: teamAvgs.find((t) => t.team_id === game.away_team_id) ?? null,
       homeRecentGames,
       awayRecentGames,
+      h2hGames,
       keyPlayers,
       playerRecentLogs,
       playerStatuses,
@@ -621,8 +692,8 @@ export async function fetchFootballGameBettingContext(
 }
 
 export async function fetchGameBettingContext(game: Game): Promise<GameBettingContext> {
-  const { data } = await withOfflineCache(`bet_ctx_v4_${game.id}`, async () => {
-    const [standingsRes, teamAvgsRes, homeRecentGames, awayRecentGames, homePlayersRes, awayPlayersRes] =
+  const { data } = await withOfflineCache(`bet_ctx_v5_${game.id}`, async () => {
+    const [standingsRes, teamAvgsRes, homeRecentGames, awayRecentGames, h2hGames, homePlayersRes, awayPlayersRes] =
       await Promise.all([
         supabase
           .from('team_standings')
@@ -636,6 +707,7 @@ export async function fetchGameBettingContext(game: Game): Promise<GameBettingCo
           .in('team_id', [game.home_team_id, game.away_team_id]),
         fetchTeamRecentFinalGames(game, game.home_team_id, false),
         fetchTeamRecentFinalGames(game, game.away_team_id, false),
+        fetchHeadToHeadGames(game.league_id, game.home_team_id, game.away_team_id, game.id, false),
         supabase
           .from('player_season_averages')
           .select('*')
@@ -670,6 +742,7 @@ export async function fetchGameBettingContext(game: Game): Promise<GameBettingCo
       awayTeamAvg: teamAvgs.find((t) => t.team_id === game.away_team_id) ?? null,
       homeRecentGames,
       awayRecentGames,
+      h2hGames,
       keyPlayers,
       playerRecentLogs,
       playerStatuses,

@@ -84,6 +84,8 @@ interface HistoryPoint {
   matchupLabel: string;
   value: number;
   secondaryText: string;
+  game?: Game;
+  gameId?: number;
 }
 
 export function PropAnalysisView({
@@ -110,6 +112,17 @@ export function PropAnalysisView({
   const [targetPick, setTargetPick] = useState<PropRecommendation['pick']>(prop.pick);
   const [stakeCurrency, setStakeCurrency] = useState<'PEN' | 'USD'>('PEN');
   const [stakeAmount, setStakeAmount] = useState<number>(20);
+
+  const handleOpenHistoryMatch = async (pt: HistoryPoint) => {
+    if (pt.game) {
+      onOpenGameModal(pt.game);
+      return;
+    }
+    if (pt.gameId) {
+      const fetched = await fetchGameById(pt.gameId);
+      if (fetched) onOpenGameModal(fetched);
+    }
+  };
 
   useEffect(() => {
     setLiveGame(initialGame);
@@ -363,6 +376,7 @@ export function PropAnalysisView({
             matchupLabel: oppAbbr ? `${isHome ? 'vs' : '@'} ${oppAbbr}` : `${row.minutes}m`,
             value: val,
             secondaryText: `${ss?.goals ?? 0}G / ${ss?.assists ?? 0}A / ${ss?.shots ?? 0} REM (${ss?.shots_on_target ?? 0} arco)${extraText}`,
+            gameId: row.game_id,
           };
         });
     } else if (sport === 'football' && prop.id.startsWith('fb_')) {
@@ -559,12 +573,16 @@ export function PropAnalysisView({
             .map((x) => {
               const isH = x.g.home_team_id === teamId;
               const opp = isH ? x.g.away_team : x.g.home_team;
+              const oppVal = extractTeamMatchStat(x.g, opp.id, matchedStatCfg.statKey);
+              const splitSuffix = oppVal != null ? ` (${x.val}-${oppVal})` : '';
               return {
                 id: String(x.g.id),
                 dateLabel: x.g.game_date.slice(5),
                 matchupLabel: `${isH ? 'vs' : '@'} ${opp.abbreviation}`,
                 value: x.val,
-                secondaryText: `${x.val} ${matchedStatCfg.unitLabel} (${x.g.away_score}-${x.g.home_score})`,
+                secondaryText: `${x.val} ${matchedStatCfg.unitLabel}${splitSuffix} · ${x.g.away_score}-${x.g.home_score}`,
+                game: x.g,
+                gameId: x.g.id,
               };
             });
         } else {
@@ -585,13 +603,20 @@ export function PropAnalysisView({
           rivalFactorDetail = `Promedio reciente en partidos con estadísticas oficiales: ${recentBaseline.toFixed(
             1,
           )} ${matchedStatCfg.unitLabel} por partido.`;
-          historySeries = histVals.map((x) => ({
-            id: String(x.g.id),
-            dateLabel: x.g.game_date.slice(5),
-            matchupLabel: `${x.g.away_team.abbreviation}@${x.g.home_team.abbreviation}`,
-            value: x.val,
-            secondaryText: `${x.val} ${matchedStatCfg.unitLabel} (${x.g.away_score}-${x.g.home_score})`,
-          }));
+          historySeries = histVals.map((x) => {
+            const aVal = extractTeamMatchStat(x.g, x.g.away_team_id, matchedStatCfg.statKey);
+            const hVal = extractTeamMatchStat(x.g, x.g.home_team_id, matchedStatCfg.statKey);
+            const splitTxt = aVal != null && hVal != null ? ` (${aVal}-${hVal})` : '';
+            return {
+              id: String(x.g.id),
+              dateLabel: x.g.game_date.slice(5),
+              matchupLabel: `${x.g.away_team.abbreviation}@${x.g.home_team.abbreviation}`,
+              value: x.val,
+              secondaryText: `${x.val} ${matchedStatCfg.unitLabel}${splitTxt} · ${x.g.away_score}-${x.g.home_score}`,
+              game: x.g,
+              gameId: x.g.id,
+            };
+          });
         }
       } else if (prop.id.startsWith('fb_team_goals_')) {
         const teamId = parseTeamIdFromId('fb_team_goals_');
@@ -618,6 +643,8 @@ export function PropAnalysisView({
               matchupLabel: `${isH ? 'vs' : '@'} ${opp.abbreviation}`,
               value: goals,
               secondaryText: `${goals} G (${g.away_score}-${g.home_score})`,
+              game: g,
+              gameId: g.id,
             };
           });
       } else if (prop.id.startsWith('fb_ht_goals_')) {
@@ -640,6 +667,8 @@ export function PropAnalysisView({
           matchupLabel: `${x.g.away_team.abbreviation}@${x.g.home_team.abbreviation}`,
           value: x.ht.total,
           secondaryText: `1T: ${x.ht.away}-${x.ht.home} (${x.ht.total} G)`,
+          game: x.g,
+          gameId: x.g.id,
         }));
       } else if (prop.id.startsWith('fb_dc_') || prop.id.startsWith('fb_ml_') || prop.id.startsWith('fb_dnb_')) {
         const isHome =
@@ -678,6 +707,8 @@ export function PropAnalysisView({
               secondaryText: `${
                 myG > opG ? 'Victoria' : myG === opG ? 'Empate' : 'Derrota'
               } ${myG}-${opG}`,
+              game: g,
+              gameId: g.id,
             };
           });
       } else if (prop.id.startsWith('fb_spread_')) {
@@ -709,6 +740,8 @@ export function PropAnalysisView({
               matchupLabel: `${isH ? 'vs' : '@'} ${opp.abbreviation}`,
               value: myG - opG,
               secondaryText: `${myG}-${opG} (${myG - opG >= 0 ? '+' : ''}${myG - opG})`,
+              game: g,
+              gameId: g.id,
             };
           });
       } else {
@@ -732,6 +765,8 @@ export function PropAnalysisView({
               : 0
             : g.away_score + g.home_score,
           secondaryText: `${g.away_score}-${g.home_score}`,
+          game: g,
+          gameId: g.id,
         }));
       }
     } else if (prop.scope === 'player' && prop.playerId && prop.metricKey) {
@@ -801,6 +836,7 @@ export function PropAnalysisView({
             matchupLabel: oppAbbr ? `${isHome ? 'vs' : '@'} ${oppAbbr}` : `${row.minutes}m`,
             value: val,
             secondaryText: `${row.pts}P / ${row.reb}R / ${row.ast}A (${row.minutes}m)`,
+            gameId: row.game_id,
           };
         });
     } else if (prop.id.startsWith('team_total_')) {
@@ -838,6 +874,8 @@ export function PropAnalysisView({
         matchupLabel: `${g.away_team.abbreviation}@${g.home_team.abbreviation}`,
         value: g.away_score + g.home_score,
         secondaryText: `${g.away_score}-${g.home_score} (Total ${g.away_score + g.home_score})`,
+        game: g,
+        gameId: g.id,
       }));
     } else if (prop.id.startsWith('team_spread_')) {
       const nbaCtx = context as GameBettingContext;
@@ -869,6 +907,8 @@ export function PropAnalysisView({
             matchupLabel: `${isH ? 'vs' : '@'} ${opp.abbreviation}`,
             value: myPts - opPts,
             secondaryText: `${myPts}-${opPts} (${myPts - opPts >= 0 ? '+' : ''}${myPts - opPts})`,
+            game: g,
+            gameId: g.id,
           };
         });
     } else if (prop.id.startsWith('team_ml_')) {
@@ -921,6 +961,8 @@ export function PropAnalysisView({
             matchupLabel: `${isH ? 'vs' : '@'} ${opp.abbreviation}`,
             value: myPts - opPts,
             secondaryText: `${myPts > opPts ? 'Victoria' : 'Derrota'} ${myPts}-${opPts}`,
+            game: g,
+            gameId: g.id,
           };
         });
     } else if (prop.id.startsWith('team_pts_')) {
@@ -965,6 +1007,8 @@ export function PropAnalysisView({
             matchupLabel: `${isH ? 'vs' : '@'} ${opp.abbreviation}`,
             value: myPts,
             secondaryText: `${myPts} pts vs ${opp.abbreviation}`,
+            game: g,
+            gameId: g.id,
           };
         });
     } else if (prop.id.startsWith('team_3pm_')) {
@@ -1902,7 +1946,19 @@ export function PropAnalysisView({
                   return (
                     <tr key={pt.id} className="hover:bg-white/[0.03]">
                       <td className="py-2 px-3 text-slate-400">{pt.dateLabel}</td>
-                      <td className="py-2 px-2 font-medium text-slate-200">{pt.matchupLabel}</td>
+                      <td className="py-2 px-2 font-medium text-slate-200">
+                        {pt.game || pt.gameId ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleOpenHistoryMatch(pt)}
+                            className="font-semibold text-slate-200 hover:text-blue-300 hover:underline transition-colors text-left"
+                          >
+                            {pt.matchupLabel}
+                          </button>
+                        ) : (
+                          pt.matchupLabel
+                        )}
+                      </td>
                       <td className="py-2 px-2 text-slate-400">{pt.secondaryText}</td>
                       <td className="text-right py-2 px-2 font-bold text-white">
                         {(prop.pick === 'SPREAD' || prop.pick === 'ML' || prop.pick === 'DC') && pt.value > 0

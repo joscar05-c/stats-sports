@@ -1004,6 +1004,11 @@ export function App() {
           onClose={() => setSelectedGame(null)}
           onSelectPlayer={(pid) => setSelectedPlayerId(pid)}
           onOpenProModal={() => setShowProModal(true)}
+          onSelectGame={(game) => setSelectedGame(game)}
+          onSelectTeam={(team, standing) => {
+            setSelectedGame(null);
+            setSelectedTeam({ team, standing });
+          }}
         />
       )}
 
@@ -1028,6 +1033,10 @@ export function App() {
           isPro={Boolean(proSub)}
           onClose={() => setSelectedPlayerId(null)}
           onOpenProModal={() => setShowProModal(true)}
+          onSelectGame={(game) => {
+            setSelectedPlayerId(null);
+            setSelectedGame(game);
+          }}
         />
       )}
 

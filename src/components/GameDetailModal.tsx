@@ -13,6 +13,8 @@ import {
   Shield,
   User,
   Lock,
+  ArrowLeft,
+  History,
 } from 'lucide-react';
 import {
   fetchFootballGameBettingContext,
@@ -42,14 +44,17 @@ import {
   buildFootballPropsRecommendations,
   computeFootballMatchProjections,
   evaluateAnyPropStatus,
+  extractHalfTimeGoals,
   FOOTBALL_MARKET_CATEGORY_TABS,
+  hasFootballBoxTracking,
   summarizeAnyGamePropsEffectiveness,
   type FootballMatchProjections,
 } from '../utils/footballProps';
-import type { FootballPlayerSeasonAverage, Game, PlayerGameStat } from '../types/database';
+import type { FootballPlayerSeasonAverage, Game, PlayerGameStat, Team, TeamStanding } from '../types/database';
 import type { AnyBettingContext } from './PropsSidebar';
 import { isNativeAndroid } from '../utils/platform';
 import { PropsEffectivenessCard, type PropResultFilter } from './PropsEffectivenessCard';
+import { PastGamesHistoryPanel } from './PastGamesHistoryPanel';
 import { ModalDialog } from './ModalDialog';
 
 interface GameDetailModalProps {
@@ -59,9 +64,11 @@ interface GameDetailModalProps {
   onClose: () => void;
   onSelectPlayer: (playerId: number) => void;
   onOpenProModal: () => void;
+  onSelectGame?: (game: Game) => void;
+  onSelectTeam?: (team: Team, standing?: TeamStanding) => void;
 }
 
-type ModalSection = 'betting' | 'teamstats' | 'boxscore';
+type ModalSection = 'betting' | 'teamstats' | 'history' | 'boxscore';
 
 interface TeamGameTotals {
   pts: number;
@@ -149,6 +156,11 @@ function computeTeamGameTotals(rows: PlayerGameStat[], fallbackScore = 0): TeamG
   };
 }
 
+function getDefaultSectionForGame(g: Game, sport: 'basketball' | 'football'): ModalSection {
+  if (g.status === 'scheduled') return 'betting';
+  return sport === 'football' ? 'teamstats' : 'boxscore';
+}
+
 export function GameDetailModal({
   game: initialGame,
   sport = 'basketball',
@@ -156,11 +168,15 @@ export function GameDetailModal({
   onClose,
   onSelectPlayer,
   onOpenProModal,
+  onSelectGame: _onSelectGame,
+  onSelectTeam,
 }: GameDetailModalProps) {
   const [game, setGame] = useState<Game>(initialGame);
-  const [section, setSection] = useState<ModalSection>(
-    initialGame.status === 'scheduled' ? 'betting' : 'boxscore',
+  const [historyStack, setHistoryStack] = useState<Game[]>([]);
+  const [section, setSection] = useState<ModalSection>(() =>
+    getDefaultSectionForGame(initialGame, sport),
   );
+  const [historyTeamTab, setHistoryTeamTab] = useState<'away' | 'home' | 'h2h'>('away');
   const [stats, setStats] = useState<PlayerGameStat[]>([]);
   const [loadingBox, setLoadingBox] = useState(initialGame.status !== 'scheduled');
   const [betCtx, setBetCtx] = useState<AnyBettingContext | null>(null);
@@ -173,15 +189,35 @@ export function GameDetailModal({
   const [resultFilter, setResultFilter] = useState<PropResultFilter>('all');
 
   useEffect(() => {
+    setHistoryStack([]);
     setGame(initialGame);
+  }, [initialGame.id]);
+
+  useEffect(() => {
+    setGame((prev) => (prev.id === initialGame.id ? initialGame : prev));
   }, [initialGame]);
 
   useEffect(() => {
-    setSection(game.status === 'scheduled' ? 'betting' : 'boxscore');
+    setSection(getDefaultSectionForGame(game, sport));
     setActiveTeamId(game.away_team_id);
+    setHistoryTeamTab('away');
     setResultFilter('all');
     setMarketCategoryFilter('all');
   }, [game.id, game.away_team_id, sport]);
+
+  const handleOpenPastGame = (pastGame: Game) => {
+    setHistoryStack((prev) => [...prev, game]);
+    setGame(pastGame);
+  };
+
+  const handleHistoryBack = () => {
+    setHistoryStack((prev) => {
+      if (prev.length === 0) return prev;
+      const target = prev[prev.length - 1];
+      setGame(target);
+      return prev.slice(0, -1);
+    });
+  };
 
   useEffect(() => {
     let active = true;
@@ -416,28 +452,51 @@ export function GameDetailModal({
     <ModalDialog
       onClose={onClose}
       ariaLabelledBy="game-modal-title"
-      maxWidthCss="48rem"
+      maxWidthCss="56rem"
       borderClass="border border-white/[0.12]"
     >
-      {(requestClose) => (
+      {(requestClose) => {
+        const awayFinalsCount =
+          betCtx?.awayRecentGames.filter((g) => g.status === 'final').length ?? 0;
+        const homeFinalsCount =
+          betCtx?.homeRecentGames.filter((g) => g.status === 'final').length ?? 0;
+        const h2hFinalsCount =
+          betCtx?.h2hGames?.filter((g) => g.status === 'final').length ?? 0;
+        const totalHistoryCount = awayFinalsCount + homeFinalsCount;
+        const prevStackGame =
+          historyStack.length > 0 ? historyStack[historyStack.length - 1] : null;
+
+        return (
         <div className="flex flex-col flex-1 min-h-0">
         {/* Header */}
         <div className="shrink-0 p-3.5 sm:p-5 border-b border-white/[0.08] bg-[#12151c]">
-          <div className="flex items-center justify-between mb-2 sm:mb-3">
-            <h2
-              id="game-modal-title"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-300"
-            >
-              <Calendar className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
-              <span>
-                {game.away_team.abbreviation} vs {game.home_team.abbreviation} ·{' '}
-                {game.status_detail || game.game_date}
-              </span>
-            </h2>
+          <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
+            <div className="flex items-center gap-2 min-w-0 flex-wrap">
+              {prevStackGame && (
+                <button
+                  type="button"
+                  onClick={handleHistoryBack}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md bg-white/[0.06] border border-white/[0.12] text-slate-200 hover:bg-white/[0.1] hover:text-white transition-colors shrink-0"
+                >
+                  <ArrowLeft className="w-3 h-3" aria-hidden="true" />
+                  Volver a {prevStackGame.away_team.abbreviation} vs {prevStackGame.home_team.abbreviation}
+                </button>
+              )}
+              <h2
+                id="game-modal-title"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-300 truncate"
+              >
+                <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                <span className="truncate">
+                  {game.away_team.abbreviation} vs {game.home_team.abbreviation} ·{' '}
+                  {game.status_detail || game.game_date}
+                </span>
+              </h2>
+            </div>
             <button
               type="button"
               onClick={requestClose}
-              className="p-1.5 rounded-full bg-white/[0.05] border border-white/[0.1] text-slate-300 hover:text-white cv-touch-target inline-flex items-center justify-center"
+              className="p-1.5 rounded-full bg-white/[0.05] border border-white/[0.1] text-slate-300 hover:text-white cv-touch-target inline-flex items-center justify-center shrink-0"
               aria-label="Cerrar"
             >
               <X className="w-4 h-4" aria-hidden="true" />
@@ -446,24 +505,51 @@ export function GameDetailModal({
 
           {/* Matchup Scoreboard */}
           <div className="grid grid-cols-3 items-center gap-1.5 sm:gap-2 py-0.5 sm:py-1">
-            <div className="flex flex-col items-center text-center min-w-0">
-              {game.away_team.logo_url && (
-                <img
-                  src={game.away_team.logo_url}
-                  alt={game.away_team.abbreviation}
-                  className="w-9 h-9 sm:w-12 sm:h-12 object-contain mb-1 sm:mb-1.5"
-                />
-              )}
-              <span className="font-bold text-xs sm:text-base truncate max-w-full">{game.away_team.short_name}</span>
-              <span className="text-[11px] text-slate-400">
-                Visita
-                {betCtx?.awayStanding
-                  ? sport === 'football'
-                    ? ` · ${betCtx.awayStanding.wins}-${betCtx.awayStanding.draws ?? 0}-${betCtx.awayStanding.losses}`
-                    : ` · ${betCtx.awayStanding.wins}-${betCtx.awayStanding.losses}`
-                  : ''}
-              </span>
-            </div>
+            {onSelectTeam ? (
+              <button
+                type="button"
+                onClick={() => onSelectTeam(game.away_team, betCtx?.awayStanding ?? undefined)}
+                className="flex flex-col items-center text-center min-w-0 hover:opacity-85 transition-opacity group"
+              >
+                {game.away_team.logo_url && (
+                  <img
+                    src={game.away_team.logo_url}
+                    alt={game.away_team.abbreviation}
+                    className="w-9 h-9 sm:w-12 sm:h-12 object-contain mb-1 sm:mb-1.5"
+                  />
+                )}
+                <span className="font-bold text-xs sm:text-base truncate max-w-full group-hover:underline">
+                  {game.away_team.short_name}
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  Visita
+                  {betCtx?.awayStanding
+                    ? sport === 'football'
+                      ? ` · ${betCtx.awayStanding.wins}-${betCtx.awayStanding.draws ?? 0}-${betCtx.awayStanding.losses}`
+                      : ` · ${betCtx.awayStanding.wins}-${betCtx.awayStanding.losses}`
+                    : ''}
+                </span>
+              </button>
+            ) : (
+              <div className="flex flex-col items-center text-center min-w-0">
+                {game.away_team.logo_url && (
+                  <img
+                    src={game.away_team.logo_url}
+                    alt={game.away_team.abbreviation}
+                    className="w-9 h-9 sm:w-12 sm:h-12 object-contain mb-1 sm:mb-1.5"
+                  />
+                )}
+                <span className="font-bold text-xs sm:text-base truncate max-w-full">{game.away_team.short_name}</span>
+                <span className="text-[11px] text-slate-400">
+                  Visita
+                  {betCtx?.awayStanding
+                    ? sport === 'football'
+                      ? ` · ${betCtx.awayStanding.wins}-${betCtx.awayStanding.draws ?? 0}-${betCtx.awayStanding.losses}`
+                      : ` · ${betCtx.awayStanding.wins}-${betCtx.awayStanding.losses}`
+                    : ''}
+                </span>
+              </div>
+            )}
 
             <div className="flex flex-col items-center justify-center">
               <div className="flex items-center justify-center gap-1.5 sm:gap-5 tabular-nums">
@@ -498,24 +584,51 @@ export function GameDetailModal({
                 )}
             </div>
 
-            <div className="flex flex-col items-center text-center min-w-0">
-              {game.home_team.logo_url && (
-                <img
-                  src={game.home_team.logo_url}
-                  alt={game.home_team.abbreviation}
-                  className="w-9 h-9 sm:w-12 sm:h-12 object-contain mb-1 sm:mb-1.5"
-                />
-              )}
-              <span className="font-bold text-xs sm:text-base truncate max-w-full">{game.home_team.short_name}</span>
-              <span className="text-[11px] text-slate-400">
-                Local
-                {betCtx?.homeStanding
-                  ? sport === 'football'
-                    ? ` · ${betCtx.homeStanding.wins}-${betCtx.homeStanding.draws ?? 0}-${betCtx.homeStanding.losses}`
-                    : ` · ${betCtx.homeStanding.wins}-${betCtx.homeStanding.losses}`
-                  : ''}
-              </span>
-            </div>
+            {onSelectTeam ? (
+              <button
+                type="button"
+                onClick={() => onSelectTeam(game.home_team, betCtx?.homeStanding ?? undefined)}
+                className="flex flex-col items-center text-center min-w-0 hover:opacity-85 transition-opacity group"
+              >
+                {game.home_team.logo_url && (
+                  <img
+                    src={game.home_team.logo_url}
+                    alt={game.home_team.abbreviation}
+                    className="w-9 h-9 sm:w-12 sm:h-12 object-contain mb-1 sm:mb-1.5"
+                  />
+                )}
+                <span className="font-bold text-xs sm:text-base truncate max-w-full group-hover:underline">
+                  {game.home_team.short_name}
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  Local
+                  {betCtx?.homeStanding
+                    ? sport === 'football'
+                      ? ` · ${betCtx.homeStanding.wins}-${betCtx.homeStanding.draws ?? 0}-${betCtx.homeStanding.losses}`
+                      : ` · ${betCtx.homeStanding.wins}-${betCtx.homeStanding.losses}`
+                    : ''}
+                </span>
+              </button>
+            ) : (
+              <div className="flex flex-col items-center text-center min-w-0">
+                {game.home_team.logo_url && (
+                  <img
+                    src={game.home_team.logo_url}
+                    alt={game.home_team.abbreviation}
+                    className="w-9 h-9 sm:w-12 sm:h-12 object-contain mb-1 sm:mb-1.5"
+                  />
+                )}
+                <span className="font-bold text-xs sm:text-base truncate max-w-full">{game.home_team.short_name}</span>
+                <span className="text-[11px] text-slate-400">
+                  Local
+                  {betCtx?.homeStanding
+                    ? sport === 'football'
+                      ? ` · ${betCtx.homeStanding.wins}-${betCtx.homeStanding.draws ?? 0}-${betCtx.homeStanding.losses}`
+                      : ` · ${betCtx.homeStanding.wins}-${betCtx.homeStanding.losses}`
+                    : ''}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Football Key Events Timeline (Goals & Cards) */}
@@ -524,12 +637,9 @@ export function GameDetailModal({
             (game.sport_stats?.events?.length ?? 0) > 0 && (
               <div className="mt-3 rounded-lg bg-[#0b0d11] border border-white/[0.08] px-3 py-2 flex flex-wrap items-center justify-center gap-1.5 text-[11px] tabular-nums">
                 {game.sport_stats!.events!.slice(0, 12).map((ev, idx) => {
-                  const icon =
-                    ev.kind === 'goal' || ev.kind === 'penalty' || ev.kind === 'own_goal'
-                      ? '⚽'
-                      : ev.kind === 'red'
-                        ? '🟥'
-                        : '🟨';
+                  const isGoal =
+                    ev.kind === 'goal' || ev.kind === 'penalty' || ev.kind === 'own_goal';
+                  const icon = isGoal ? '⚽' : ev.kind === 'red' ? '🟥' : '🟨';
                   return (
                     <span
                       key={`${ev.minute}_${idx}`}
@@ -538,6 +648,9 @@ export function GameDetailModal({
                       <span aria-hidden="true">{icon}</span>
                       <span className="font-semibold text-slate-400">{ev.minute}</span>
                       <span>{ev.player}</span>
+                      {isGoal && ev.assist && (
+                        <span className="text-[10px] text-emerald-300/90">· {ev.assist}</span>
+                      )}
                       <span className="text-[10px] text-slate-400">({ev.team_abbr})</span>
                     </span>
                   );
@@ -603,11 +716,14 @@ export function GameDetailModal({
         </div>
 
         {/* Primary Section Switcher */}
-        <div className="shrink-0 flex border-b border-white/[0.08] bg-[#0e1117] px-3 pt-2 gap-1.5 overflow-x-auto no-scrollbar">
+        <div className="shrink-0 flex border-b border-white/[0.08] bg-[#0e1117] px-3 pt-2 gap-1.5 overflow-x-auto no-scrollbar sb-scroll-fade-x">
           <button
             type="button"
-            onClick={() => setSection('betting')}
-            className={`shrink-0 px-3 py-2.5 text-xs font-semibold rounded-t-lg border-b-2 inline-flex items-center gap-1.5 transition-colors ${
+            onClick={(e) => {
+              setSection('betting');
+              e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            }}
+            className={`shrink-0 px-3 py-2.5 text-xs font-semibold rounded-t-lg border-b-2 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               section === 'betting'
                 ? 'border-white text-white bg-white/[0.04]'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -618,8 +734,11 @@ export function GameDetailModal({
           </button>
           <button
             type="button"
-            onClick={() => setSection('teamstats')}
-            className={`shrink-0 px-3 py-2.5 text-xs font-semibold rounded-t-lg border-b-2 inline-flex items-center gap-1.5 transition-colors ${
+            onClick={(e) => {
+              setSection('teamstats');
+              e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            }}
+            className={`shrink-0 px-3 py-2.5 text-xs font-semibold rounded-t-lg border-b-2 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               section === 'teamstats'
                 ? 'border-white text-white bg-white/[0.04]'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -630,8 +749,29 @@ export function GameDetailModal({
           </button>
           <button
             type="button"
-            onClick={() => setSection('boxscore')}
-            className={`shrink-0 px-3 py-2.5 text-xs font-semibold rounded-t-lg border-b-2 inline-flex items-center gap-1.5 transition-colors ${
+            onClick={(e) => {
+              setSection('history');
+              e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            }}
+            className={`shrink-0 px-3 py-2.5 text-xs font-semibold rounded-t-lg border-b-2 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+              section === 'history'
+                ? 'border-white text-white bg-white/[0.04]'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" aria-hidden="true" />
+            Historial
+            {totalHistoryCount > 0 && (
+              <span className="text-[10px] text-slate-400 tabular-nums">({totalHistoryCount + h2hFinalsCount})</span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              setSection('boxscore');
+              e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            }}
+            className={`shrink-0 px-3 py-2.5 text-xs font-semibold rounded-t-lg border-b-2 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               section === 'boxscore'
                 ? 'border-white text-white bg-white/[0.04]'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -1071,10 +1211,58 @@ export function GameDetailModal({
                             </div>
                           )}
                         </div>
+                        {(() => {
+                          const formList = side.recentGames
+                            .filter((rg) => rg.status === 'final')
+                            .slice(0, 5)
+                            .map((rg) => {
+                              const isH = rg.home_team_id === side.team.id;
+                              const gf = isH ? rg.home_score : rg.away_score;
+                              const ga = isH ? rg.away_score : rg.home_score;
+                              return {
+                                id: rg.id,
+                                res: gf > ga ? 'G' : gf === ga ? 'E' : 'P',
+                              };
+                            });
+                          if (formList.length === 0) return null;
+                          return (
+                            <div className="pt-1 flex items-center gap-1 text-[10px]">
+                              <span className="text-slate-400 mr-1">Racha:</span>
+                              {formList.map((f) => (
+                                <span
+                                  key={f.id}
+                                  className={`inline-flex items-center justify-center w-5 h-5 rounded font-bold border ${
+                                    f.res === 'G'
+                                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                      : f.res === 'P'
+                                        ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                                        : 'bg-white/[0.06] text-slate-300 border-white/[0.12]'
+                                  }`}
+                                >
+                                  {f.res}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </div>
                       );
                     })}
                   </div>
+
+                  {(betCtx?.awayRecentGames.length || betCtx?.homeRecentGames.length) ? (
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setSection('history')}
+                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-[#12151c] border border-white/[0.1] text-slate-200 hover:border-white/[0.25] hover:text-white transition-colors"
+                      >
+                        <History className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+                        Ver partidos jugados con estadísticas
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+                      </button>
+                    </div>
+                  ) : null}
 
                   {/* Quick Guide Tip */}
                   <p className="text-[11px] text-slate-400 leading-relaxed bg-[#12151c] rounded-lg px-3 py-2 border border-white/[0.06]">
@@ -1450,6 +1638,99 @@ export function GameDetailModal({
         ) : section === 'teamstats' ? (
           sport === 'football' ? (
             <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-5 space-y-4">
+              {game.status !== 'scheduled' && (() => {
+                const hs = game.sport_stats?.home;
+                const as_ = game.sport_stats?.away;
+                const tracked = hasFootballBoxTracking(game);
+                const ht = extractHalfTimeGoals(game);
+                const totalGoals = game.home_score + game.away_score;
+                const totCorners =
+                  tracked && hs?.corners != null && as_?.corners != null
+                    ? Number(hs.corners) + Number(as_.corners)
+                    : null;
+                const totFouls =
+                  tracked && hs?.fouls != null && as_?.fouls != null
+                    ? Number(hs.fouls) + Number(as_.fouls)
+                    : null;
+                const totYellow =
+                  hs?.yellow_cards != null && as_?.yellow_cards != null
+                    ? Number(hs.yellow_cards) + Number(as_.yellow_cards)
+                    : null;
+                const totRed = Number(hs?.red_cards ?? 0) + Number(as_?.red_cards ?? 0);
+                const totShots =
+                  tracked && hs?.shots != null && as_?.shots != null
+                    ? Number(hs.shots) + Number(as_.shots)
+                    : null;
+                const totSot =
+                  tracked && hs?.shots_on_target != null && as_?.shots_on_target != null
+                    ? Number(hs.shots_on_target) + Number(as_.shots_on_target)
+                    : null;
+                const htText =
+                  Array.isArray(game.away_linescores) &&
+                  game.away_linescores.length >= 2 &&
+                  Array.isArray(game.home_linescores) &&
+                  game.home_linescores.length >= 2
+                    ? `1T: ${game.away_linescores[0]}-${game.home_linescores[0]} · 2T: ${game.away_linescores[1]}-${game.home_linescores[1]}`
+                    : ht
+                      ? `1T: ${ht.total} gol(es)`
+                      : 'Resultado';
+                const kpis = [
+                  { label: 'Goles', val: `${game.away_score} - ${game.home_score}`, sub: htText },
+                  totCorners != null
+                    ? {
+                        label: 'Córners Tot.',
+                        val: String(totCorners),
+                        sub: `${as_!.corners} - ${hs!.corners}`,
+                      }
+                    : null,
+                  totFouls != null
+                    ? {
+                        label: 'Faltas Tot.',
+                        val: String(totFouls),
+                        sub: `${as_!.fouls} - ${hs!.fouls}`,
+                      }
+                    : null,
+                  totYellow != null
+                    ? {
+                        label: 'Tarjetas A/R',
+                        val: `${totYellow} TA${totRed > 0 ? ` · ${totRed} TR` : ''}`,
+                        sub: `${as_?.yellow_cards ?? 0} - ${hs?.yellow_cards ?? 0}`,
+                      }
+                    : null,
+                  totShots != null
+                    ? {
+                        label: 'Remates / Arco',
+                        val: `${totShots} (${totSot ?? 0})`,
+                        sub: `${as_!.shots}-${hs!.shots} (${as_?.shots_on_target ?? 0}-${hs?.shots_on_target ?? 0})`,
+                      }
+                    : null,
+                  game.status === 'final'
+                    ? {
+                        label: 'BTTS / +2.5',
+                        val: `${game.home_score > 0 && game.away_score > 0 ? 'SÍ' : 'NO'} / ${totalGoals >= 3 ? 'SÍ' : 'NO'}`,
+                        sub: `Total ${totalGoals} goles`,
+                      }
+                    : null,
+                ].filter((x): x is { label: string; val: string; sub: string } => x != null);
+                if (kpis.length === 0) return null;
+                return (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 tabular-nums">
+                    {kpis.map((k) => (
+                      <div
+                        key={k.label}
+                        className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-2.5 text-center"
+                      >
+                        <div className="text-[10px] font-semibold uppercase text-slate-400">
+                          {k.label}
+                        </div>
+                        <div className="text-sm font-bold text-white mt-0.5">{k.val}</div>
+                        <div className="text-[10px] text-slate-400 mt-0.5 truncate">{k.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {game.status !== 'scheduled' && game.sport_stats?.home && game.sport_stats?.away && (
                 <div className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-4 space-y-3.5 tabular-nums">
                   <div className="flex items-center justify-between border-b border-white/[0.08] pb-2.5">
@@ -1508,21 +1789,30 @@ export function GameDetailModal({
                       ...(
                         [
                           { label: 'Tarjetas Rojas', key: 'red_cards', lowerIsBetter: true },
+                          { label: 'Efectividad de Tiro (%)', key: 'shot_pct', suffix: '%', scaleUnitFraction: true },
                           { label: 'Pases Totales', key: 'total_passes' },
-                          { label: 'Precisión Pase (%)', key: 'pass_pct', suffix: '%' },
+                          { label: 'Pases Precisos', key: 'accurate_passes' },
+                          { label: 'Precisión Pase (%)', key: 'pass_pct', suffix: '%', scaleUnitFraction: true },
                           { label: 'Tiros Bloqueados', key: 'blocked_shots' },
                           { label: 'Entradas', key: 'tackles' },
+                          { label: 'Entradas Efectivas', key: 'effective_tackles' },
                           { label: 'Intercepciones', key: 'interceptions' },
-                          { label: 'Centros', key: 'crosses' },
+                          { label: 'Centros Totales', key: 'crosses' },
+                          { label: 'Centros Precisos', key: 'accurate_crosses' },
                           { label: 'Despejes', key: 'clearances' },
+                          { label: 'Goles de Penal', key: 'penalty_goals' },
                         ] as const
                       ).flatMap((ext) => {
                         const aVal = game.sport_stats?.away?.[ext.key];
                         const hVal = game.sport_stats?.home?.[ext.key];
                         if (aVal == null && hVal == null) return [];
-                        const aNum = Number(aVal ?? 0);
-                        const hNum = Number(hVal ?? 0);
+                        let aNum = Number(aVal ?? 0);
+                        let hNum = Number(hVal ?? 0);
                         if (aNum === 0 && hNum === 0 && ext.key !== 'red_cards') return [];
+                        if ('scaleUnitFraction' in ext && ext.scaleUnitFraction) {
+                          if (aNum > 0 && aNum <= 1) aNum *= 100;
+                          if (hNum > 0 && hNum <= 1) hNum *= 100;
+                        }
                         return [
                           {
                             label: ext.label,
@@ -1556,6 +1846,46 @@ export function GameDetailModal({
                           <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden flex">
                             <div className="bg-blue-500 transition-all" style={{ width: `${pctA}%` }} />
                             <div className="bg-slate-400 transition-all" style={{ width: `${100 - pctA}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {game.status !== 'scheduled' && (game.sport_stats?.events?.length ?? 0) > 0 && (
+                <div className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-4 space-y-2.5 tabular-nums">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                    Cronología completa del partido ({game.sport_stats!.events!.length})
+                  </div>
+                  <div className="divide-y divide-white/[0.06]">
+                    {game.sport_stats!.events!.map((ev, idx) => {
+                      const isGoal =
+                        ev.kind === 'goal' || ev.kind === 'penalty' || ev.kind === 'own_goal';
+                      const icon = isGoal ? '⚽' : ev.kind === 'red' ? '🟥' : '🟨';
+                      return (
+                        <div
+                          key={`${ev.minute}_${idx}`}
+                          className="py-1.5 flex items-center justify-between gap-2 text-xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span aria-hidden="true">{icon}</span>
+                            <span className="font-bold text-slate-300 w-10 shrink-0">
+                              {ev.minute}
+                            </span>
+                            <span className="font-semibold text-white truncate">{ev.player}</span>
+                            {ev.assist && (
+                              <span className="text-[11px] text-emerald-300/90 truncate">
+                                Asist. {ev.assist}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 text-[11px] text-slate-400">
+                            <span>{ev.label}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-white/[0.05] text-slate-200 font-semibold">
+                              {ev.team_abbr}
+                            </span>
                           </div>
                         </div>
                       );
@@ -1979,6 +2309,88 @@ export function GameDetailModal({
             })()}
           </div>
           )
+        ) : section === 'history' ? (
+          <div className="flex-1 min-h-0 overflow-auto sb-scroller p-4 sm:p-5 space-y-4">
+            <div
+              role="region"
+              aria-label="Seleccionar historial de equipo"
+              className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5"
+            >
+              {(
+                [
+                  {
+                    key: 'away',
+                    label: `${game.away_team.short_name} (${awayFinalsCount})`,
+                  },
+                  {
+                    key: 'home',
+                    label: `${game.home_team.short_name} (${homeFinalsCount})`,
+                  },
+                  {
+                    key: 'h2h',
+                    label: `H2H (${h2hFinalsCount})`,
+                  },
+                ] as const
+              ).map((t) => {
+                const active = historyTeamTab === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={(e) => {
+                      setHistoryTeamTab(t.key);
+                      e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                    }}
+                    className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap tabular-nums ${
+                      active
+                        ? 'cv-tab-active'
+                        : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {loadingBet && !betCtx ? (
+              <div className="py-10 text-center text-xs text-slate-400">
+                Cargando historial de partidos jugados...
+              </div>
+            ) : (
+              <PastGamesHistoryPanel
+                games={
+                  historyTeamTab === 'away'
+                    ? betCtx?.awayRecentGames ?? []
+                    : historyTeamTab === 'home'
+                      ? betCtx?.homeRecentGames ?? []
+                      : betCtx?.h2hGames ?? []
+                }
+                focusTeamId={
+                  historyTeamTab === 'away'
+                    ? game.away_team_id
+                    : historyTeamTab === 'home'
+                      ? game.home_team_id
+                      : undefined
+                }
+                focusTeamName={
+                  historyTeamTab === 'away'
+                    ? game.away_team.short_name
+                    : historyTeamTab === 'home'
+                      ? game.home_team.short_name
+                      : `${game.away_team.abbreviation} vs ${game.home_team.abbreviation}`
+                }
+                sport={sport}
+                emptyMessage={
+                  historyTeamTab === 'h2h'
+                    ? 'Aún no hay enfrentamientos previos finalizados en esta competición.'
+                    : 'No hay partidos finalizados recientes registrados para este equipo.'
+                }
+                onSelectGame={handleOpenPastGame}
+              />
+            )}
+          </div>
         ) : (
           <>
             {/* Team Switcher for Box Score */}
@@ -2193,7 +2605,8 @@ export function GameDetailModal({
           </>
         )}
         </div>
-      )}
+        );
+      }}
     </ModalDialog>
   );
 }
