@@ -236,6 +236,9 @@ function extractTeamMatchStats(statList: any[]): Record<string, any> {
   for (const s of statList ?? []) {
     if (s?.name) smap[s.name] = s.displayValue;
   }
+  const rawPassPct = safeFloat(smap.passPct);
+  const passPct =
+    rawPassPct !== null && rawPassPct <= 1.0 ? Math.round(rawPassPct * 1000) / 10 : rawPassPct;
   return {
     possession_pct: safeFloat(smap.possessionPct),
     shots: safeInt(smap.totalShots, 0),
@@ -247,10 +250,22 @@ function extractTeamMatchStats(statList: any[]): Record<string, any> {
     offsides: safeInt(smap.offsides, 0),
     saves: safeInt(smap.saves, 0),
     shot_pct: safeFloat(smap.shotPct),
+    total_passes: safeInt(smap.totalPasses, 0),
+    accurate_passes: safeInt(smap.accuratePasses, 0),
+    pass_pct: passPct,
+    crosses: safeInt(smap.totalCrosses, 0),
+    accurate_crosses: safeInt(smap.accurateCrosses, 0),
+    blocked_shots: safeInt(smap.blockedShots, 0),
+    tackles: safeInt(smap.totalTackles, 0),
+    effective_tackles: safeInt(smap.effectiveTackles, 0),
+    interceptions: safeInt(smap.interceptions, 0),
+    clearances: safeInt(smap.totalClearance, 0),
+    penalty_goals: safeInt(smap.penaltyKickGoals, 0),
+    penalty_shots: safeInt(smap.penaltyKickShots, 0),
   };
 }
 
-function extractKeyEvents(rawEvents: any[]): any[] {
+function extractKeyEvents(rawEvents: any[], teamAbbrByExt?: Record<string, string>): any[] {
   const out: any[] = [];
   for (const ev of rawEvents ?? []) {
     const etype = String(ev?.type?.text ?? "").trim();
@@ -265,11 +280,13 @@ function extractKeyEvents(rawEvents: any[]): any[] {
     if (!kind) continue;
 
     const participants = ev?.participants ?? [];
+    const teamAbbr =
+      ev?.team?.abbreviation ?? (teamAbbrByExt ? teamAbbrByExt[String(ev?.team?.id ?? "")] : undefined) ?? null;
     out.push({
       kind,
       label: etype,
       minute: String(ev?.clock?.displayValue ?? ""),
-      team_abbr: ev?.team?.abbreviation ?? null,
+      team_abbr: teamAbbr,
       player: participants[0]?.athlete?.displayName ?? null,
       assist: participants[1]?.athlete?.displayName ?? null,
     });
@@ -1024,6 +1041,8 @@ Deno.serve(async (req: Request) => {
             away_team_ext_id: atExt,
             home_score: safeInt(home.score, 0),
             away_score: safeInt(away.score, 0),
+            home_linescores: null,
+            away_linescores: null,
             venue: comp?.venue?.fullName ?? null,
             odds: extractSoccerOdds(comp.odds),
             sport_stats: null,
@@ -1049,6 +1068,17 @@ Deno.serve(async (req: Request) => {
           const pickOdds = extractSoccerOdds(summ?.odds ?? summ?.pickcenter);
           if (pickOdds) g.odds = { ...(g.odds ?? {}), ...pickOdds };
 
+          const headerComp = summ?.header?.competitions?.[0];
+          for (const hc of headerComp?.competitors ?? []) {
+            const ls = (hc?.linescores ?? [])
+              .filter((x: any) => x && typeof x === "object")
+              .map((x: any) => safeInt(x.displayValue ?? x.value, 0));
+            if (ls.length > 0) {
+              if (hc.homeAway === "home") g.home_linescores = ls;
+              else if (hc.homeAway === "away") g.away_linescores = ls;
+            }
+          }
+
           let homeStats: any = {};
           let awayStats: any = {};
           for (const bt of summ?.boxscore?.teams ?? []) {
@@ -1057,7 +1087,7 @@ Deno.serve(async (req: Request) => {
             if (tid === g.home_team_ext_id) homeStats = parsed;
             else if (tid === g.away_team_ext_id) awayStats = parsed;
           }
-          const keyEvents = extractKeyEvents(summ?.keyEvents ?? []);
+          const keyEvents = extractKeyEvents(summ?.keyEvents ?? [], teamAbbrByExtId);
           if (Object.keys(homeStats).length > 0 || Object.keys(awayStats).length > 0 || keyEvents.length > 0) {
             g.sport_stats = { home: homeStats, away: awayStats, events: keyEvents };
           }
@@ -1118,6 +1148,7 @@ Deno.serve(async (req: Request) => {
                   shots_faced: smap.shotsFaced ?? 0,
                   goals_conceded: smap.goalsConceded ?? 0,
                   own_goals: smap.ownGoals ?? 0,
+                  offsides: smap.offsides ?? 0,
                 },
               });
             }
@@ -1252,11 +1283,15 @@ Deno.serve(async (req: Request) => {
       if (gid) {
         if (g.odds !== null) basePayload.odds = g.odds;
         if (g.sport_stats !== null) basePayload.sport_stats = g.sport_stats;
+        if (g.home_linescores !== null) basePayload.home_linescores = g.home_linescores;
+        if (g.away_linescores !== null) basePayload.away_linescores = g.away_linescores;
         gameUpdates.push({ id: gid, payload: basePayload });
       } else {
         // PostgREST bulk INSERT requires identical keys across all rows in the array
         basePayload.odds = g.odds ?? null;
         basePayload.sport_stats = g.sport_stats ?? null;
+        basePayload.home_linescores = g.home_linescores ?? null;
+        basePayload.away_linescores = g.away_linescores ?? null;
         newGames.push(basePayload);
       }
     }

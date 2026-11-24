@@ -297,6 +297,12 @@ def extract_soccer_odds(odds_list: list[dict[str, Any]] | None) -> dict[str, Any
 
 def extract_team_match_stats(stat_list: list[dict[str, Any]]) -> dict[str, Any]:
     smap = {s.get("name"): s.get("displayValue") for s in stat_list if s.get("name")}
+    raw_pass_pct = safe_float(smap.get("passPct"))
+    pass_pct = (
+        round(raw_pass_pct * 100, 1)
+        if raw_pass_pct is not None and raw_pass_pct <= 1.0
+        else raw_pass_pct
+    )
     return {
         "possession_pct": safe_float(smap.get("possessionPct")),
         "shots": safe_int(smap.get("totalShots"), 0),
@@ -308,10 +314,24 @@ def extract_team_match_stats(stat_list: list[dict[str, Any]]) -> dict[str, Any]:
         "offsides": safe_int(smap.get("offsides"), 0),
         "saves": safe_int(smap.get("saves"), 0),
         "shot_pct": safe_float(smap.get("shotPct")),
+        "total_passes": safe_int(smap.get("totalPasses"), 0),
+        "accurate_passes": safe_int(smap.get("accuratePasses"), 0),
+        "pass_pct": pass_pct,
+        "crosses": safe_int(smap.get("totalCrosses"), 0),
+        "accurate_crosses": safe_int(smap.get("accurateCrosses"), 0),
+        "blocked_shots": safe_int(smap.get("blockedShots"), 0),
+        "tackles": safe_int(smap.get("totalTackles"), 0),
+        "effective_tackles": safe_int(smap.get("effectiveTackles"), 0),
+        "interceptions": safe_int(smap.get("interceptions"), 0),
+        "clearances": safe_int(smap.get("totalClearance"), 0),
+        "penalty_goals": safe_int(smap.get("penaltyKickGoals"), 0),
+        "penalty_shots": safe_int(smap.get("penaltyKickShots"), 0),
     }
 
 
-def extract_key_events(raw_events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def extract_key_events(
+    raw_events: list[dict[str, Any]], team_abbr_by_ext: dict[str, str] | None = None
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for ev in raw_events or []:
         etype = str((ev.get("type") or {}).get("text") or "").strip()
@@ -343,12 +363,16 @@ def extract_key_events(raw_events: list[dict[str, Any]]) -> list[dict[str, Any]]
             if len(participants) > 1
             else None
         )
+        ev_team = ev.get("team") or {}
+        team_abbr = ev_team.get("abbreviation") or (
+            team_abbr_by_ext.get(str(ev_team.get("id") or "")) if team_abbr_by_ext else None
+        )
         out.append(
             {
                 "kind": kind,
                 "label": etype,
                 "minute": str((ev.get("clock") or {}).get("displayValue") or ""),
-                "team_abbr": (ev.get("team") or {}).get("abbreviation"),
+                "team_abbr": team_abbr,
                 "player": scorer,
                 "assist": assist,
             }
@@ -988,6 +1012,8 @@ def sync_league(
                     "away_team_ext_id": at_ext,
                     "home_score": safe_int(home.get("score"), 0),
                     "away_score": safe_int(away.get("score"), 0),
+                    "home_linescores": None,
+                    "away_linescores": None,
                     "venue": (comp.get("venue") or {}).get("fullName"),
                     "odds": extract_soccer_odds(comp.get("odds")),
                     "sport_stats": None,
@@ -1004,6 +1030,16 @@ def sync_league(
         if pick_odds:
             g["odds"] = {**(g["odds"] or {}), **pick_odds}
 
+        header_comps = ((summ.get("header") or {}).get("competitions") or [None])[0]
+        if isinstance(header_comps, dict):
+            for hc in header_comps.get("competitors") or []:
+                ls = [safe_int(x.get("displayValue") if x.get("displayValue") is not None else x.get("value"), 0) for x in (hc.get("linescores") or []) if isinstance(x, dict)]
+                if ls:
+                    if hc.get("homeAway") == "home":
+                        g["home_linescores"] = ls
+                    elif hc.get("homeAway") == "away":
+                        g["away_linescores"] = ls
+
         home_stats: dict[str, Any] = {}
         away_stats: dict[str, Any] = {}
         for bt in (summ.get("boxscore") or {}).get("teams") or []:
@@ -1014,7 +1050,7 @@ def sync_league(
             elif tid == g["away_team_ext_id"]:
                 away_stats = parsed
 
-        key_events = extract_key_events(summ.get("keyEvents") or [])
+        key_events = extract_key_events(summ.get("keyEvents") or [], team_abbr_by_ext)
         if home_stats or away_stats or key_events:
             g["sport_stats"] = {
                 "home": home_stats,
@@ -1082,6 +1118,7 @@ def sync_league(
                             "shots_faced": smap.get("shotsFaced", 0),
                             "goals_conceded": smap.get("goalsConceded", 0),
                             "own_goals": smap.get("ownGoals", 0),
+                            "offsides": smap.get("offsides", 0),
                         },
                     }
                 )
@@ -1209,11 +1246,17 @@ def sync_league(
                 payload["odds"] = g["odds"]
             if g["sport_stats"] is not None:
                 payload["sport_stats"] = g["sport_stats"]
+            if g["home_linescores"] is not None:
+                payload["home_linescores"] = g["home_linescores"]
+            if g["away_linescores"] is not None:
+                payload["away_linescores"] = g["away_linescores"]
             game_updates.append((gid, payload))
         else:
             # PostgREST bulk INSERT requires identical keys across all rows
             payload["odds"] = g["odds"]
             payload["sport_stats"] = g["sport_stats"]
+            payload["home_linescores"] = g["home_linescores"]
+            payload["away_linescores"] = g["away_linescores"]
             new_games.append(payload)
 
     def patch_game(item: tuple[int, dict[str, Any]]) -> None:

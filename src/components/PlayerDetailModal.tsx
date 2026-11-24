@@ -21,6 +21,7 @@ import {
   PLAYER_CHART_METRICS,
   smoothEmpiricalRate,
   suggestPropLine,
+  type FootballPlayerMetric,
   type PlayerChartMetric,
 } from '../utils/betting';
 import type {
@@ -29,7 +30,12 @@ import type {
   PlayerGameStat,
   PlayerSeasonAverage,
 } from '../types/database';
-import { getFootballPlayerStatValue } from '../utils/footballProps';
+import {
+  buildSingleFootballPlayerProps,
+  FOOTBALL_PLAYER_METRIC_DEFS,
+  getFootballPlayerSeasonAvg,
+  getFootballPlayerStatValue,
+} from '../utils/footballProps';
 import { ModalDialog } from './ModalDialog';
 import { PlayerAvatar } from './PlayerAvatar';
 
@@ -42,14 +48,6 @@ interface PlayerDetailModalProps {
 }
 
 const METRIC_ORDER: PlayerChartMetric[] = ['pts', 'reb', 'ast', 'pra', 'tpm'];
-
-type FootballMetricKey = 'goals' | 'assists' | 'shots' | 'sot';
-const FOOTBALL_METRICS: Array<{ key: FootballMetricKey; label: string; short: string }> = [
-  { key: 'shots', label: 'Remates Totales', short: 'REM' },
-  { key: 'sot', label: 'Remates al Arco', short: 'ARCO' },
-  { key: 'goals', label: 'Goles', short: 'GOL' },
-  { key: 'assists', label: 'Asistencias', short: 'AST' },
-];
 
 export function PlayerDetailModal({
   playerId,
@@ -66,27 +64,40 @@ export function PlayerDetailModal({
 
   // Interactive chart metric + sportsbook prop line + evaluated side
   const [chartMetric, setChartMetric] = useState<PlayerChartMetric>('pts');
-  const [fbMetric, setFbMetric] = useState<FootballMetricKey>('shots');
+  const [fbMetric, setFbMetric] = useState<FootballPlayerMetric>('shots');
   const [propLine, setPropLine] = useState<number>(15.5);
   const [targetSide, setTargetSide] = useState<'OVER' | 'UNDER'>('OVER');
   const [selectedBarIdx, setSelectedBarIdx] = useState<number | null>(null);
   const [propsOrder, setPropsOrder] = useState<'asc' | 'desc'>('desc');
 
   const playerProps = useMemo(() => {
-    if (sport === 'football') return [];
+    if (sport === 'football') {
+      const recs = buildSingleFootballPlayerProps(fbAverage, logs);
+      return propsOrder === 'desc' ? recs : recs.toReversed();
+    }
     const recs = buildSinglePlayerPropsRecommendations(average, logs);
     return propsOrder === 'desc' ? recs : recs.toReversed();
-  }, [sport, average, logs, propsOrder]);
+  }, [sport, fbAverage, average, logs, propsOrder]);
 
   useEffect(() => {
-    if (sport === 'football') return;
+    if (sport !== 'football' || !fbAverage) return;
+    const isGk = (fbAverage.position ?? '').toUpperCase() === 'G' || Number(fbAverage.saves_pg ?? 0) >= 1.5;
+    setFbMetric(isGk ? 'saves' : 'shots');
+  }, [sport, fbAverage]);
+
+  useEffect(() => {
+    if (sport === 'football') {
+      const matching = playerProps.find((p) => p.footballMetricKey === fbMetric);
+      setTargetSide(matching?.pick === 'UNDER' ? 'UNDER' : 'OVER');
+      return;
+    }
     const matching = playerProps.find((p) => p.metricKey === chartMetric);
     if (matching) {
       setTargetSide(matching.pick === 'UNDER' ? 'UNDER' : 'OVER');
     } else {
       setTargetSide('OVER');
     }
-  }, [sport, playerId, chartMetric, playerProps]);
+  }, [sport, playerId, chartMetric, fbMetric, playerProps]);
 
   useEffect(() => {
     let active = true;
@@ -108,13 +119,17 @@ export function PlayerDetailModal({
   }, [playerId, sport]);
 
   const metricCfg = PLAYER_CHART_METRICS[chartMetric];
-  const fbMetricCfg = FOOTBALL_METRICS.find((m) => m.key === fbMetric) ?? FOOTBALL_METRICS[0];
+  const fbMetricCfg =
+    FOOTBALL_PLAYER_METRIC_DEFS.find((m) => m.key === fbMetric) ?? FOOTBALL_PLAYER_METRIC_DEFS[0];
 
   const defaultLineForMetric = useMemo(() => {
     if (sport === 'football') {
-      if (fbMetric === 'shots') {
-        return (fbAverage?.shots_pg ?? 1.5) >= 2.2 ? 2.5 : 1.5;
-      }
+      const avg = getFootballPlayerSeasonAvg(fbAverage, fbMetric) ?? 0;
+      if (fbMetric === 'shots') return avg >= 3.0 ? 2.5 : avg >= 1.9 ? 1.5 : 0.5;
+      if (fbMetric === 'sot') return avg >= 1.8 ? 1.5 : 0.5;
+      if (fbMetric === 'fouls_committed') return avg >= 1.9 ? 1.5 : 0.5;
+      if (fbMetric === 'fouls_suffered') return avg >= 2.1 ? 1.5 : 0.5;
+      if (fbMetric === 'saves') return avg >= 3.5 ? 3.5 : avg >= 2.5 ? 2.5 : avg >= 1.5 ? 1.5 : 0.5;
       return 0.5;
     }
     const avgVal = metricCfg.getSeasonAvg(average, logs);
@@ -295,14 +310,37 @@ export function PlayerDetailModal({
                       <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5">
                         Resumen de Temporada ({fbAverage.gp} PJ · {fbAverage.starts} titularidades)
                       </div>
-                      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 text-center tabular-nums">
-                        {[
-                          { label: 'Gol/PJ', val: Number(fbAverage.goals_pg).toFixed(2) },
-                          { label: 'Rem/PJ', val: Number(fbAverage.shots_pg).toFixed(1) },
-                          { label: 'Arco/PJ', val: Number(fbAverage.sot_pg).toFixed(2) },
-                          { label: 'Atajadas', val: String(fbAverage.saves) },
-                          { label: 'TA / TR', val: `${fbAverage.yellow_cards}/${fbAverage.red_cards}` },
-                        ].map((m) => (
+                      <div className="grid grid-cols-3 gap-2.5 text-center tabular-nums">
+                        {(() => {
+                          const gp = Math.max(1, fbAverage.gp || 0);
+                          return [
+                            { label: 'Gol/PJ', val: Number(fbAverage.goals_pg).toFixed(2) },
+                            {
+                              label: 'Asist/PJ',
+                              val: Number(fbAverage.assists_pg ?? fbAverage.assists / gp).toFixed(2),
+                            },
+                            {
+                              label: 'G+A Total',
+                              val: String(fbAverage.goal_contrib ?? fbAverage.goals + fbAverage.assists),
+                            },
+                            { label: 'Rem/PJ', val: Number(fbAverage.shots_pg).toFixed(1) },
+                            { label: 'Arco/PJ', val: Number(fbAverage.sot_pg).toFixed(2) },
+                            {
+                              label: 'Faltas Com/PJ',
+                              val: Number(
+                                fbAverage.fouls_committed_pg ?? fbAverage.fouls_committed / gp,
+                              ).toFixed(2),
+                            },
+                            {
+                              label: 'Faltas Rec/PJ',
+                              val: Number(
+                                fbAverage.fouls_suffered_pg ?? fbAverage.fouls_suffered / gp,
+                              ).toFixed(2),
+                            },
+                            { label: 'Atajadas', val: String(fbAverage.saves) },
+                            { label: 'TA / TR', val: `${fbAverage.yellow_cards}/${fbAverage.red_cards}` },
+                          ];
+                        })().map((m) => (
                           <div key={m.label}>
                             <div className="text-[11px] text-slate-400">{m.label}</div>
                             <div className="text-sm font-bold text-slate-100 mt-0.5">{m.val}</div>
@@ -393,7 +431,11 @@ export function PlayerDetailModal({
                   <div className="space-y-2">
                     {playerProps.map((prop) => {
                       const locked = !isPro && isHighProbabilityProp(prop.confidence);
-                      const isSelected = !locked && chartMetric === prop.metricKey;
+                      const isSelected =
+                        !locked &&
+                        (sport === 'football'
+                          ? fbMetric === prop.footballMetricKey
+                          : chartMetric === prop.metricKey);
                       const badgeCls =
                         prop.pick === 'OVER' ? 'sb-neon-over' : 'sb-neon-under';
                       return (
@@ -405,7 +447,11 @@ export function PlayerDetailModal({
                               onOpenProModal();
                               return;
                             }
-                            if (prop.metricKey) {
+                            if (sport === 'football' && prop.footballMetricKey) {
+                              setFbMetric(prop.footballMetricKey);
+                              setPropLine(prop.lineValue);
+                              setTargetSide(prop.pick === 'UNDER' ? 'UNDER' : 'OVER');
+                            } else if (prop.metricKey) {
                               setChartMetric(prop.metricKey);
                               setPropLine(prop.lineValue);
                               setTargetSide(prop.pick === 'UNDER' ? 'UNDER' : 'OVER');
@@ -489,16 +535,27 @@ export function PlayerDetailModal({
                       {chartLogs.length} PJ
                     </span>
 
-                    <div className="flex items-center gap-1 bg-[#12151c] p-1 rounded-lg border border-white/[0.08]">
+                    <div
+                      role="region"
+                      aria-label="Métricas del gráfico del jugador"
+                      className="flex items-center gap-1 bg-[#12151c] p-1 rounded-lg border border-white/[0.08] overflow-x-auto no-scrollbar sb-scroll-fade-x max-w-full"
+                    >
                       {sport === 'football'
-                        ? FOOTBALL_METRICS.map((cfg) => {
+                        ? FOOTBALL_PLAYER_METRIC_DEFS.map((cfg) => {
                             const active = fbMetric === cfg.key;
                             return (
                               <button
                                 key={cfg.key}
                                 type="button"
-                                onClick={() => setFbMetric(cfg.key)}
-                                className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                                aria-pressed={active}
+                                onClick={(e) => {
+                                  setFbMetric(cfg.key);
+                                  e.currentTarget.scrollIntoView({
+                                    block: 'nearest',
+                                    inline: 'nearest',
+                                  });
+                                }}
+                                className={`shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors whitespace-nowrap ${
                                   active
                                     ? 'cv-tab-active'
                                     : 'text-slate-400 hover:text-slate-200'
@@ -515,8 +572,15 @@ export function PlayerDetailModal({
                               <button
                                 key={mKey}
                                 type="button"
-                                onClick={() => setChartMetric(mKey)}
-                                className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                                aria-pressed={active}
+                                onClick={(e) => {
+                                  setChartMetric(mKey);
+                                  e.currentTarget.scrollIntoView({
+                                    block: 'nearest',
+                                    inline: 'nearest',
+                                  });
+                                }}
+                                className={`shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors whitespace-nowrap ${
                                   active
                                     ? 'cv-tab-active'
                                     : 'text-slate-400 hover:text-slate-200'
@@ -646,7 +710,7 @@ export function PlayerDetailModal({
                             type="button"
                             onClick={() => setSelectedBarIdx(isFocused ? null : idx)}
                             className="flex-1 min-w-0 flex flex-col items-center justify-end h-full group focus:outline-none"
-                            title={`${g.game?.game_date ?? ''} ${isHome ? 'vs' : '@'} ${opp ?? 'NBA'}: ${val} ${metricCfg.short}`}
+                            title={`${g.game?.game_date ?? ''} ${isHome ? 'vs' : '@'} ${opp ?? (sport === 'football' ? 'FUT' : 'NBA')}: ${val} ${sport === 'football' ? fbMetricCfg.short : metricCfg.short}`}
                           >
                             <span
                               className={`text-[10px] font-semibold mb-1 tabular-nums ${
@@ -705,7 +769,10 @@ export function PlayerDetailModal({
                         </span>
                         <span className="font-semibold">
                           {sport === 'football'
-                            ? `${chartLogs[selectedBarIdx].sport_stats?.goals ?? 0}G · ${chartLogs[selectedBarIdx].sport_stats?.assists ?? 0}A · ${chartLogs[selectedBarIdx].sport_stats?.shots ?? 0} REM (${chartLogs[selectedBarIdx].sport_stats?.shots_on_target ?? 0} arco)`
+                            ? (() => {
+                                const ss = chartLogs[selectedBarIdx].sport_stats;
+                                return `${ss?.goals ?? 0}G · ${ss?.assists ?? 0}A · ${ss?.shots ?? 0} REM (${ss?.shots_on_target ?? 0} arco) · ${ss?.fouls_committed ?? 0}FC/${ss?.fouls_suffered ?? 0}FR · ${ss?.yellow_cards ?? 0}TA${ss?.saves ? ` · ${ss.saves} ATAJ` : ''}`;
+                              })()
                             : `${chartLogs[selectedBarIdx].pts} PTS · ${chartLogs[selectedBarIdx].reb} REB · ${chartLogs[selectedBarIdx].ast} AST · ${chartLogs[selectedBarIdx].tpm} 3P`}
                         </span>
                       </div>
@@ -733,11 +800,14 @@ export function PlayerDetailModal({
                             <th scope="col" className="text-left py-2 px-3">FECHA</th>
                             <th scope="col" className="text-left py-2 px-2">RIVAL</th>
                             <th scope="col" className="text-center py-2 px-2">ROL</th>
-                            <th scope="col" className="text-right py-2 px-2">G</th>
-                            <th scope="col" className="text-right py-2 px-2">A</th>
-                            <th scope="col" className="text-right py-2 px-2">REM</th>
-                            <th scope="col" className="text-right py-2 px-2">ARCO</th>
-                            <th scope="col" className="text-right py-2 px-2">TA</th>
+                            <th scope="col" className={`text-right py-2 px-2 ${fbMetric === 'goals' || fbMetric === 'goal_contrib' ? 'text-white' : ''}`}>G</th>
+                            <th scope="col" className={`text-right py-2 px-2 ${fbMetric === 'assists' || fbMetric === 'goal_contrib' ? 'text-white' : ''}`}>A</th>
+                            <th scope="col" className={`text-right py-2 px-2 ${fbMetric === 'shots' ? 'text-white' : ''}`}>REM</th>
+                            <th scope="col" className={`text-right py-2 px-2 ${fbMetric === 'sot' ? 'text-white' : ''}`}>ARCO</th>
+                            <th scope="col" className={`text-right py-2 px-2 ${fbMetric === 'fouls_committed' ? 'text-white' : ''}`}>FC</th>
+                            <th scope="col" className={`text-right py-2 px-2 ${fbMetric === 'fouls_suffered' ? 'text-white' : ''}`}>FR</th>
+                            <th scope="col" className={`text-right py-2 px-2 ${fbMetric === 'yellow_cards' ? 'text-white' : ''}`}>TA</th>
+                            <th scope="col" className={`text-right py-2 px-2 ${fbMetric === 'saves' ? 'text-white' : ''}`}>ATAJ</th>
                             <th scope="col" className="text-center py-2 px-2">ESTADO</th>
                           </tr>
                         ) : (
@@ -820,7 +890,16 @@ export function PlayerDetailModal({
                                   {ss?.shots_on_target ?? 0}
                                 </td>
                                 <td className="text-right py-2 px-2 text-slate-400">
+                                  {ss?.fouls_committed ?? 0}
+                                </td>
+                                <td className="text-right py-2 px-2 text-slate-400">
+                                  {ss?.fouls_suffered ?? 0}
+                                </td>
+                                <td className="text-right py-2 px-2 text-amber-300">
                                   {ss?.yellow_cards ?? 0}
+                                </td>
+                                <td className="text-right py-2 px-2 text-slate-300">
+                                  {ss?.saves ?? 0}
                                 </td>
                                 <td className="text-center py-2 px-2">
                                   <span

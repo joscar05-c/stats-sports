@@ -34,13 +34,17 @@ import {
   isHighProbabilityProp,
   PRO_CONFIDENCE_THRESHOLD,
   summarizeTeamRecent,
+  type FootballMarketCategory,
   type PropStrategyMode,
 } from '../utils/betting';
 import {
   buildFootballMatchupInsight,
   buildFootballPropsRecommendations,
+  computeFootballMatchProjections,
   evaluateAnyPropStatus,
+  FOOTBALL_MARKET_CATEGORY_TABS,
   summarizeAnyGamePropsEffectiveness,
+  type FootballMatchProjections,
 } from '../utils/footballProps';
 import type { FootballPlayerSeasonAverage, Game, PlayerGameStat } from '../types/database';
 import type { AnyBettingContext } from './PropsSidebar';
@@ -164,6 +168,7 @@ export function GameDetailModal({
   const [activeTeamId, setActiveTeamId] = useState<number>(initialGame.away_team_id);
   const [propsScope, setPropsScope] = useState<'all' | 'team' | 'player'>('all');
   const [propsStrategy, setPropsStrategy] = useState<'safe' | 'value' | 'all'>('safe');
+  const [marketCategoryFilter, setMarketCategoryFilter] = useState<'all' | FootballMarketCategory>('all');
   const [propsOrder, setPropsOrder] = useState<'asc' | 'desc'>('desc');
   const [resultFilter, setResultFilter] = useState<PropResultFilter>('all');
 
@@ -175,7 +180,8 @@ export function GameDetailModal({
     setSection(game.status === 'scheduled' ? 'betting' : 'boxscore');
     setActiveTeamId(game.away_team_id);
     setResultFilter('all');
-  }, [game.id, game.away_team_id]);
+    setMarketCategoryFilter('all');
+  }, [game.id, game.away_team_id, sport]);
 
   useEffect(() => {
     let active = true;
@@ -288,18 +294,7 @@ export function GameDetailModal({
     const awayRecent = summarizeTeamRecent(game.away_team_id, betCtx.awayRecentGames);
     if (sport === 'football') {
       const fbCtx = betCtx as FootballGameBettingContext;
-      const insight = buildFootballMatchupInsight(
-        game,
-        fbCtx.homeStanding,
-        fbCtx.awayStanding,
-        fbCtx.homeTeamAvg,
-        fbCtx.awayTeamAvg,
-        homeRecent,
-        awayRecent,
-        fbCtx.homeRecentGames,
-        fbCtx.awayRecentGames,
-      );
-      const propsRecs = buildFootballPropsRecommendations({
+      const fbInput = {
         game,
         homeStanding: fbCtx.homeStanding,
         awayStanding: fbCtx.awayStanding,
@@ -312,8 +307,21 @@ export function GameDetailModal({
         keyPlayers: fbCtx.keyPlayers,
         playerRecentLogs: fbCtx.playerRecentLogs ?? [],
         playerStatuses: fbCtx.playerStatuses,
-      });
-      return { homeRecent, awayRecent, insight, propsRecs };
+      };
+      const insight = buildFootballMatchupInsight(
+        game,
+        fbCtx.homeStanding,
+        fbCtx.awayStanding,
+        fbCtx.homeTeamAvg,
+        fbCtx.awayTeamAvg,
+        homeRecent,
+        awayRecent,
+        fbCtx.homeRecentGames,
+        fbCtx.awayRecentGames,
+      );
+      const propsRecs = buildFootballPropsRecommendations(fbInput);
+      const fbProjections = computeFootballMatchProjections(fbInput);
+      return { homeRecent, awayRecent, insight, propsRecs, fbProjections };
     }
     const nbaCtx = betCtx as GameBettingContext;
     const insight = buildMatchupBettingInsight(
@@ -339,20 +347,45 @@ export function GameDetailModal({
       playerRecentLogs: nbaCtx.playerRecentLogs ?? [],
       playerStatuses: nbaCtx.playerStatuses,
     });
-    return { homeRecent, awayRecent, insight, propsRecs };
+    return {
+      homeRecent,
+      awayRecent,
+      insight,
+      propsRecs,
+      fbProjections: null as FootballMatchProjections | null,
+    };
   }, [game, betCtx, sport]);
+
+  const footballCategoryCounts = useMemo(() => {
+    const strategyFiltered = (bettingAnalysis?.propsRecs ?? []).filter(
+      (p) => propsStrategy === 'all' || ((p.strategy ?? 'value') as PropStrategyMode) === propsStrategy,
+    );
+    const counts: Record<string, number> = { all: strategyFiltered.length };
+    if (sport !== 'football') return counts;
+    for (const p of strategyFiltered) {
+      const cat = p.marketCategory ?? (p.scope === 'player' ? 'player' : 'other');
+      counts[cat] = (counts[cat] ?? 0) + 1;
+    }
+    return counts;
+  }, [bettingAnalysis, propsStrategy, sport]);
 
   const scopedProps = useMemo(() => {
     if (!bettingAnalysis) return [];
-    const list = bettingAnalysis.propsRecs.filter(
-      (p) =>
-        (propsScope === 'all' || p.scope === propsScope) &&
-        (propsStrategy === 'all' || ((p.strategy ?? 'value') as PropStrategyMode) === propsStrategy),
-    );
+    const list = bettingAnalysis.propsRecs.filter((p) => {
+      if (propsScope !== 'all' && p.scope !== propsScope) return false;
+      if (propsStrategy !== 'all' && ((p.strategy ?? 'value') as PropStrategyMode) !== propsStrategy) {
+        return false;
+      }
+      if (sport === 'football' && marketCategoryFilter !== 'all') {
+        const cat = p.marketCategory ?? (p.scope === 'player' ? 'player' : 'other');
+        if (cat !== marketCategoryFilter) return false;
+      }
+      return true;
+    });
     return list.toSorted((a, b) =>
       propsOrder === 'asc' ? a.confidence - b.confidence : b.confidence - a.confidence,
     );
-  }, [bettingAnalysis, propsScope, propsStrategy, propsOrder]);
+  }, [bettingAnalysis, propsScope, propsStrategy, sport, marketCategoryFilter, propsOrder]);
 
   const propsEffectiveness = useMemo(() => {
     if (game.status !== 'final' || scopedProps.length === 0) return null;
@@ -432,26 +465,37 @@ export function GameDetailModal({
               </span>
             </div>
 
-            <div className="flex items-center justify-center gap-1.5 sm:gap-5 tabular-nums">
-              <span
-                className={`text-2xl sm:text-4xl font-bold ${
-                  game.away_score >= game.home_score && game.status !== 'scheduled'
-                    ? 'text-white'
-                    : 'text-slate-400'
-                }`}
-              >
-                {game.status === 'scheduled' ? '-' : game.away_score}
-              </span>
-              <span className="text-[11px] sm:text-xs font-semibold text-slate-500">VS</span>
-              <span
-                className={`text-2xl sm:text-4xl font-bold ${
-                  game.home_score >= game.away_score && game.status !== 'scheduled'
-                    ? 'text-white'
-                    : 'text-slate-400'
-                }`}
-              >
-                {game.status === 'scheduled' ? '-' : game.home_score}
-              </span>
+            <div className="flex flex-col items-center justify-center">
+              <div className="flex items-center justify-center gap-1.5 sm:gap-5 tabular-nums">
+                <span
+                  className={`text-2xl sm:text-4xl font-bold ${
+                    game.away_score >= game.home_score && game.status !== 'scheduled'
+                      ? 'text-white'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  {game.status === 'scheduled' ? '-' : game.away_score}
+                </span>
+                <span className="text-[11px] sm:text-xs font-semibold text-slate-500">VS</span>
+                <span
+                  className={`text-2xl sm:text-4xl font-bold ${
+                    game.home_score >= game.away_score && game.status !== 'scheduled'
+                      ? 'text-white'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  {game.status === 'scheduled' ? '-' : game.home_score}
+                </span>
+              </div>
+              {sport === 'football' &&
+                game.status !== 'scheduled' &&
+                (game.away_linescores?.length ?? 0) >= 2 &&
+                (game.home_linescores?.length ?? 0) >= 2 && (
+                  <div className="mt-1 text-[10px] font-semibold text-slate-400 tabular-nums">
+                    1T: {game.away_linescores![0]}-{game.home_linescores![0]} · 2T:{' '}
+                    {game.away_linescores![1]}-{game.home_linescores![1]}
+                  </div>
+                )}
             </div>
 
             <div className="flex flex-col items-center text-center min-w-0">
@@ -810,6 +854,87 @@ export function GameDetailModal({
                     Radiografía estadística del cruce
                   </div>
 
+                  {/* Football Match Line Projections Grid */}
+                  {sport === 'football' &&
+                    bettingAnalysis.fbProjections &&
+                    (() => {
+                      const fp = bettingAnalysis.fbProjections;
+                      const cards = [
+                        {
+                          label: 'Goles Esp.',
+                          val: fp.totalGoals.toFixed(1),
+                          sub: `${game.away_team.abbreviation} ${fp.awayGoals.toFixed(1)} · ${game.home_team.abbreviation} ${fp.homeGoals.toFixed(1)}`,
+                        },
+                        fp.htTotalGoals != null
+                          ? {
+                              label: 'Goles 1T Esp.',
+                              val: fp.htTotalGoals.toFixed(1),
+                              sub: 'Primera mitad',
+                            }
+                          : null,
+                        fp.bttsPct != null || fp.over25Pct != null
+                          ? {
+                              label: 'BTTS / +2.5',
+                              val: `${fp.bttsPct != null ? `${Math.round(fp.bttsPct)}%` : '-'} / ${fp.over25Pct != null ? `${Math.round(fp.over25Pct)}%` : '-'}`,
+                              sub: 'Ambos / Over 2.5',
+                            }
+                          : null,
+                        fp.totalCorners != null
+                          ? {
+                              label: 'Córners Total',
+                              val: fp.totalCorners.toFixed(1),
+                              sub: `${game.away_team.abbreviation} ${fp.awayCorners?.toFixed(1) ?? '-'} · ${game.home_team.abbreviation} ${fp.homeCorners?.toFixed(1) ?? '-'}`,
+                            }
+                          : null,
+                        fp.totalFouls != null
+                          ? {
+                              label: 'Faltas Total',
+                              val: fp.totalFouls.toFixed(1),
+                              sub: `${game.away_team.abbreviation} ${fp.awayFouls?.toFixed(1) ?? '-'} · ${game.home_team.abbreviation} ${fp.homeFouls?.toFixed(1) ?? '-'}`,
+                            }
+                          : null,
+                        fp.totalCards != null
+                          ? {
+                              label: 'Amarillas Total',
+                              val: fp.totalCards.toFixed(1),
+                              sub: `${game.away_team.abbreviation} ${fp.awayCards?.toFixed(1) ?? '-'} · ${game.home_team.abbreviation} ${fp.homeCards?.toFixed(1) ?? '-'}`,
+                            }
+                          : null,
+                        fp.totalShots != null
+                          ? {
+                              label: 'Remates / Arco',
+                              val: fp.totalShots.toFixed(1),
+                              sub: `${fp.totalSot?.toFixed(1) ?? '-'} al arco`,
+                            }
+                          : null,
+                        {
+                          label: 'Modelo 1X2',
+                          val: `${Math.round(fp.homeWinProb)}% / ${Math.round(fp.drawProb)}% / ${Math.round(fp.awayWinProb)}%`,
+                          sub: `${game.home_team.abbreviation} · X · ${game.away_team.abbreviation}`,
+                        },
+                      ].filter((c): c is { label: string; val: string; sub: string } => c !== null);
+
+                      return (
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Proyecciones de Líneas del Partido
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 tabular-nums">
+                            {cards.map((c) => (
+                              <div
+                                key={c.label}
+                                className="rounded-lg bg-[#12151c] border border-white/[0.08] p-2.5"
+                              >
+                                <div className="text-[10px] text-slate-400 font-medium">{c.label}</div>
+                                <div className="text-sm font-bold text-white mt-0.5">{c.val}</div>
+                                <div className="text-[10px] text-slate-400 truncate mt-0.5">{c.sub}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                   {/* Matchup Signals */}
                   {bettingAnalysis.insight.signals.length > 0 && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -827,7 +952,7 @@ export function GameDetailModal({
                     </div>
                   )}
 
-                  {/* Team Recent 6 Games & Season Metrics Comparison */}
+                  {/* Team Recent Games & Season Metrics Comparison */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 tabular-nums">
                     {[
                       {
@@ -835,6 +960,7 @@ export function GameDetailModal({
                         role: 'Visita',
                         st: betCtx?.awayStanding ?? null,
                         rec: bettingAnalysis.awayRecent,
+                        recentGames: betCtx?.awayRecentGames ?? [],
                         locRec: betCtx?.awayStanding?.away_record,
                       },
                       {
@@ -842,9 +968,28 @@ export function GameDetailModal({
                         role: 'Local',
                         st: betCtx?.homeStanding ?? null,
                         rec: bettingAnalysis.homeRecent,
+                        recentGames: betCtx?.homeRecentGames ?? [],
                         locRec: betCtx?.homeStanding?.home_record,
                       },
-                    ].map((side) => (
+                    ].map((side) => {
+                      const fbRecentWdl =
+                        sport === 'football'
+                          ? side.recentGames
+                              .filter((g) => g.status === 'final')
+                              .reduce(
+                                (acc, g) => {
+                                  const isH = g.home_team_id === side.team.id;
+                                  const gf = isH ? g.home_score : g.away_score;
+                                  const ga = isH ? g.away_score : g.home_score;
+                                  if (gf > ga) acc.w += 1;
+                                  else if (gf === ga) acc.d += 1;
+                                  else acc.l += 1;
+                                  return acc;
+                                },
+                                { w: 0, d: 0, l: 0 },
+                              )
+                          : null;
+                      return (
                       <div
                         key={side.team.id}
                         className="rounded-lg bg-[#12151c] border border-white/[0.08] p-3 space-y-2"
@@ -855,7 +1000,11 @@ export function GameDetailModal({
                             <span className="text-slate-400 font-normal">({side.role})</span>
                           </span>
                           <span className="text-[11px] font-semibold text-slate-200">
-                            {side.st ? `${side.st.wins}-${side.st.losses}` : '-'}
+                            {side.st
+                              ? sport === 'football'
+                                ? `${side.st.wins}-${side.st.draws ?? 0}-${side.st.losses}`
+                                : `${side.st.wins}-${side.st.losses}`
+                              : '-'}
                           </span>
                         </div>
                         <div className="grid grid-cols-2 gap-y-1.5 text-[11px] text-slate-300">
@@ -891,13 +1040,16 @@ export function GameDetailModal({
                               <div>
                                 Últ. {side.rec.gamesCount} PJ:{' '}
                                 <strong className="text-white">
-                                  {side.rec.wins}-{side.rec.losses}
+                                  {fbRecentWdl
+                                    ? `${fbRecentWdl.w}-${fbRecentWdl.d}-${fbRecentWdl.l}`
+                                    : `${side.rec.wins}-${side.rec.losses}`}
                                 </strong>
                               </div>
                               <div>
                                 Prom. total PJ:{' '}
                                 <strong className="text-white">
-                                  {side.rec.avgCombined.toFixed(1)} pts
+                                  {side.rec.avgCombined.toFixed(1)}{' '}
+                                  {sport === 'football' ? 'goles' : 'pts'}
                                 </strong>
                               </div>
                             </>
@@ -920,15 +1072,29 @@ export function GameDetailModal({
                           )}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {/* Quick Guide Tip */}
                   <p className="text-[11px] text-slate-400 leading-relaxed bg-[#12151c] rounded-lg px-3 py-2 border border-white/[0.06]">
-                    <strong className="text-slate-200">Referencia:</strong> en Hándicap,{' '}
-                    <span className="text-slate-100 font-semibold">-8.5</span> exige ganar por 9+
-                    puntos y <span className="text-slate-100 font-semibold">+8.5</span> cubre aunque
-                    pierda hasta por 8 puntos. Toca cualquier jugador abajo para revisar su tendencia de 15 partidos.
+                    {sport === 'football' ? (
+                      <>
+                        <strong className="text-slate-200">Referencia fútbol:</strong> en líneas{' '}
+                        <span className="text-slate-100 font-semibold">O/U</span> de Córners, Faltas,
+                        Tarjetas o Goles 1T, las líneas terminadas en .0 devuelven apuesta en empate;
+                        en Hándicap Asiático, <span className="text-slate-100 font-semibold">-0.5</span>{' '}
+                        exige ganar y <span className="text-slate-100 font-semibold">+0.5</span> cubre
+                        con empate o victoria. Toca cualquier mercado abajo para simular tu línea.
+                      </>
+                    ) : (
+                      <>
+                        <strong className="text-slate-200">Referencia:</strong> en Hándicap,{' '}
+                        <span className="text-slate-100 font-semibold">-8.5</span> exige ganar por 9+
+                        puntos y <span className="text-slate-100 font-semibold">+8.5</span> cubre aunque
+                        pierda hasta por 8 puntos. Toca cualquier jugador abajo para revisar su tendencia de 15 partidos.
+                      </>
+                    )}
                   </p>
                 </div>
               )
@@ -944,7 +1110,9 @@ export function GameDetailModal({
                       Mercados analizados ({filteredProps.length})
                     </div>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      Cruce por MPG, Local/Visita y B2B · Ordenado por índice.
+                      {sport === 'football'
+                        ? 'Córners, Faltas, Tarjetas, Goles, 1X2 y Jugadores · Ordenado por índice.'
+                        : 'Cruce por MPG, Local/Visita y B2B · Ordenado por índice.'}
                     </p>
                   </div>
 
@@ -1002,7 +1170,10 @@ export function GameDetailModal({
                         <button
                           key={f.key}
                           type="button"
-                          onClick={() => setPropsScope(f.key)}
+                          onClick={() => {
+                            setPropsScope(f.key);
+                            setMarketCategoryFilter('all');
+                          }}
                           className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
                             active
                               ? 'cv-tab-active'
@@ -1016,6 +1187,41 @@ export function GameDetailModal({
                     })}
                   </div>
                 </div>
+
+                {/* Football Market Category Filter Pills */}
+                {sport === 'football' && (footballCategoryCounts.all ?? 0) > 0 && (
+                  <div
+                    role="region"
+                    aria-label="Categorías de mercados de fútbol"
+                    className="flex items-center gap-1.5 overflow-x-auto no-scrollbar sb-scroll-fade-x pb-0.5"
+                  >
+                    {FOOTBALL_MARKET_CATEGORY_TABS.filter(
+                      (c) => (footballCategoryCounts[c.key] ?? 0) > 0,
+                    ).map((cat) => {
+                      const active = marketCategoryFilter === cat.key;
+                      const count = footballCategoryCounts[cat.key] ?? 0;
+                      return (
+                        <button
+                          key={cat.key}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={(e) => {
+                            setMarketCategoryFilter(cat.key);
+                            if (cat.key !== 'all') setPropsScope('all');
+                            e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                          }}
+                          className={`shrink-0 px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors whitespace-nowrap tabular-nums ${
+                            active
+                              ? 'cv-tab-active'
+                              : 'bg-[#12151c] text-slate-300 border-white/[0.08] hover:border-white/[0.2] hover:text-white'
+                          }`}
+                        >
+                          {cat.label} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Post-game Props Effectiveness Summary */}
                 {propsEffectiveness && (
@@ -1299,6 +1505,34 @@ export function GameDetailModal({
                         h: Number(game.sport_stats.home.yellow_cards ?? 0),
                         lowerIsBetter: true,
                       },
+                      ...(
+                        [
+                          { label: 'Tarjetas Rojas', key: 'red_cards', lowerIsBetter: true },
+                          { label: 'Pases Totales', key: 'total_passes' },
+                          { label: 'Precisión Pase (%)', key: 'pass_pct', suffix: '%' },
+                          { label: 'Tiros Bloqueados', key: 'blocked_shots' },
+                          { label: 'Entradas', key: 'tackles' },
+                          { label: 'Intercepciones', key: 'interceptions' },
+                          { label: 'Centros', key: 'crosses' },
+                          { label: 'Despejes', key: 'clearances' },
+                        ] as const
+                      ).flatMap((ext) => {
+                        const aVal = game.sport_stats?.away?.[ext.key];
+                        const hVal = game.sport_stats?.home?.[ext.key];
+                        if (aVal == null && hVal == null) return [];
+                        const aNum = Number(aVal ?? 0);
+                        const hNum = Number(hVal ?? 0);
+                        if (aNum === 0 && hNum === 0 && ext.key !== 'red_cards') return [];
+                        return [
+                          {
+                            label: ext.label,
+                            a: aNum,
+                            h: hNum,
+                            lowerIsBetter: 'lowerIsBetter' in ext ? ext.lowerIsBetter : undefined,
+                            suffix: 'suffix' in ext ? ext.suffix : undefined,
+                          },
+                        ];
+                      }),
                     ].map((r) => {
                       const posA = Math.max(0.1, r.a);
                       const posH = Math.max(0.1, r.h);
@@ -1335,6 +1569,55 @@ export function GameDetailModal({
                 if (!fbCtx?.awayTeamAvg || !fbCtx?.homeTeamAvg) return null;
                 const aT = fbCtx.awayTeamAvg;
                 const hT = fbCtx.homeTeamAvg;
+                const rows: Array<{
+                  label: string;
+                  a: number;
+                  h: number;
+                  dec: number;
+                  lowerIsBetter?: boolean;
+                  suffix?: string;
+                }> = [
+                  { label: 'Goles a Favor / PJ', a: Number(aT.gf_pg ?? 0), h: Number(hT.gf_pg ?? 0), dec: 2 },
+                  { label: 'Goles Recibidos / PJ', a: Number(aT.ga_pg ?? 0), h: Number(hT.ga_pg ?? 0), dec: 2, lowerIsBetter: true },
+                  ...(aT.ht_gf_pg != null || hT.ht_gf_pg != null
+                    ? [{ label: 'Goles 1T a Favor / PJ', a: Number(aT.ht_gf_pg ?? 0), h: Number(hT.ht_gf_pg ?? 0), dec: 2 }]
+                    : []),
+                  { label: 'Posesión Promedio', a: Number(aT.possession_avg ?? 50), h: Number(hT.possession_avg ?? 50), dec: 1, suffix: '%' },
+                  ...(aT.shots_pg != null || hT.shots_pg != null
+                    ? [{ label: 'Remates / PJ', a: Number(aT.shots_pg ?? 0), h: Number(hT.shots_pg ?? 0), dec: 1 }]
+                    : []),
+                  ...(aT.sot_pg != null || hT.sot_pg != null
+                    ? [{ label: 'Al Arco / PJ', a: Number(aT.sot_pg ?? 0), h: Number(hT.sot_pg ?? 0), dec: 1 }]
+                    : []),
+                  ...(aT.corners_pg != null || hT.corners_pg != null
+                    ? [{ label: 'Córners / PJ', a: Number(aT.corners_pg ?? 0), h: Number(hT.corners_pg ?? 0), dec: 1 }]
+                    : []),
+                  ...(aT.corners_against_pg != null || hT.corners_against_pg != null
+                    ? [{ label: 'Córners Concedidos / PJ', a: Number(aT.corners_against_pg ?? 0), h: Number(hT.corners_against_pg ?? 0), dec: 1 }]
+                    : []),
+                  ...(aT.fouls_pg != null || hT.fouls_pg != null
+                    ? [{ label: 'Faltas Cometidas / PJ', a: Number(aT.fouls_pg ?? 0), h: Number(hT.fouls_pg ?? 0), dec: 1, lowerIsBetter: true }]
+                    : []),
+                  ...(aT.fouls_drawn_pg != null || hT.fouls_drawn_pg != null
+                    ? [{ label: 'Faltas Recibidas / PJ', a: Number(aT.fouls_drawn_pg ?? 0), h: Number(hT.fouls_drawn_pg ?? 0), dec: 1 }]
+                    : []),
+                  ...(aT.yellow_cards_pg != null || hT.yellow_cards_pg != null
+                    ? [{ label: 'Amarillas / PJ', a: Number(aT.yellow_cards_pg ?? 0), h: Number(hT.yellow_cards_pg ?? 0), dec: 2, lowerIsBetter: true }]
+                    : []),
+                  ...(aT.offsides_pg != null || hT.offsides_pg != null
+                    ? [{ label: 'Fueras de Juego / PJ', a: Number(aT.offsides_pg ?? 0), h: Number(hT.offsides_pg ?? 0), dec: 1, lowerIsBetter: true }]
+                    : []),
+                  ...(aT.saves_pg != null || hT.saves_pg != null
+                    ? [{ label: 'Atajadas / PJ', a: Number(aT.saves_pg ?? 0), h: Number(hT.saves_pg ?? 0), dec: 1 }]
+                    : []),
+                  ...(aT.btts_pct != null || hT.btts_pct != null
+                    ? [{ label: 'Ambos Marcan (BTTS %)', a: Number(aT.btts_pct ?? 0), h: Number(hT.btts_pct ?? 0), dec: 0, suffix: '%' }]
+                    : []),
+                  ...(aT.over_25_pct != null || hT.over_25_pct != null
+                    ? [{ label: 'Más 2.5 Goles %', a: Number(aT.over_25_pct ?? 0), h: Number(hT.over_25_pct ?? 0), dec: 0, suffix: '%' }]
+                    : []),
+                  { label: 'Vallas Invictas', a: Number(aT.clean_sheets ?? 0), h: Number(hT.clean_sheets ?? 0), dec: 0 },
+                ];
                 return (
                   <div className="rounded-xl bg-[#0e1117] border border-white/[0.08] p-4 space-y-3.5 tabular-nums">
                     <div className="flex items-center justify-between border-b border-white/[0.08] pb-2.5">
@@ -1349,15 +1632,7 @@ export function GameDetailModal({
                       </span>
                     </div>
                     <div className="space-y-2.5">
-                      {[
-                        { label: 'Goles a Favor / PJ', a: Number(aT.gf_pg ?? 0), h: Number(hT.gf_pg ?? 0), dec: 2 },
-                        { label: 'Goles Recibidos / PJ', a: Number(aT.ga_pg ?? 0), h: Number(hT.ga_pg ?? 0), dec: 2, lowerIsBetter: true },
-                        { label: 'Posesión Promedio', a: Number(aT.possession_avg ?? 50), h: Number(hT.possession_avg ?? 50), dec: 1, suffix: '%' },
-                        { label: 'Remates / PJ', a: Number(aT.shots_pg ?? 0), h: Number(hT.shots_pg ?? 0), dec: 1 },
-                        { label: 'Al Arco / PJ', a: Number(aT.sot_pg ?? 0), h: Number(hT.sot_pg ?? 0), dec: 1 },
-                        { label: 'Córners / PJ', a: Number(aT.corners_pg ?? 0), h: Number(hT.corners_pg ?? 0), dec: 1 },
-                        { label: 'Vallas Invictas', a: Number(aT.clean_sheets ?? 0), h: Number(hT.clean_sheets ?? 0), dec: 0 },
-                      ].map((r) => {
+                      {rows.map((r) => {
                         const posA = Math.max(0.1, r.a);
                         const posH = Math.max(0.1, r.h);
                         const pctA = Math.round((posA / (posA + posH)) * 100);
@@ -1768,6 +2043,7 @@ export function GameDetailModal({
                         <th scope="col" className="text-right py-2 px-2">REM</th>
                         <th scope="col" className="text-right py-2 px-2">ARCO</th>
                         <th scope="col" className="text-right py-2 px-2">FC</th>
+                        <th scope="col" className="text-right py-2 px-2">FS</th>
                         <th scope="col" className="text-right py-2 px-2">TA</th>
                         <th scope="col" className="text-right py-2 px-2">TR</th>
                         <th scope="col" className="text-right py-2 px-2">ATAJ</th>
@@ -1813,7 +2089,7 @@ export function GameDetailModal({
                         </th>
                         {row.did_not_play ? (
                           <td
-                            colSpan={sport === 'football' ? 9 : 10}
+                            colSpan={10}
                             className="py-2 px-2 text-right text-slate-400 italic"
                           >
                             {row.dnp_reason || 'No jugó (DNP)'}
@@ -1837,6 +2113,9 @@ export function GameDetailModal({
                             </td>
                             <td className="text-right py-2 px-2 text-slate-400">
                               {row.sport_stats?.fouls_committed ?? 0}
+                            </td>
+                            <td className="text-right py-2 px-2 text-slate-400">
+                              {row.sport_stats?.fouls_suffered ?? 0}
                             </td>
                             <td className="text-right py-2 px-2 text-amber-300">
                               {row.sport_stats?.yellow_cards ?? 0}

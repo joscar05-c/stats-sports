@@ -551,6 +551,27 @@ function clampConfidence(val: number): number {
 
 export type PropStrategyMode = 'safe' | 'value';
 
+export type FootballPlayerMetric =
+  | 'goals'
+  | 'assists'
+  | 'goal_contrib'
+  | 'shots'
+  | 'sot'
+  | 'fouls_committed'
+  | 'fouls_suffered'
+  | 'yellow_cards'
+  | 'saves';
+
+export type FootballMarketCategory =
+  | 'goals'
+  | 'corners'
+  | 'fouls'
+  | 'cards'
+  | 'shots'
+  | 'result'
+  | 'other'
+  | 'player';
+
 export const PRO_CONFIDENCE_THRESHOLD = 68;
 
 export function isHighProbabilityProp(confidence: number): boolean {
@@ -573,6 +594,7 @@ export interface PropRecommendation {
   id: string;
   scope: 'team' | 'player';
   strategy?: PropStrategyMode;
+  marketCategory?: FootballMarketCategory;
   teamId?: number;
   projectedValue?: number;
   marketLabel: string;
@@ -580,7 +602,7 @@ export interface PropRecommendation {
   teamAbbr: string;
   playerId?: number;
   metricKey?: PlayerChartMetric;
-  footballMetricKey?: 'goals' | 'shots' | 'sot' | 'assists';
+  footballMetricKey?: FootballPlayerMetric;
   statSummary: string;
   marketLineText: string;
   lineValue: number;

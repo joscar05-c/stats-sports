@@ -109,6 +109,18 @@ export interface FootballTeamMatchStats {
   offsides?: number;
   saves?: number;
   shot_pct?: number;
+  total_passes?: number;
+  accurate_passes?: number;
+  pass_pct?: number;
+  crosses?: number;
+  accurate_crosses?: number;
+  blocked_shots?: number;
+  tackles?: number;
+  effective_tackles?: number;
+  interceptions?: number;
+  clearances?: number;
+  penalty_goals?: number;
+  penalty_shots?: number;
 }
 
 export interface FootballKeyEvent {
@@ -141,6 +153,7 @@ export interface FootballPlayerMatchSportStats {
   shots_faced?: number;
   goals_conceded?: number;
   own_goals?: number;
+  offsides?: number;
 }
 
 export interface Game {
@@ -311,6 +324,13 @@ export interface FootballPlayerSeasonAverage {
   assists_pg: number;
   shots_pg: number;
   sot_pg: number;
+  fouls_committed_pg?: number | null;
+  fouls_suffered_pg?: number | null;
+  yellow_cards_pg?: number | null;
+  saves_pg?: number | null;
+  goal_contrib?: number;
+  goal_contrib_pg?: number | null;
+  offsides?: number;
 }
 
 export interface FootballTeamSeasonAverage {
@@ -343,6 +363,27 @@ export interface FootballTeamSeasonAverage {
   yellow_cards: number;
   red_cards: number;
   clean_sheets: number;
+  corners_against_pg?: number | null;
+  fouls_drawn_pg?: number | null;
+  shots_against_pg?: number | null;
+  sot_against_pg?: number | null;
+  yellow_cards_pg?: number | null;
+  cards_against_pg?: number | null;
+  offsides_pg?: number | null;
+  saves_pg?: number | null;
+  passes_pg?: number | null;
+  pass_pct_avg?: number | null;
+  tackles_pg?: number | null;
+  interceptions_pg?: number | null;
+  btts_pct?: number | null;
+  over_25_pct?: number | null;
+  over_15_pct?: number | null;
+  ht_gf_pg?: number | null;
+  ht_ga_pg?: number | null;
+  home_gf_pg?: number | null;
+  home_ga_pg?: number | null;
+  away_gf_pg?: number | null;
+  away_ga_pg?: number | null;
 }
 
 export interface SyncRun {

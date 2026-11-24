@@ -113,10 +113,16 @@ const TEAM_CATEGORIES: Array<{
 type FootballPlayerMetricKey =
   | 'goals'
   | 'assists'
+  | 'goal_contrib'
   | 'shots'
   | 'shots_on_target'
   | 'goals_pg'
   | 'shots_pg'
+  | 'sot_pg'
+  | 'fouls_committed'
+  | 'fouls_suffered'
+  | 'fouls_committed_pg'
+  | 'fouls_suffered_pg'
   | 'saves'
   | 'yellow_cards';
 
@@ -129,6 +135,14 @@ type FootballTeamMetricKey =
   | 'shots_pg'
   | 'sot_pg'
   | 'corners_pg'
+  | 'corners_against_pg'
+  | 'fouls_pg'
+  | 'fouls_drawn_pg'
+  | 'yellow_cards_pg'
+  | 'offsides_pg'
+  | 'saves_pg'
+  | 'btts_pct'
+  | 'over_25_pct'
   | 'clean_sheets';
 
 const FOOTBALL_PLAYER_CATEGORIES: Array<{
@@ -138,10 +152,16 @@ const FOOTBALL_PLAYER_CATEGORIES: Array<{
 }> = [
   { key: 'goals', label: 'Goles', isInt: true },
   { key: 'assists', label: 'Asistencias', isInt: true },
+  { key: 'goal_contrib', label: 'Goles + Asist.', isInt: true },
   { key: 'shots', label: 'Remates', isInt: true },
   { key: 'shots_on_target', label: 'Al Arco', isInt: true },
   { key: 'goals_pg', label: 'Goles / PJ' },
   { key: 'shots_pg', label: 'Remates / PJ' },
+  { key: 'sot_pg', label: 'Al Arco / PJ' },
+  { key: 'fouls_committed', label: 'Faltas Com.', isInt: true },
+  { key: 'fouls_committed_pg', label: 'Faltas Com./PJ' },
+  { key: 'fouls_suffered', label: 'Faltas Rec.', isInt: true },
+  { key: 'fouls_suffered_pg', label: 'Faltas Rec./PJ' },
   { key: 'saves', label: 'Atajadas', isInt: true },
   { key: 'yellow_cards', label: 'Tarjetas Amarillas', isInt: true },
 ];
@@ -160,10 +180,18 @@ const FOOTBALL_TEAM_CATEGORIES: Array<{
   { key: 'goals_for', label: 'Goles a Favor', subtitle: 'Goles anotados en la temporada', isInt: true },
   { key: 'goals_against', label: 'Menos Goles Rec.', subtitle: 'Mejor solidez defensiva', asc: true, isInt: true },
   { key: 'goal_diff', label: 'Dif. de Gol', subtitle: 'Diferencia neta de goles', isInt: true, showSign: true },
-  { key: 'possession_avg', label: 'Posesión %', subtitle: 'Posesión promedio por partido', suffix: '%' },
+  { key: 'corners_pg', label: 'Córners / PJ', subtitle: 'Tiros de esquina a favor por partido' },
+  { key: 'corners_against_pg', label: 'Menos Cór. Conc.', subtitle: 'Córners concedidos al rival por partido', asc: true },
+  { key: 'fouls_pg', label: 'Faltas / PJ', subtitle: 'Faltas cometidas por encuentro' },
+  { key: 'fouls_drawn_pg', label: 'Faltas Rec. / PJ', subtitle: 'Faltas sufridas por encuentro' },
+  { key: 'yellow_cards_pg', label: 'Amarillas / PJ', subtitle: 'Tarjetas amarillas recibidas por partido', decimals: 2 },
+  { key: 'btts_pct', label: 'BTTS %', subtitle: 'Partidos donde ambos equipos anotan', suffix: '%', decimals: 0 },
+  { key: 'over_25_pct', label: 'Más 2.5 Goles %', subtitle: 'Porcentaje de partidos con 3+ goles', suffix: '%', decimals: 0 },
   { key: 'shots_pg', label: 'Remates / PJ', subtitle: 'Remates totales por encuentro' },
   { key: 'sot_pg', label: 'Al Arco / PJ', subtitle: 'Disparos a puerta por encuentro' },
-  { key: 'corners_pg', label: 'Córners / PJ', subtitle: 'Tiros de esquina ganados por partido' },
+  { key: 'offsides_pg', label: 'Offsides / PJ', subtitle: 'Fueras de juego por encuentro' },
+  { key: 'saves_pg', label: 'Atajadas / PJ', subtitle: 'Atajadas del arquero por partido' },
+  { key: 'possession_avg', label: 'Posesión %', subtitle: 'Posesión promedio por partido', suffix: '%' },
   { key: 'clean_sheets', label: 'Vallas Invictas', subtitle: 'Partidos sin recibir gol', isInt: true },
 ];
 
@@ -664,6 +692,18 @@ export function LeadersView({
                         <>
                           <span>·</span>
                           <span>{Number(t.shots_pg).toFixed(1)} REM/PJ</span>
+                        </>
+                      )}
+                      {t.corners_pg != null && (
+                        <>
+                          <span>·</span>
+                          <span>{Number(t.corners_pg).toFixed(1)} Cór/PJ</span>
+                        </>
+                      )}
+                      {t.fouls_pg != null && (
+                        <>
+                          <span>·</span>
+                          <span>{Number(t.fouls_pg).toFixed(1)} Fal/PJ</span>
                         </>
                       )}
                     </div>

@@ -24,6 +24,7 @@ import {
   isHighProbabilityProp,
   PRO_CONFIDENCE_THRESHOLD,
   summarizeTeamRecent,
+  type FootballMarketCategory,
   type PropContextBadge,
   type PropRecommendation,
   type PropStrategyMode,
@@ -31,6 +32,7 @@ import {
 import {
   buildFootballPropsRecommendations,
   evaluateAnyPropStatus,
+  FOOTBALL_MARKET_CATEGORY_TABS,
   summarizeAnyGamePropsEffectiveness,
 } from '../utils/footballProps';
 import type { Game, PlayerGameStat } from '../types/database';
@@ -114,13 +116,15 @@ export function PropsSidebar({
 
   const [scopeFilter, setScopeFilter] = useState<'all' | 'team' | 'player'>('all');
   const [strategyFilter, setStrategyFilter] = useState<'safe' | 'value' | 'all'>('safe');
+  const [marketCategoryFilter, setMarketCategoryFilter] = useState<'all' | FootballMarketCategory>('all');
   const [reliableOnly, setReliableOnly] = useState(true);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [resultFilter, setResultFilter] = useState<PropResultFilter>('all');
 
   useEffect(() => {
     setResultFilter('all');
-  }, [focusedGameId]);
+    setMarketCategoryFilter('all');
+  }, [focusedGameId, sport]);
 
   const inFlightRef = useRef<Set<number>>(new Set());
   const boxInFlightRef = useRef<Set<number>>(new Set());
@@ -377,12 +381,31 @@ export function PropsSidebar({
     });
   }, [focusedGame, focusedContext, sport]);
 
-  const scopedProps = useMemo(() => {
-    let list = gameProps.filter(
-      (p) =>
-        (scopeFilter === 'all' || p.scope === scopeFilter) &&
-        (strategyFilter === 'all' || ((p.strategy ?? 'value') as PropStrategyMode) === strategyFilter),
+  const footballCategoryCounts = useMemo(() => {
+    const strategyFiltered = gameProps.filter(
+      (p) => strategyFilter === 'all' || ((p.strategy ?? 'value') as PropStrategyMode) === strategyFilter,
     );
+    const counts: Record<string, number> = { all: strategyFiltered.length };
+    if (sport !== 'football') return counts;
+    for (const p of strategyFiltered) {
+      const cat = p.marketCategory ?? (p.scope === 'player' ? 'player' : 'other');
+      counts[cat] = (counts[cat] ?? 0) + 1;
+    }
+    return counts;
+  }, [gameProps, sport, strategyFilter]);
+
+  const scopedProps = useMemo(() => {
+    let list = gameProps.filter((p) => {
+      if (scopeFilter !== 'all' && p.scope !== scopeFilter) return false;
+      if (strategyFilter !== 'all' && ((p.strategy ?? 'value') as PropStrategyMode) !== strategyFilter) {
+        return false;
+      }
+      if (sport === 'football' && marketCategoryFilter !== 'all') {
+        const cat = p.marketCategory ?? (p.scope === 'player' ? 'player' : 'other');
+        if (cat !== marketCategoryFilter) return false;
+      }
+      return true;
+    });
     const reliable = list.filter((p) => p.confidence >= 58);
     if (reliableOnly && reliable.length > 0) {
       list = reliable;
@@ -390,7 +413,7 @@ export function PropsSidebar({
     return list.toSorted((a, b) =>
       sortOrder === 'asc' ? a.confidence - b.confidence : b.confidence - a.confidence,
     );
-  }, [gameProps, scopeFilter, strategyFilter, reliableOnly, sortOrder]);
+  }, [gameProps, scopeFilter, strategyFilter, sport, marketCategoryFilter, reliableOnly, sortOrder]);
 
   const propsEffectiveness = useMemo(() => {
     if (!focusedGame || focusedGame.status !== 'final') return null;
@@ -651,7 +674,10 @@ export function PropsSidebar({
                     <button
                       key={f.key}
                       type="button"
-                      onClick={() => setScopeFilter(f.key)}
+                      onClick={() => {
+                        setScopeFilter(f.key);
+                        setMarketCategoryFilter('all');
+                      }}
                       className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
                         active
                           ? 'cv-tab-active'
@@ -689,6 +715,40 @@ export function PropsSidebar({
                 </button>
               </div>
             </div>
+
+            {sport === 'football' && gameProps.length > 0 && (footballCategoryCounts.all ?? 0) > 0 && (
+              <div
+                role="region"
+                aria-label="Categorías de mercados de fútbol"
+                className="flex items-center gap-1 overflow-x-auto no-scrollbar sb-scroll-fade-x pt-0.5"
+              >
+                {FOOTBALL_MARKET_CATEGORY_TABS.filter((c) => (footballCategoryCounts[c.key] ?? 0) > 0).map(
+                  (cat) => {
+                    const active = marketCategoryFilter === cat.key;
+                    const count = footballCategoryCounts[cat.key] ?? 0;
+                    return (
+                      <button
+                        key={cat.key}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={(e) => {
+                          setMarketCategoryFilter(cat.key);
+                          if (cat.key !== 'all') setScopeFilter('all');
+                          e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                        }}
+                        className={`shrink-0 px-2 py-1 rounded-md text-[10px] font-semibold border transition-colors whitespace-nowrap tabular-nums ${
+                          active
+                            ? 'cv-tab-active'
+                            : 'bg-[#0b0d11] text-slate-300 border-white/[0.08] hover:border-white/[0.18] hover:text-white'
+                        }`}
+                      >
+                        {cat.label} ({count})
+                      </button>
+                    );
+                  },
+                )}
+              </div>
+            )}
           </div>
         </div>
 

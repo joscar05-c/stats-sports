@@ -42,12 +42,19 @@ import {
 import {
   buildFootballMatchupInsight,
   buildFootballPropsRecommendations,
+  computeFootballMatchProjections,
   evaluateAnyPropStatus,
+  extractHalfTimeGoals,
+  extractMatchTotalStat,
+  extractTeamMatchStat,
+  FOOTBALL_PLAYER_METRIC_DEFS,
+  getFootballPlayerSeasonAvg,
   getFootballPlayerStatValue,
 } from '../utils/footballProps';
 import { isNativeAndroid } from '../utils/platform';
 import type {
   FootballPlayerSeasonAverage,
+  FootballTeamMatchStats,
   FootballTeamSeasonAverage,
   Game,
   Player,
@@ -245,36 +252,49 @@ export function PropAnalysisView({
 
   // Build deep statistical breakdown for the selected prop
   const analysis = useMemo(() => {
-    const unit =
-      prop.footballMetricKey === 'goals'
-        ? 'GOL'
-        : prop.footballMetricKey === 'assists'
-          ? 'AST'
-          : prop.footballMetricKey === 'shots'
-            ? 'REM'
-            : prop.footballMetricKey === 'sot'
-              ? 'ARCO'
-              : prop.id.startsWith('fb_total_')
-                ? 'GOL'
-                : prop.id.startsWith('fb_btts_')
-                  ? 'BTTS'
-                  : prop.metricKey === 'pts'
-                    ? 'PTS'
-                    : prop.metricKey === 'reb'
-                      ? 'REB'
-                      : prop.metricKey === 'ast'
-                        ? 'AST'
-                        : prop.metricKey === 'pra'
-                          ? 'P+R+A'
-                          : prop.metricKey === 'tpm'
-                            ? '3PT'
-                            : prop.pick === 'ML' || prop.pick === 'DC'
-                              ? '%'
-                              : prop.id.startsWith('team_3pm_')
-                                ? '3PM'
-                                : prop.id.startsWith('team_reb_')
-                                  ? 'REB'
-                                  : 'PTS';
+    const fbMetricDef = prop.footballMetricKey
+      ? FOOTBALL_PLAYER_METRIC_DEFS.find((d) => d.key === prop.footballMetricKey)
+      : undefined;
+    const unit = fbMetricDef
+      ? fbMetricDef.short
+      : prop.id.startsWith('fb_corners_total_') || prop.id.startsWith('fb_team_corners_')
+        ? 'CÓR'
+        : prop.id.startsWith('fb_fouls_total_') || prop.id.startsWith('fb_team_fouls_')
+          ? 'FAL'
+          : prop.id.startsWith('fb_cards_total_') || prop.id.startsWith('fb_team_cards_')
+            ? 'TA'
+            : prop.id.startsWith('fb_shots_total_') || prop.id.startsWith('fb_team_shots_')
+              ? 'REM'
+              : prop.id.startsWith('fb_sot_total_') || prop.id.startsWith('fb_team_sot_')
+                ? 'ARCO'
+                : prop.id.startsWith('fb_offsides_total_')
+                  ? 'OFF'
+                  : prop.id.startsWith('fb_saves_total_')
+                    ? 'ATAJ'
+                    : prop.id.startsWith('fb_total_') ||
+                        prop.id.startsWith('fb_team_goals_') ||
+                        prop.id.startsWith('fb_ht_goals_') ||
+                        prop.id.startsWith('fb_spread_')
+                      ? 'GOL'
+                      : prop.id.startsWith('fb_btts_')
+                        ? 'BTTS'
+                        : prop.metricKey === 'pts'
+                          ? 'PTS'
+                          : prop.metricKey === 'reb'
+                            ? 'REB'
+                            : prop.metricKey === 'ast'
+                              ? 'AST'
+                              : prop.metricKey === 'pra'
+                                ? 'P+R+A'
+                                : prop.metricKey === 'tpm'
+                                  ? '3PT'
+                                  : prop.pick === 'ML' || prop.pick === 'DC'
+                                    ? '%'
+                                    : prop.id.startsWith('team_3pm_')
+                                      ? '3PM'
+                                      : prop.id.startsWith('team_reb_')
+                                        ? 'REB'
+                                        : 'PTS';
 
     let seasonBaseline = 0;
     let recentBaseline = 0;
@@ -294,16 +314,7 @@ export function PropAnalysisView({
       );
       const logsToUse = fullPlayerLogs.length > 0 ? fullPlayerLogs : fallbackLogs;
       const mKey = prop.footballMetricKey;
-      seasonBaseline =
-        mKey === 'shots'
-          ? Number(fbPlayer?.shots_pg ?? prop.lineValue)
-          : mKey === 'sot'
-            ? Number(fbPlayer?.sot_pg ?? prop.lineValue)
-            : mKey === 'goals'
-              ? Number(fbPlayer?.goals_pg ?? prop.lineValue)
-              : fbPlayer && fbPlayer.gp > 0
-                ? fbPlayer.assists / fbPlayer.gp
-                : prop.lineValue;
+      seasonBaseline = getFootballPlayerSeasonAvg(fbPlayer, mKey) ?? prop.lineValue;
       const recentVals = logsToUse.slice(0, 6).map((g) => getFootballPlayerStatValue(g, mKey));
       recentBaseline =
         recentVals.length > 0
@@ -313,8 +324,22 @@ export function PropAnalysisView({
       const fbOpp: FootballTeamSeasonAverage | null =
         fbPlayer?.team_id === liveGame.home_team_id ? fbCtx.awayTeamAvg : fbCtx.homeTeamAvg;
       if (fbOpp) {
-        rivalFactorLabel = `Rival ${fbOpp.team_abbreviation}: ${Number(fbOpp.ga_pg ?? 1.2).toFixed(2)} GC/PJ`;
-        rivalFactorDetail = `${fbOpp.team_short_name} acumula ${fbOpp.clean_sheets} vallas invictas.`;
+        if (mKey === 'fouls_committed' || mKey === 'fouls_suffered' || mKey === 'yellow_cards') {
+          rivalFactorLabel = `Rival ${fbOpp.team_abbreviation}: ${Number(fbOpp.fouls_pg ?? 11).toFixed(1)} faltas/PJ`;
+          rivalFactorDetail = `${fbOpp.team_short_name} provoca ${Number(
+            fbOpp.fouls_drawn_pg ?? fbOpp.fouls_pg ?? 11,
+          ).toFixed(1)} faltas/PJ y suma ${Number(fbOpp.yellow_cards_pg ?? 1.8).toFixed(2)} amarillas/PJ.`;
+        } else if (mKey === 'saves') {
+          rivalFactorLabel = `Rival ${fbOpp.team_abbreviation}: ${Number(fbOpp.sot_pg ?? 4.2).toFixed(1)} al arco/PJ`;
+          rivalFactorDetail = `${fbOpp.team_short_name} genera ${Number(
+            fbOpp.shots_pg ?? 12,
+          ).toFixed(1)} remates totales por encuentro.`;
+        } else {
+          rivalFactorLabel = `Rival ${fbOpp.team_abbreviation}: ${Number(fbOpp.ga_pg ?? 1.2).toFixed(2)} GC/PJ`;
+          rivalFactorDetail = `${fbOpp.team_short_name} acumula ${fbOpp.clean_sheets} vallas invictas y recibe ${Number(
+            fbOpp.shots_against_pg ?? 11.5,
+          ).toFixed(1)} remates/PJ.`;
+        }
       }
       historySeries = [...logsToUse]
         .slice(0, 12)
@@ -326,82 +351,389 @@ export function PropAnalysisView({
             ? row.game?.away_team?.abbreviation
             : row.game?.home_team?.abbreviation;
           const ss = row.sport_stats;
+          const extraText =
+            mKey === 'fouls_committed' || mKey === 'fouls_suffered' || mKey === 'yellow_cards'
+              ? ` · ${ss?.fouls_committed ?? 0}FC / ${ss?.fouls_suffered ?? 0}FR / ${ss?.yellow_cards ?? 0}TA`
+              : mKey === 'saves'
+                ? ` · ${ss?.saves ?? 0} atajadas / ${ss?.goals_conceded ?? 0} GC`
+                : '';
           return {
             id: String(row.id ?? idx),
             dateLabel: row.game?.game_date ? row.game.game_date.slice(5) : `#${idx + 1}`,
             matchupLabel: oppAbbr ? `${isHome ? 'vs' : '@'} ${oppAbbr}` : `${row.minutes}m`,
             value: val,
-            secondaryText: `${ss?.goals ?? 0}G / ${ss?.assists ?? 0}A / ${ss?.shots ?? 0} REM (${ss?.shots_on_target ?? 0} arco)`,
+            secondaryText: `${ss?.goals ?? 0}G / ${ss?.assists ?? 0}A / ${ss?.shots ?? 0} REM (${ss?.shots_on_target ?? 0} arco)${extraText}`,
           };
         });
-    } else if (sport === 'football' && (prop.id.startsWith('fb_dc_') || prop.id.startsWith('fb_ml_'))) {
+    } else if (sport === 'football' && prop.id.startsWith('fb_')) {
       const fbCtx = context as FootballGameBettingContext;
-      const isHome =
-        prop.teamId != null
-          ? prop.teamId === liveGame.home_team_id
-          : prop.teamAbbr === liveGame.home_team.abbreviation;
-      const mySt = isHome ? fbCtx.homeStanding : fbCtx.awayStanding;
-      const myRec = isHome ? homeRecent : awayRecent;
-      const recentList = isHome ? fbCtx.homeRecentGames : fbCtx.awayRecentGames;
-      const myTeamId = isHome ? liveGame.home_team_id : liveGame.away_team_id;
-      seasonBaseline = Number(mySt?.win_pct ?? 0.5) * 100;
-      recentBaseline = myRec.gamesCount > 0 ? (myRec.wins / myRec.gamesCount) * 100 : seasonBaseline;
-      projectedVal = prop.projectedValue ?? prop.lineValue;
-      rivalFactorLabel =
-        prop.pick === 'DC'
-          ? `Modelo Poisson ${prop.pickLabel}`
-          : `Mercado 1X2 · ${prop.teamAbbr}`;
-      rivalFactorDetail = `Historial de los últimos encuentros disputados por ${
-        isHome ? liveGame.home_team.short_name : liveGame.away_team.short_name
-      }.`;
-      historySeries = [...recentList]
-        .filter((g) => g.status === 'final')
-        .reverse()
-        .map((g) => {
-          const isH = g.home_team_id === myTeamId;
-          const myG = isH ? g.home_score : g.away_score;
-          const opG = isH ? g.away_score : g.home_score;
-          const opp = isH ? g.away_team : g.home_team;
-          return {
-            id: String(g.id),
-            dateLabel: g.game_date.slice(5),
-            matchupLabel: `${isH ? 'vs' : '@'} ${opp.abbreviation}`,
-            value: myG - opG,
-            secondaryText: `${
-              myG > opG ? 'Victoria' : myG === opG ? 'Empate' : 'Derrota'
-            } ${myG}-${opG}`,
-          };
-        });
-    } else if (sport === 'football' && (prop.id.startsWith('fb_total_') || prop.id.startsWith('fb_btts_'))) {
-      const fbCtx = context as FootballGameBettingContext;
+      const fbProj = computeFootballMatchProjections({
+        game: liveGame,
+        homeStanding: fbCtx.homeStanding,
+        awayStanding: fbCtx.awayStanding,
+        homeTeamAvg: fbCtx.homeTeamAvg,
+        awayTeamAvg: fbCtx.awayTeamAvg,
+        homeRecent,
+        awayRecent,
+        homeRecentGames: fbCtx.homeRecentGames,
+        awayRecentGames: fbCtx.awayRecentGames,
+        keyPlayers: fbCtx.keyPlayers,
+        playerRecentLogs: fbCtx.playerRecentLogs ?? [],
+        playerStatuses: fbCtx.playerStatuses,
+      });
+
       const homeGf = Number(fbCtx.homeTeamAvg?.gf_pg ?? homeRecent.avgFor ?? 1.3);
       const homeGa = Number(fbCtx.homeTeamAvg?.ga_pg ?? homeRecent.avgAgainst ?? 1.2);
       const awayGf = Number(fbCtx.awayTeamAvg?.gf_pg ?? awayRecent.avgFor ?? 1.2);
       const awayGa = Number(fbCtx.awayTeamAvg?.ga_pg ?? awayRecent.avgAgainst ?? 1.3);
-      seasonBaseline = insight.expectedTotalSeason ?? (homeGf + awayGa) / 2 + (awayGf + homeGa) / 2;
-      recentBaseline = insight.expectedTotalRecent ?? seasonBaseline;
-      projectedVal = prop.id.startsWith('fb_total_')
-        ? seasonBaseline * 0.55 + recentBaseline * 0.45
-        : homeRecent.avgFor > 0 && awayRecent.avgFor > 0
-          ? 1
-          : 0.4;
-      rivalFactorLabel = `${liveGame.home_team.abbreviation} ${homeGf.toFixed(2)} GF vs ${liveGame.away_team.abbreviation} ${awayGf.toFixed(2)} GF`;
-      rivalFactorDetail = `Promedios defensivos: Local ${homeGa.toFixed(2)} GC/PJ · Visita ${awayGa.toFixed(2)} GC/PJ.`;
       const combinedGames = [...fbCtx.awayRecentGames, ...fbCtx.homeRecentGames]
         .filter((g) => g.status === 'final')
         .sort((a, b) => a.game_date.localeCompare(b.game_date))
         .slice(-10);
-      historySeries = combinedGames.map((g) => ({
-        id: String(g.id),
-        dateLabel: g.game_date.slice(5),
-        matchupLabel: `${g.away_team.abbreviation}@${g.home_team.abbreviation}`,
-        value: prop.id.startsWith('fb_btts_')
-          ? g.home_score > 0 && g.away_score > 0
+
+      const parseTeamIdFromId = (prefix: string): number =>
+        prop.teamId ?? Number(prop.id.slice(prefix.length).replace(/^(?:safe_|val_)/, ''));
+
+      const statMarketConfigs: Array<{
+        prefix: string;
+        statKey: keyof FootballTeamMatchStats;
+        isTeam: boolean;
+        unitLabel: string;
+        projected: number | null;
+        getHomeSeasonAvg: () => number | null;
+        getAwaySeasonAvg: () => number | null;
+      }> = [
+        {
+          prefix: 'fb_corners_total_',
+          statKey: 'corners',
+          isTeam: false,
+          unitLabel: 'córners',
+          projected: fbProj.totalCorners,
+          getHomeSeasonAvg: () => fbCtx.homeTeamAvg?.corners_pg ?? null,
+          getAwaySeasonAvg: () => fbCtx.awayTeamAvg?.corners_pg ?? null,
+        },
+        {
+          prefix: 'fb_team_corners_',
+          statKey: 'corners',
+          isTeam: true,
+          unitLabel: 'córners',
+          projected:
+            parseTeamIdFromId('fb_team_corners_') === liveGame.home_team_id
+              ? fbProj.homeCorners
+              : fbProj.awayCorners,
+          getHomeSeasonAvg: () => fbCtx.homeTeamAvg?.corners_pg ?? null,
+          getAwaySeasonAvg: () => fbCtx.awayTeamAvg?.corners_pg ?? null,
+        },
+        {
+          prefix: 'fb_fouls_total_',
+          statKey: 'fouls',
+          isTeam: false,
+          unitLabel: 'faltas',
+          projected: fbProj.totalFouls,
+          getHomeSeasonAvg: () => fbCtx.homeTeamAvg?.fouls_pg ?? null,
+          getAwaySeasonAvg: () => fbCtx.awayTeamAvg?.fouls_pg ?? null,
+        },
+        {
+          prefix: 'fb_team_fouls_',
+          statKey: 'fouls',
+          isTeam: true,
+          unitLabel: 'faltas',
+          projected:
+            parseTeamIdFromId('fb_team_fouls_') === liveGame.home_team_id
+              ? fbProj.homeFouls
+              : fbProj.awayFouls,
+          getHomeSeasonAvg: () => fbCtx.homeTeamAvg?.fouls_pg ?? null,
+          getAwaySeasonAvg: () => fbCtx.awayTeamAvg?.fouls_pg ?? null,
+        },
+        {
+          prefix: 'fb_cards_total_',
+          statKey: 'yellow_cards',
+          isTeam: false,
+          unitLabel: 'amarillas',
+          projected: fbProj.totalCards,
+          getHomeSeasonAvg: () => fbCtx.homeTeamAvg?.yellow_cards_pg ?? null,
+          getAwaySeasonAvg: () => fbCtx.awayTeamAvg?.yellow_cards_pg ?? null,
+        },
+        {
+          prefix: 'fb_team_cards_',
+          statKey: 'yellow_cards',
+          isTeam: true,
+          unitLabel: 'amarillas',
+          projected:
+            parseTeamIdFromId('fb_team_cards_') === liveGame.home_team_id
+              ? fbProj.homeCards
+              : fbProj.awayCards,
+          getHomeSeasonAvg: () => fbCtx.homeTeamAvg?.yellow_cards_pg ?? null,
+          getAwaySeasonAvg: () => fbCtx.awayTeamAvg?.yellow_cards_pg ?? null,
+        },
+        {
+          prefix: 'fb_shots_total_',
+          statKey: 'shots',
+          isTeam: false,
+          unitLabel: 'remates',
+          projected: fbProj.totalShots,
+          getHomeSeasonAvg: () => fbCtx.homeTeamAvg?.shots_pg ?? null,
+          getAwaySeasonAvg: () => fbCtx.awayTeamAvg?.shots_pg ?? null,
+        },
+        {
+          prefix: 'fb_team_shots_',
+          statKey: 'shots',
+          isTeam: true,
+          unitLabel: 'remates',
+          projected:
+            parseTeamIdFromId('fb_team_shots_') === liveGame.home_team_id
+              ? fbProj.homeShots
+              : fbProj.awayShots,
+          getHomeSeasonAvg: () => fbCtx.homeTeamAvg?.shots_pg ?? null,
+          getAwaySeasonAvg: () => fbCtx.awayTeamAvg?.shots_pg ?? null,
+        },
+        {
+          prefix: 'fb_sot_total_',
+          statKey: 'shots_on_target',
+          isTeam: false,
+          unitLabel: 'remates al arco',
+          projected: fbProj.totalSot,
+          getHomeSeasonAvg: () => fbCtx.homeTeamAvg?.sot_pg ?? null,
+          getAwaySeasonAvg: () => fbCtx.awayTeamAvg?.sot_pg ?? null,
+        },
+        {
+          prefix: 'fb_team_sot_',
+          statKey: 'shots_on_target',
+          isTeam: true,
+          unitLabel: 'remates al arco',
+          projected:
+            parseTeamIdFromId('fb_team_sot_') === liveGame.home_team_id
+              ? fbProj.homeSot
+              : fbProj.awaySot,
+          getHomeSeasonAvg: () => fbCtx.homeTeamAvg?.sot_pg ?? null,
+          getAwaySeasonAvg: () => fbCtx.awayTeamAvg?.sot_pg ?? null,
+        },
+        {
+          prefix: 'fb_offsides_total_',
+          statKey: 'offsides',
+          isTeam: false,
+          unitLabel: 'offsides',
+          projected: fbProj.totalOffsides,
+          getHomeSeasonAvg: () => fbCtx.homeTeamAvg?.offsides_pg ?? null,
+          getAwaySeasonAvg: () => fbCtx.awayTeamAvg?.offsides_pg ?? null,
+        },
+        {
+          prefix: 'fb_saves_total_',
+          statKey: 'saves',
+          isTeam: false,
+          unitLabel: 'atajadas',
+          projected: fbProj.totalSaves,
+          getHomeSeasonAvg: () => fbCtx.homeTeamAvg?.saves_pg ?? null,
+          getAwaySeasonAvg: () => fbCtx.awayTeamAvg?.saves_pg ?? null,
+        },
+      ];
+
+      const matchedStatCfg = statMarketConfigs.find((c) => prop.id.startsWith(c.prefix));
+
+      if (matchedStatCfg) {
+        const hAvg = matchedStatCfg.getHomeSeasonAvg();
+        const aAvg = matchedStatCfg.getAwaySeasonAvg();
+        if (matchedStatCfg.isTeam) {
+          const teamId = parseTeamIdFromId(matchedStatCfg.prefix);
+          const isHome = teamId === liveGame.home_team_id;
+          const myAvg = Number((isHome ? hAvg : aAvg) ?? matchedStatCfg.projected ?? prop.lineValue);
+          const oppAvgVal = Number((isHome ? aAvg : hAvg) ?? myAvg);
+          const recentList = isHome ? fbCtx.homeRecentGames : fbCtx.awayRecentGames;
+          const histVals = recentList
+            .filter((g) => g.status === 'final')
+            .map((g) => ({ g, val: extractTeamMatchStat(g, teamId, matchedStatCfg.statKey) }))
+            .filter((x): x is { g: Game; val: number } => x.val != null);
+
+          seasonBaseline = myAvg;
+          recentBaseline =
+            histVals.length > 0
+              ? histVals.reduce((s, x) => s + x.val, 0) / histVals.length
+              : seasonBaseline;
+          projectedVal = matchedStatCfg.projected ?? (seasonBaseline + recentBaseline) / 2;
+          rivalFactorLabel = `Equipo ${myAvg.toFixed(1)} vs Rival ${oppAvgVal.toFixed(1)} ${matchedStatCfg.unitLabel}/PJ`;
+          rivalFactorDetail = `En sus últimos ${histVals.length || 1} partidos registrados promedia ${recentBaseline.toFixed(
+            1,
+          )} ${matchedStatCfg.unitLabel}.`;
+          historySeries = [...histVals]
+            .reverse()
+            .map((x) => {
+              const isH = x.g.home_team_id === teamId;
+              const opp = isH ? x.g.away_team : x.g.home_team;
+              return {
+                id: String(x.g.id),
+                dateLabel: x.g.game_date.slice(5),
+                matchupLabel: `${isH ? 'vs' : '@'} ${opp.abbreviation}`,
+                value: x.val,
+                secondaryText: `${x.val} ${matchedStatCfg.unitLabel} (${x.g.away_score}-${x.g.home_score})`,
+              };
+            });
+        } else {
+          const sumSeason =
+            hAvg != null && aAvg != null
+              ? Number(hAvg) + Number(aAvg)
+              : (matchedStatCfg.projected ?? prop.lineValue);
+          const histVals = combinedGames
+            .map((g) => ({ g, val: extractMatchTotalStat(g, matchedStatCfg.statKey) }))
+            .filter((x): x is { g: Game; val: number } => x.val != null);
+          seasonBaseline = sumSeason;
+          recentBaseline =
+            histVals.length > 0
+              ? histVals.reduce((s, x) => s + x.val, 0) / histVals.length
+              : seasonBaseline;
+          projectedVal = matchedStatCfg.projected ?? seasonBaseline;
+          rivalFactorLabel = `${liveGame.home_team.abbreviation} ${Number(hAvg ?? 0).toFixed(1)} + ${liveGame.away_team.abbreviation} ${Number(aAvg ?? 0).toFixed(1)} / PJ`;
+          rivalFactorDetail = `Promedio reciente en partidos con estadísticas oficiales: ${recentBaseline.toFixed(
+            1,
+          )} ${matchedStatCfg.unitLabel} por partido.`;
+          historySeries = histVals.map((x) => ({
+            id: String(x.g.id),
+            dateLabel: x.g.game_date.slice(5),
+            matchupLabel: `${x.g.away_team.abbreviation}@${x.g.home_team.abbreviation}`,
+            value: x.val,
+            secondaryText: `${x.val} ${matchedStatCfg.unitLabel} (${x.g.away_score}-${x.g.home_score})`,
+          }));
+        }
+      } else if (prop.id.startsWith('fb_team_goals_')) {
+        const teamId = parseTeamIdFromId('fb_team_goals_');
+        const isHome = teamId === liveGame.home_team_id;
+        const myGf = isHome ? homeGf : awayGf;
+        const oppGa = isHome ? awayGa : homeGa;
+        const myRec = isHome ? homeRecent : awayRecent;
+        seasonBaseline = (myGf + oppGa) / 2;
+        recentBaseline = myRec.gamesCount > 0 ? myRec.avgFor : seasonBaseline;
+        projectedVal = isHome ? fbProj.homeGoals : fbProj.awayGoals;
+        rivalFactorLabel = `Ataque ${myGf.toFixed(2)} GF vs Rival ${oppGa.toFixed(2)} GC/PJ`;
+        rivalFactorDetail = `Promedio reciente de goles propios: ${recentBaseline.toFixed(2)} por encuentro.`;
+        const recentList = isHome ? fbCtx.homeRecentGames : fbCtx.awayRecentGames;
+        historySeries = [...recentList]
+          .filter((g) => g.status === 'final')
+          .reverse()
+          .map((g) => {
+            const isH = g.home_team_id === teamId;
+            const goals = isH ? g.home_score : g.away_score;
+            const opp = isH ? g.away_team : g.home_team;
+            return {
+              id: String(g.id),
+              dateLabel: g.game_date.slice(5),
+              matchupLabel: `${isH ? 'vs' : '@'} ${opp.abbreviation}`,
+              value: goals,
+              secondaryText: `${goals} G (${g.away_score}-${g.home_score})`,
+            };
+          });
+      } else if (prop.id.startsWith('fb_ht_goals_')) {
+        const hHt = Number(fbCtx.homeTeamAvg?.ht_gf_pg ?? homeGf * 0.44);
+        const aHt = Number(fbCtx.awayTeamAvg?.ht_gf_pg ?? awayGf * 0.44);
+        seasonBaseline = hHt + aHt;
+        const htHist = combinedGames
+          .map((g) => ({ g, ht: extractHalfTimeGoals(g) }))
+          .filter((x): x is { g: Game; ht: { home: number; away: number; total: number } } => x.ht != null);
+        recentBaseline =
+          htHist.length > 0
+            ? htHist.reduce((s, x) => s + x.ht.total, 0) / htHist.length
+            : seasonBaseline;
+        projectedVal = fbProj.htTotalGoals ?? seasonBaseline;
+        rivalFactorLabel = `1T Temporada: ${liveGame.home_team.abbreviation} ${hHt.toFixed(2)} + ${liveGame.away_team.abbreviation} ${aHt.toFixed(2)} G`;
+        rivalFactorDetail = `Basado en parciales de primer tiempo y eventos previos del torneo.`;
+        historySeries = htHist.map((x) => ({
+          id: String(x.g.id),
+          dateLabel: x.g.game_date.slice(5),
+          matchupLabel: `${x.g.away_team.abbreviation}@${x.g.home_team.abbreviation}`,
+          value: x.ht.total,
+          secondaryText: `1T: ${x.ht.away}-${x.ht.home} (${x.ht.total} G)`,
+        }));
+      } else if (prop.id.startsWith('fb_dc_') || prop.id.startsWith('fb_ml_') || prop.id.startsWith('fb_dnb_')) {
+        const isHome =
+          prop.teamId != null
+            ? prop.teamId === liveGame.home_team_id
+            : prop.teamAbbr === liveGame.home_team.abbreviation;
+        const mySt = isHome ? fbCtx.homeStanding : fbCtx.awayStanding;
+        const myRec = isHome ? homeRecent : awayRecent;
+        const recentList = isHome ? fbCtx.homeRecentGames : fbCtx.awayRecentGames;
+        const myTeamId = isHome ? liveGame.home_team_id : liveGame.away_team_id;
+        seasonBaseline = Number(mySt?.win_pct ?? 0.5) * 100;
+        recentBaseline = myRec.gamesCount > 0 ? (myRec.wins / myRec.gamesCount) * 100 : seasonBaseline;
+        projectedVal = prop.projectedValue ?? prop.lineValue;
+        rivalFactorLabel =
+          prop.pick === 'DC'
+            ? `Modelo Poisson ${prop.pickLabel}`
+            : prop.id.startsWith('fb_dnb_')
+              ? `Mercado DNB · ${prop.teamAbbr}`
+              : `Mercado 1X2 · ${prop.teamAbbr}`;
+        rivalFactorDetail = `Historial de los últimos encuentros disputados por ${
+          isHome ? liveGame.home_team.short_name : liveGame.away_team.short_name
+        }.`;
+        historySeries = [...recentList]
+          .filter((g) => g.status === 'final')
+          .reverse()
+          .map((g) => {
+            const isH = g.home_team_id === myTeamId;
+            const myG = isH ? g.home_score : g.away_score;
+            const opG = isH ? g.away_score : g.home_score;
+            const opp = isH ? g.away_team : g.home_team;
+            return {
+              id: String(g.id),
+              dateLabel: g.game_date.slice(5),
+              matchupLabel: `${isH ? 'vs' : '@'} ${opp.abbreviation}`,
+              value: myG - opG,
+              secondaryText: `${
+                myG > opG ? 'Victoria' : myG === opG ? 'Empate' : 'Derrota'
+              } ${myG}-${opG}`,
+            };
+          });
+      } else if (prop.id.startsWith('fb_spread_')) {
+        const isHome =
+          prop.teamId != null
+            ? prop.teamId === liveGame.home_team_id
+            : prop.teamAbbr === liveGame.home_team.abbreviation;
+        const targetId = isHome ? liveGame.home_team_id : liveGame.away_team_id;
+        const myTeamAvg = isHome ? fbCtx.homeTeamAvg : fbCtx.awayTeamAvg;
+        const myRec = isHome ? homeRecent : awayRecent;
+        projectedVal = prop.projectedValue ?? (isHome ? fbProj.homeGoals - fbProj.awayGoals : fbProj.awayGoals - fbProj.homeGoals);
+        seasonBaseline =
+          myTeamAvg && myTeamAvg.played > 0 ? myTeamAvg.goal_diff / myTeamAvg.played : myRec.avgMargin;
+        recentBaseline = myRec.avgMargin;
+        rivalFactorLabel = `Goles esperados: ${fbProj.homeGoals.toFixed(2)} vs ${fbProj.awayGoals.toFixed(2)}`;
+        rivalFactorDetail = `Margen promedio reciente: ${myRec.avgMargin >= 0 ? '+' : ''}${myRec.avgMargin.toFixed(2)} goles.`;
+        const recentList = isHome ? fbCtx.homeRecentGames : fbCtx.awayRecentGames;
+        historySeries = [...recentList]
+          .filter((g) => g.status === 'final')
+          .reverse()
+          .map((g) => {
+            const isH = g.home_team_id === targetId;
+            const myG = isH ? g.home_score : g.away_score;
+            const opG = isH ? g.away_score : g.home_score;
+            const opp = isH ? g.away_team : g.home_team;
+            return {
+              id: String(g.id),
+              dateLabel: g.game_date.slice(5),
+              matchupLabel: `${isH ? 'vs' : '@'} ${opp.abbreviation}`,
+              value: myG - opG,
+              secondaryText: `${myG}-${opG} (${myG - opG >= 0 ? '+' : ''}${myG - opG})`,
+            };
+          });
+      } else {
+        // fb_total_ and fb_btts_
+        seasonBaseline = insight.expectedTotalSeason ?? (homeGf + awayGa) / 2 + (awayGf + homeGa) / 2;
+        recentBaseline = insight.expectedTotalRecent ?? seasonBaseline;
+        projectedVal = prop.id.startsWith('fb_total_')
+          ? fbProj.totalGoals
+          : homeRecent.avgFor > 0 && awayRecent.avgFor > 0
             ? 1
-            : 0
-          : g.away_score + g.home_score,
-        secondaryText: `${g.away_score}-${g.home_score}`,
-      }));
+            : 0.4;
+        rivalFactorLabel = `${liveGame.home_team.abbreviation} ${homeGf.toFixed(2)} GF vs ${liveGame.away_team.abbreviation} ${awayGf.toFixed(2)} GF`;
+        rivalFactorDetail = `Promedios defensivos: Local ${homeGa.toFixed(2)} GC/PJ · Visita ${awayGa.toFixed(2)} GC/PJ.`;
+        historySeries = combinedGames.map((g) => ({
+          id: String(g.id),
+          dateLabel: g.game_date.slice(5),
+          matchupLabel: `${g.away_team.abbreviation}@${g.home_team.abbreviation}`,
+          value: prop.id.startsWith('fb_btts_')
+            ? g.home_score > 0 && g.away_score > 0
+              ? 1
+              : 0
+            : g.away_score + g.home_score,
+          secondaryText: `${g.away_score}-${g.home_score}`,
+        }));
+      }
     } else if (prop.scope === 'player' && prop.playerId && prop.metricKey) {
       const nbaCtx = context as GameBettingContext;
       playerAvgObj = nbaCtx.keyPlayers.find((p) => p.player_id === prop.playerId) ?? null;
@@ -711,10 +1043,22 @@ export function PropAnalysisView({
     };
 
     if (!matchesOriginalConfig) {
-      const isPoissonMarket =
-        (sport === 'football' &&
-          (prop.footballMetricKey != null || prop.id.startsWith('fb_total_'))) ||
-        prop.metricKey === 'tpm';
+      const isFootballCountPoisson =
+        sport === 'football' &&
+        (prop.footballMetricKey != null ||
+          (projectedVal <= 18 &&
+            (prop.id.startsWith('fb_total_') ||
+              prop.id.startsWith('fb_team_goals_') ||
+              prop.id.startsWith('fb_ht_goals_') ||
+              prop.id.startsWith('fb_corners_') ||
+              prop.id.startsWith('fb_team_corners_') ||
+              prop.id.startsWith('fb_cards_') ||
+              prop.id.startsWith('fb_team_cards_') ||
+              prop.id.startsWith('fb_sot_') ||
+              prop.id.startsWith('fb_team_sot_') ||
+              prop.id.startsWith('fb_offsides_') ||
+              prop.id.startsWith('fb_saves_'))));
+      const isPoissonMarket = isFootballCountPoisson || prop.metricKey === 'tpm';
 
       let pModel: number;
       if (isPoissonMarket && effectivePick !== 'SPREAD' && effectivePick !== 'ML' && effectivePick !== 'DC') {
@@ -725,17 +1069,27 @@ export function PropAnalysisView({
         const histVals = historySeries.map((h) => h.value);
         const priorSd = prop.id.startsWith('team_total_')
           ? 18.5
-          : effectivePick === 'SPREAD'
-            ? 12.5
-            : prop.id.startsWith('team_pts_')
-              ? 11.0
-              : prop.id.startsWith('team_3pm_')
+          : prop.id.startsWith('fb_fouls_total_')
+            ? 4.8
+            : prop.id.startsWith('fb_shots_total_')
+              ? 5.2
+              : prop.id.startsWith('fb_team_fouls_') || prop.id.startsWith('fb_team_shots_')
                 ? 3.3
-                : prop.id.startsWith('team_reb_')
-                  ? 5.6
-                  : effectivePick === 'ML' || effectivePick === 'DC'
-                    ? 12.0
-                    : Math.max(1.5, seasonBaseline * 0.32);
+                : prop.id.startsWith('fb_corners_') || prop.id.startsWith('fb_team_corners_')
+                  ? 2.8
+                  : effectivePick === 'SPREAD'
+                    ? sport === 'football'
+                      ? 1.3
+                      : 12.5
+                    : prop.id.startsWith('team_pts_')
+                      ? 11.0
+                      : prop.id.startsWith('team_3pm_')
+                        ? 3.3
+                        : prop.id.startsWith('team_reb_')
+                          ? 5.6
+                          : effectivePick === 'ML' || effectivePick === 'DC'
+                            ? 12.0
+                            : Math.max(1.5, seasonBaseline * 0.32);
         const sd = computeSampleStdDev(histVals, priorSd);
         pModel = normalCdf(signedEdge / Math.max(1.0, sd));
       }
@@ -762,6 +1116,7 @@ export function PropAnalysisView({
     let accessibilityTitle = 'Accesibilidad Moderada';
     let accessibilityLevel: 'high' | 'medium' | 'low' = 'medium';
     let accessibilityText = '';
+    const marginUnit = sport === 'football' ? 'goles' : 'pts';
 
     if (effectivePick === 'ML' || effectivePick === 'DC') {
       if (dynamicConf >= 68 && projectedVal - customLine >= 0) {
@@ -780,27 +1135,30 @@ export function PropAnalysisView({
         accessibilityText = `La cuota exigida pide una probabilidad mayor a la proyectada por el rendimiento actual.`;
       }
     } else if (effectivePick === 'SPREAD') {
-      if (signedEdge >= 3.0 && (totalHist === 0 || hitRatePct >= 50)) {
+      const highSpread = sport === 'football' ? 0.35 : 3.0;
+      const modSpread = sport === 'football' ? 0.12 : 0.8;
+      if (signedEdge >= highSpread && (totalHist === 0 || hitRatePct >= 50)) {
         accessibilityTitle = 'Mercado Accesible';
         accessibilityLevel = 'high';
         accessibilityText = `El margen proyectado ofrece +${signedEdge.toFixed(
-          1,
-        )} pts de colchón sobre el hándicap ${customLine > 0 ? `+${customLine}` : customLine}.`;
-      } else if (signedEdge >= 0.8) {
+          sport === 'football' ? 2 : 1,
+        )} ${marginUnit} de colchón sobre el hándicap ${customLine > 0 ? `+${customLine}` : customLine}.`;
+      } else if (signedEdge >= modSpread) {
         accessibilityTitle = 'Accesibilidad Moderada';
         accessibilityLevel = 'medium';
         accessibilityText = `Ventaja leve (+${signedEdge.toFixed(
-          1,
-        )} pts). Un cierre apretado puede definir si cubre.`;
+          sport === 'football' ? 2 : 1,
+        )} ${marginUnit}). Un cierre apretado puede definir si cubre.`;
       } else {
         accessibilityTitle = 'Mercado Exigente';
         accessibilityLevel = 'low';
         accessibilityText = `A esa línea el margen estadístico queda corto o negativo (${signedEdge.toFixed(
-          1,
-        )} pts).`;
+          sport === 'football' ? 2 : 1,
+        )} ${marginUnit}).`;
       }
     } else {
-      const pctBuffer = signedEdge / Math.max(2, customLine);
+      const pctBuffer = signedEdge / Math.max(sport === 'football' ? 1 : 2, customLine);
+      const minAbsEdge = sport === 'football' ? 0.3 : 1.0;
       if (signedEdge < 0) {
         accessibilityTitle = 'Mercado Exigente';
         accessibilityLevel = 'low';
@@ -810,7 +1168,7 @@ export function PropAnalysisView({
           1,
         )}. Conviene subir/bajar la línea o evaluar el lado opuesto.`;
       } else if (
-        (pctBuffer >= 0.04 || signedEdge >= 1.0) &&
+        (pctBuffer >= 0.04 || signedEdge >= minAbsEdge) &&
         (totalHist === 0 || hitRatePct >= 55)
       ) {
         accessibilityTitle = 'Mercado Accesible';
@@ -820,7 +1178,7 @@ export function PropAnalysisView({
         )} ${unit} a favor de ${effectivePick} ${customLine.toFixed(1)} con ${
           totalHist > 0 ? `${hitRatePct}% de acierto reciente` : 'respaldo de promedio de temporada'
         }.`;
-      } else if (signedEdge >= 0.25 || (totalHist > 0 && hitRatePct >= 60)) {
+      } else if (signedEdge >= (sport === 'football' ? 0.12 : 0.25) || (totalHist > 0 && hitRatePct >= 60)) {
         accessibilityTitle = 'Accesibilidad Moderada';
         accessibilityLevel = 'medium';
         accessibilityText = `Margen positivo de +${signedEdge.toFixed(
@@ -908,7 +1266,7 @@ export function PropAnalysisView({
   }, [analysis.historySeries, customLine, prop.pick, sport]);
 
   const relatedProps = useMemo(
-    () => allGameProps.filter((p) => p.id !== prop.id).slice(0, 8),
+    () => allGameProps.filter((p) => p.id !== prop.id).slice(0, 12),
     [allGameProps, prop.id],
   );
 
@@ -1151,7 +1509,7 @@ export function PropAnalysisView({
             </div>
             <div className="text-[11px] text-slate-400">
               {prop.pick === 'SPREAD'
-                ? `Colchón: ${(analysis.projectedVal + customLine >= 0 ? '+' : '')}${(analysis.projectedVal + customLine).toFixed(1)} pts`
+                ? `Colchón: ${(analysis.projectedVal + customLine >= 0 ? '+' : '')}${(analysis.projectedVal + customLine).toFixed(sport === 'football' ? 2 : 1)} ${sport === 'football' ? 'goles' : 'pts'}`
                 : `Margen vs línea: ${analysis.projectedVal - customLine >= 0 ? '+' : ''}${(analysis.projectedVal - customLine).toFixed(1)} ${analysis.unit}`}
             </div>
           </div>

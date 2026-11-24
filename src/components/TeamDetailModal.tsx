@@ -242,14 +242,26 @@ export function TeamDetailModal({
                       <div className="text-xs font-bold uppercase tracking-wider text-slate-300">
                         Promedios Colectivos por Partido
                       </div>
-                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 text-center">
                         {[
                           { label: 'Posesión', val: fbTeamAvg.possession_avg != null ? `${Number(fbTeamAvg.possession_avg).toFixed(1)}%` : '-' },
                           { label: 'Remates / PJ', val: fbTeamAvg.shots_pg != null ? Number(fbTeamAvg.shots_pg).toFixed(1) : '-' },
                           { label: 'Al Arco / PJ', val: fbTeamAvg.sot_pg != null ? Number(fbTeamAvg.sot_pg).toFixed(1) : '-' },
                           { label: 'Córners / PJ', val: fbTeamAvg.corners_pg != null ? Number(fbTeamAvg.corners_pg).toFixed(1) : '-' },
+                          { label: 'Cór. Conc./PJ', val: fbTeamAvg.corners_against_pg != null ? Number(fbTeamAvg.corners_against_pg).toFixed(1) : '-' },
                           { label: 'Faltas / PJ', val: fbTeamAvg.fouls_pg != null ? Number(fbTeamAvg.fouls_pg).toFixed(1) : '-' },
+                          { label: 'Faltas Rec./PJ', val: fbTeamAvg.fouls_drawn_pg != null ? Number(fbTeamAvg.fouls_drawn_pg).toFixed(1) : '-' },
+                          { label: 'Amarillas / PJ', val: fbTeamAvg.yellow_cards_pg != null ? Number(fbTeamAvg.yellow_cards_pg).toFixed(2) : '-' },
                           { label: 'Tarjetas A/R', val: `${fbTeamAvg.yellow_cards}/${fbTeamAvg.red_cards}` },
+                          { label: 'Offsides / PJ', val: fbTeamAvg.offsides_pg != null ? Number(fbTeamAvg.offsides_pg).toFixed(1) : '-' },
+                          { label: 'Atajadas / PJ', val: fbTeamAvg.saves_pg != null ? Number(fbTeamAvg.saves_pg).toFixed(1) : '-' },
+                          {
+                            label: 'BTTS / +2.5',
+                            val:
+                              fbTeamAvg.btts_pct != null && fbTeamAvg.over_25_pct != null
+                                ? `${Math.round(Number(fbTeamAvg.btts_pct))}% / ${Math.round(Number(fbTeamAvg.over_25_pct))}%`
+                                : '-',
+                          },
                         ].map((st) => (
                           <div key={st.label} className="rounded-lg bg-[#12151c] border border-white/[0.07] p-2.5">
                             <div className="text-[10px] text-slate-400 font-medium">{st.label}</div>

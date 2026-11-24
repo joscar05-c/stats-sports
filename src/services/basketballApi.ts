@@ -559,7 +559,7 @@ async function fetchCleanLogsAndStatuses(
 export async function fetchFootballGameBettingContext(
   game: Game,
 ): Promise<FootballGameBettingContext> {
-  const { data } = await withOfflineCache(`fb_bet_ctx_v2_${game.id}`, async () => {
+  const { data } = await withOfflineCache(`fb_bet_ctx_v3_${game.id}`, async () => {
     const [standingsRes, teamAvgsRes, homeRecentGames, awayRecentGames, homePlayersRes, awayPlayersRes] =
       await Promise.all([
         supabase
@@ -581,9 +581,9 @@ export async function fetchFootballGameBettingContext(
           .eq('team_id', game.home_team_id)
           .gt('gp', 0)
           .order('starts', { ascending: false })
-          .order('shots_on_target', { ascending: false })
+          .order('shots', { ascending: false })
           .order('goals', { ascending: false })
-          .limit(8),
+          .limit(13),
         supabase
           .from('football_player_season_averages')
           .select('*')
@@ -591,9 +591,9 @@ export async function fetchFootballGameBettingContext(
           .eq('team_id', game.away_team_id)
           .gt('gp', 0)
           .order('starts', { ascending: false })
-          .order('shots_on_target', { ascending: false })
+          .order('shots', { ascending: false })
           .order('goals', { ascending: false })
-          .limit(8),
+          .limit(13),
       ]);
 
     const keyPlayers = [
